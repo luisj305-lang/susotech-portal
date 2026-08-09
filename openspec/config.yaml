@@ -1,0 +1,55 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Next.js 16.3.0 + React 19.2.8 + TypeScript 5 + Tailwind CSS 4 + Supabase.
+  Architecture: App Router, Server Components default, Supabase Auth + RLS, private Storage buckets.
+  Testing: No test runner installed; only lint and build/type-check are available.
+  Style: English code/schema/commits, Spanish UI/docs; PascalCase components, camelCase vars, snake_case SQL.
+  Persistence: hybrid (openspec + Engram).
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes.
+    - Reference relevant docs/ files and AGENTS.md instructions.
+  specs:
+    - Use Given/When/Then for scenarios.
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
+    - Align requirements with docs/00-PROYECTO.md, docs/01-ARQUITECTURA.md, docs/04-SEGURIDAD.md.
+  design:
+    - Follow the installed Next.js 16 docs in node_modules/next/dist/docs/ for current APIs.
+    - Default to Server Components; use Client Components only at the interaction boundary.
+    - Document RLS, auth, and state-transition decisions explicitly.
+  tasks:
+    - Group by phase; use hierarchical numbering.
+    - Keep tasks completable in one focused session.
+    - Update docs and migrations in the same change as the code they describe.
+  apply:
+    guidelines:
+      - Follow existing code patterns in app/ and src/.
+      - Never expose service_role keys to the client.
+      - Add new Supabase migrations; do not modify already-applied migrations.
+      - Keep business logic out of JSX; provide loading, empty, and error states.
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    lint_command: "npm run lint"
+    build_command: "npm run build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas.
+    - Preserve the archived change folder as an audit trail; never delete or modify it.
+
+strict_tdd: false
+
+testing:
+  runner: ""
+  layers:
+    unit: false
+    integration: false
+    e2e: false
+  coverage: false
+  quality:
+    linter: "npm run lint"
+    type_checker: "npm run build"
+    formatter: ""
