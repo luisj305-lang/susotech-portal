@@ -1,0 +1,31 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { JobForm } from "@/components/jobs/job-form";
+import { CodeInput } from "@/components/jobs/code-input";
+import { OfficeJobActions } from "@/components/jobs/office-job-actions";
+import { PhotoUpload } from "@/components/jobs/photo-upload";
+import { TechnicianActions } from "@/components/jobs/technician-actions";
+import { Timeline } from "@/components/jobs/timeline";
+import { requireProfile } from "@/lib/auth/session";
+import { getOfficeJob, getTechnicianJob } from "@/lib/jobs/queries";
+
+async function TechnicianDetail({ id }: { id: string }) {
+  const detail = await getTechnicianJob(id);
+  if (!detail) notFound();
+  const { job, history, codes, photos } = detail;
+  return <main className="min-h-screen bg-slate-950 px-4 py-6 text-white"><div className="mx-auto grid max-w-xl gap-5"><Link href="/trabajos" className="text-sm font-medium text-emerald-300">← Mis trabajos</Link><header><p className="text-sm font-semibold uppercase tracking-widest text-emerald-300">{job.category.replace("_", " ")}</p><h1 className="mt-1 text-3xl font-bold">{job.title}</h1><p className="mt-2 text-slate-300">{job.address || job.location || "Ubicación no indicada"}</p></header>
+    <section className="rounded-2xl bg-white p-5 text-slate-950 shadow-lg"><h2 className="text-xl font-bold">Instrucciones</h2><dl className="mt-3 grid gap-3"><div><dt className="font-semibold">Descripción</dt><dd>{job.description || "Sin descripción"}</dd></div><div><dt className="font-semibold">Instrucciones especiales</dt><dd>{job.special_instructions || "Ninguna"}</dd></div><div><dt className="font-semibold">Material requerido</dt><dd>{job.required_material || "No indicado"}</dd></div></dl>{job.project_map_url && <a href={job.project_map_url} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-12 items-center font-bold text-emerald-800 underline">Abrir mapa del proyecto</a>}</section>
+    <TechnicianActions jobId={job.id} status={job.main_status} incident={job.incident} projectPdf={job.project_pdf_url} /><CodeInput jobId={job.id} enabled={job.main_status === "en_progreso"} />
+    {codes.length > 0 && <section className="rounded-2xl bg-white p-5 text-slate-950"><h2 className="text-xl font-bold">Producción registrada</h2><ul className="mt-3 grid gap-2">{codes.map((code) => <li key={code.id} className="rounded-lg bg-slate-100 p-3"><strong>{code.code}</strong> · {code.quantity}{code.notes ? ` · ${code.notes}` : ""}</li>)}</ul></section>}
+    <PhotoUpload jobId={job.id} />{(photos.length > 0 || job.comments) && <section className="rounded-2xl bg-white p-5 text-slate-950"><h2 className="text-xl font-bold">Evidencia guardada</h2><p className="mt-2">{photos.length} foto(s)</p>{job.comments && <p className="mt-2 rounded-lg bg-slate-100 p-3">{job.comments}</p>}</section>}<Timeline entries={history} /></div></main>;
+}
+
+export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const profile = await requireProfile();
+  const { id } = await params;
+  if (profile.role === "tecnico") return <TechnicianDetail id={id} />;
+  const detail = await getOfficeJob(id);
+  if (!detail) notFound();
+  const { job, assignment, history, options } = detail;
+  return <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-8"><div className="mx-auto grid max-w-6xl gap-6"><Link href="/trabajos" className="text-sm font-medium">← Trabajos</Link><header><p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">{job.category.replace("_", " ")}</p><h1 className="text-3xl font-bold">{job.title}</h1><p className="mt-2 text-slate-600">Estado: {job.main_status.replaceAll("_", " ")}{job.incident ? ` · Incidencia: ${job.incident}` : ""}</p></header><OfficeJobActions jobId={job.id} status={job.main_status} assignment={assignment} options={options} /><section><h2 className="mb-3 text-lg font-semibold">Datos del trabajo</h2><JobForm job={job} /></section><Timeline entries={history} /></div></main>;
+}

@@ -9,7 +9,7 @@ const roleLabels = {
 };
 
 export function DashboardClient({ profile }: { profile: CurrentProfile }) {
-  const canCreateProjects =
+  const canCreateJobs =
     profile.role === "admin" || profile.role === "supervisor";
 
   return (
@@ -42,11 +42,38 @@ export function DashboardClient({ profile }: { profile: CurrentProfile }) {
           marginBottom: "30px",
         }}
       >
-        {canCreateProjects && (
-          <button style={{ padding: "12px 20px", cursor: "pointer" }}>
-            + Nuevo Proyecto
-          </button>
+        {canCreateJobs && (
+          <Link
+            href="/equipos"
+            style={{ padding: "12px 20px", border: "1px solid currentColor", textDecoration: "none" }}
+          >
+            Administrar equipos
+          </Link>
         )}
+
+        {canCreateJobs && (
+          <Link
+            href="/trabajos/nuevo"
+            style={{
+              padding: "12px 20px",
+              border: "1px solid currentColor",
+              textDecoration: "none",
+            }}
+          >
+            + Nuevo trabajo
+          </Link>
+        )}
+
+        <Link
+          href="/trabajos"
+          style={{
+            padding: "12px 20px",
+            border: "1px solid currentColor",
+            textDecoration: "none",
+          }}
+        >
+          Ver trabajos
+        </Link>
 
         {profile.role === "admin" && (
           <Link
@@ -62,7 +89,9 @@ export function DashboardClient({ profile }: { profile: CurrentProfile }) {
         )}
       </div>
 
-      <p style={{ marginBottom: "30px" }}>Todavía no tienes proyectos.</p>
+      <p style={{ marginBottom: "30px" }}>
+        Consulta y administra los trabajos disponibles según tu rol.
+      </p>
 
       <LogoutButton />
     </main>

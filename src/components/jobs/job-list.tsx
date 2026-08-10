@@ -1,0 +1,11 @@
+import Link from "next/link";
+import type { Job } from "@/lib/jobs/types";
+
+const statuses: Record<string, string> = { asignado: "Asignado", en_progreso: "En progreso", enviado_revision: "En revisión", aprobado: "Aprobado", listo_pagar: "Listo para pagar", pagado: "Pagado" };
+const incidents: Record<string, string> = { need_splicing: "Requiere empalme", no_access: "Sin acceso", need_cr: "Requiere CR", permit_pending: "Permiso pendiente", returned: "Devuelto", incomplete: "Incompleto" };
+
+export function JobList({ jobs }: { jobs: Job[] }) {
+  return <main className="min-h-screen bg-slate-950 px-4 py-6 text-white"><div className="mx-auto max-w-xl"><Link href="/dashboard" className="text-sm font-medium text-emerald-300">← Dashboard</Link><header className="my-6"><p className="text-sm font-semibold uppercase tracking-widest text-emerald-300">Trabajo de campo</p><h1 className="text-3xl font-bold">Mis trabajos</h1><p className="mt-2 text-slate-300">Órdenes activas asignadas directamente o por tu crew.</p></header>
+    {jobs.length ? <div className="grid gap-4">{jobs.map((job) => <Link key={job.id} href={`/trabajos/${job.id}`} className="min-h-40 rounded-2xl bg-white p-5 text-slate-950 shadow-lg focus-visible:outline-4 focus-visible:outline-emerald-400"><div className="flex items-start justify-between gap-3"><h2 className="text-xl font-bold">{job.title}</h2><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-900">{statuses[job.main_status]}</span></div><p className="mt-4 text-base text-slate-700">{job.address || job.location || "Ubicación no indicada"}</p>{job.deadline_date && <p className="mt-2 text-sm font-medium">Fecha límite: {new Intl.DateTimeFormat("es-US", { dateStyle: "medium" }).format(new Date(job.deadline_date))}</p>}{job.incident && <p className="mt-3 rounded-lg bg-amber-100 p-3 font-semibold text-amber-900">Incidencia: {incidents[job.incident]}</p>}</Link>)}</div> : <section className="rounded-2xl border border-dashed border-slate-600 p-10 text-center"><h2 className="text-xl font-semibold">No tienes trabajos asignados</h2><p className="mt-2 text-slate-300">Cuando recibas una asignación aparecerá aquí.</p></section>}
+  </div></main>;
+}

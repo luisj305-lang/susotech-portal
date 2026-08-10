@@ -19,16 +19,16 @@ El roadmap se organiza por resultados verificables. Las fechas se asignarán cua
 
 **Resultado:** cada usuario entra y solo puede realizar acciones permitidas.
 
-- [ ] Inicio y cierre de sesión completos.
-- [ ] Renovación de sesión y protección de rutas.
-- [ ] Perfiles activos.
-- [ ] Roles definitivos.
-- [ ] Políticas RLS y pruebas negativas.
-- [ ] Administración inicial de usuarios.
+- [x] Inicio y cierre de sesión completos.
+- [x] Renovación de sesión y protección de rutas.
+- [x] Perfiles activos.
+- [x] Roles definitivos.
+- [x] Políticas RLS y pruebas negativas.
+- [x] Administración inicial de usuarios.
 
 Hito: un técnico no puede consultar datos de otro técnico y un usuario sin sesión no accede al portal.
 
-## Fase 2 — Trabajos
+## Fase 2 — Trabajos *(en progreso)*
 
 **Resultado:** oficina crea, consulta, filtra y asigna trabajos.
 
