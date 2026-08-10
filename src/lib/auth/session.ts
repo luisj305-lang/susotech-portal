@@ -54,3 +54,9 @@ export async function requireRole(role: UserRole) {
 export async function requireAdmin() {
   return requireRole("admin");
 }
+
+export async function requireSupervisor() {
+  const profile = await requireProfile();
+
+  return profile.role === "admin" ? profile : requireRole("supervisor");
+}
