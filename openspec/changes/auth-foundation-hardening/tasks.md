@@ -46,7 +46,7 @@ Chain strategy: stacked-to-main
 - [x] 3.1 Update `app/layout.tsx` metadata to "Susotech Portal".
 - [ ] 3.2 Rewrite `app/page.tsx` to remove `projects` query and keep public landing. *(omitido por decisión del usuario: landing externa, `app/page.tsx` no se modifica)*
 - [x] 3.3 Add loading/error/recovery states to `app/login/page.tsx`; redirect to `/dashboard` on login.
-- [x] 3.4 Create `app/reset-password/page.tsx` as Client Component; use hash session and `updateUser({ password })`.
+- [x] 3.4 Create `app/reset-password/page.tsx` as Client Component; use hash session and `updateUser({ password })` via a dedicated `createClient` with `flowType: 'implicit'`. `createBrowserClient` forces PKCE and rejects the implicit-grant recovery hash.
 - [x] 3.5 Add loading/error states to `app/dashboard/page.tsx`.
 - [x] 3.6 Add loading/error states to `app/usuarios/page.tsx`.
 - [x] 3.7 Run `npm run lint` and `npm run build`.
@@ -67,4 +67,5 @@ Chain strategy: stacked-to-main
 - [x] 5.1 Run full manual E2E: login → dashboard → logout → denied → recovery → reset → login.
 - [x] 5.2 Test each role (`admin`, `supervisor`, `tecnico`) and one inactive account.
 - [x] 5.3 Run `npm run lint` and `npm run build` on complete change.
-- [ ] 5.4 Remove old `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from `.env.local`.
+- [x] 5.4 Fix `/reset-password` recovery flow: verify `createBrowserClient` hardcodes `flowType: 'pkce'`, switch reset page to `createClient` with `flowType: 'implicit'`, run `npm run lint` and `npm run build`.
+- [ ] 5.5 Remove old `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from `.env.local`.

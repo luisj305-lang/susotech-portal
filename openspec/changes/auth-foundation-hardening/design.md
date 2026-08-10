@@ -16,6 +16,7 @@ Usar la convención `proxy.ts` de Next.js 16 para ejecutar lógica de autenticac
 | Landing pública en `/` | Auto-redirigir `/` a `/dashboard` | El usuario confirmó que `/` debe seguir siendo pública; solo se redirige a `/dashboard` después del login. |
 | `/reset-password` dedicada | Formulario dentro de `/login` | El usuario confirmó que el enlace del email debe llevar a una página dedicada y, tras el cambio, redirigir a `/login`. |
 | Token de recuperación en hash (`#`) | Query string (`?token=...`) | Supabase Auth entrega la sesión de recuperación en el fragmento hash (`access_token`, `refresh_token`, `type=recovery`). El hash no viaja al servidor ni queda en logs/referrers, y `@supabase/auth-js` lo parsea, limpia con `window.location.hash = ''` y emite `PASSWORD_RECOVERY`. |
+| Cliente de recuperación con `flowType: 'implicit'` | Reutilizar `createBrowserClient` global | `@supabase/ssr` fuerza `flowType: 'pkce'` en `createBrowserClient`, pero los enlaces de recuperación usan implicit grant. Si el cliente está en PKCE, `_getSessionFromURL` rechaza el hash con `AuthPKCEGrantCodeExchangeError`. La página `/reset-password` crea su propio cliente con `createClient` de `@supabase/supabase-js` y `flowType: 'implicit'`. |
 
 ## Data Flow
 
@@ -45,7 +46,7 @@ Navegador ──► proxy.ts ──► updateSession(update-session.ts) ──�
 | `app/layout.tsx` | Modify | Actualizar metadata a "Susotech Portal". |
 | `app/page.tsx` | Modify | Eliminar consulta a `projects`; mantener `/` como landing pública. |
 | `app/login/page.tsx` | Modify | Añadir estados de carga/error, redirigir a `/dashboard` tras login, enlace a `/reset-password`. |
-| `app/reset-password/page.tsx` | Create | Client Component que crea el browser client de Supabase, deja que el SDK extraiga la sesión del hash (`#access_token=...&type=recovery`), escucha `PASSWORD_RECOVERY` / consulta `getSession()` y permite llamar `updateUser({ password })`. |
+| `app/reset-password/page.tsx` | Create | Client Component que crea un cliente de Supabase con `flowType: 'implicit'` usando `createClient` de `@supabase/supabase-js`, deja que el SDK extraiga la sesión del hash (`#access_token=...&type=recovery`), escucha `PASSWORD_RECOVERY` / consulta `getSession()` y permite llamar `updateUser({ password })`. |
 | `app/dashboard/page.tsx` | Modify | Añadir estados de carga y error. |
 | `app/usuarios/page.tsx` | Modify | Añadir estados de carga y error. |
 | `supabase/migrations/20260809..._harden_profile_rls.sql` | Create | Políticas RLS: lectura propia, lectura/escritura admin, bloqueo a inactivos. |
@@ -99,3 +100,5 @@ Si falla, revertir commits, eliminar `proxy.ts` y revertir la migración en Supa
 
 - [x] ¿La página `/reset-password` debe aceptar el token por query string (`?token=...`) o por hash (`#token`)?
   - **Respuesta:** por hash. Supabase Auth entrega la sesión de recuperación en el fragmento hash de la URL (`access_token`, `refresh_token`, `expires_in`, `token_type`, `type=recovery`), no en query string. `@supabase/auth-js` lo procesa automáticamente al inicializar el cliente, limpia el hash y emite el evento `PASSWORD_RECOVERY`.
+- [x] ¿Qué cliente de Supabase debe usar `/reset-password` para procesar el hash de recuperación?
+  - **Respuesta:** un cliente creado directamente con `createClient` de `@supabase/supabase-js` y `auth.flowType: 'implicit'`. `createBrowserClient` de `@supabase/ssr` fuerza `flowType: 'pkce'`, que rechaza los enlaces de recuperación porque son implicit grant. El cliente de recuperación debe ser de página (no singleton) y tener `detectSessionInUrl: true`. El resto del portal sigue usando el cliente PKCE normal para OAuth y sesión.

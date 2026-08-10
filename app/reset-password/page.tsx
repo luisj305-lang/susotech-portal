@@ -2,7 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+const recoveryClient = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    flowType: "implicit",
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -10,24 +22,39 @@ export default function ResetPasswordPage() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [checked, setChecked] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
+    let mounted = true;
+
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
+    } = recoveryClient.auth.onAuthStateChange((event) => {
+      if (!mounted) return;
+      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
         setIsReady(true);
+        setChecked(true);
+        setMessage("");
       }
     });
 
-    void supabase.auth.getSession().then(({ data: { session } }) => {
+    void recoveryClient.auth.getSession().then(({ data: { session }, error }) => {
+      if (!mounted) return;
+      setChecked(true);
+
       if (session) {
         setIsReady(true);
+        setMessage("");
+      } else if (error) {
+        setMessage(`No se pudo validar el enlace: ${error.message}`);
+      } else {
+        setMessage("El enlace de recuperación no es válido o ha expirado.");
       }
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -48,7 +75,7 @@ export default function ResetPasswordPage() {
 
     setIsLoading(true);
 
-    const { error } = await supabase.auth.updateUser({ password });
+    const { error } = await recoveryClient.auth.updateUser({ password });
 
     setIsLoading(false);
 
@@ -86,9 +113,9 @@ export default function ResetPasswordPage() {
         <h1 style={{ fontSize: "32px", fontWeight: "bold" }}>SUSOTECH</h1>
         <h2>Nueva contraseña</h2>
 
-        {!isReady ? (
+        {!checked ? (
           <p role="status">Validando enlace de recuperación...</p>
-        ) : (
+        ) : isReady ? (
           <form
             onSubmit={handleSubmit}
             style={{ display: "flex", flexDirection: "column", gap: "12px" }}
@@ -126,7 +153,7 @@ export default function ResetPasswordPage() {
               {isLoading ? "Guardando..." : "Guardar contraseña"}
             </button>
           </form>
-        )}
+        ) : null}
 
         {message && <p role="status">{message}</p>}
       </div>
