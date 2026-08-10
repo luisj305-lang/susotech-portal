@@ -11,6 +11,7 @@ import {
   applyImportOutcome, applyPdfPreview, createImportRows, filterImportRows, groupAssignmentChunks, importProgress, pageRows,
   selectUploadTargets, type ImportRow, type ImportState,
 } from "./bulk-import-model";
+import { AssigneeSelect } from "./assignee-select";
 
 const stateLabels: Record<ImportState, string> = {
   pending: "Pendiente", processing: "Procesando", imported: "Importado",
@@ -201,7 +202,7 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
       <div className="grid gap-3 lg:grid-cols-[2fr_1fr_2fr_auto]">
         <label className="grid gap-1 text-sm font-medium">Buscar<input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Archivo, orden o dirección" className="rounded-lg border p-3" /></label>
         <label className="grid gap-1 text-sm font-medium">Estado<select value={stateFilter} onChange={(event) => { setStateFilter(event.target.value as ImportState | "all"); setPage(1); }} className="rounded-lg border p-3"><option value="all">Todos</option>{Object.entries(stateLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label className="grid gap-1 text-sm font-medium">Asignación masiva<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)} className="rounded-lg border p-3"><option value="">Sin asignar</option>{options.map((option) => <option key={`${option.type}:${option.id}`} value={`${option.type}:${option.id}`}>{option.type === "crew" ? "Cuadrilla" : "Técnico"}: {option.label}</option>)}</select></label>
+        <label className="grid gap-1 text-sm font-medium">Asignación masiva<AssigneeSelect options={options} value={bulkAssignee} onChange={setBulkAssignee} /></label>
         <button type="button" onClick={applyBulkAssignee} disabled={!selectedAssignable} className="self-end rounded-lg border px-4 py-3 font-semibold disabled:opacity-50">Aplicar a {selectedAssignable}</button>
       </div>
 
@@ -218,7 +219,7 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
               <td className="bg-slate-50 p-3"><input aria-label={`Dirección de ${row.file.name}`} value={row.fields.address ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { address: event.target.value || null })} placeholder="Dirección" className="mb-2 w-full rounded border p-2" /><input aria-label={`Ubicación de ${row.file.name}`} value={row.fields.location ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { location: event.target.value || null })} placeholder="Ciudad, estado, ZIP" className="w-full rounded border p-2" /></td>
               <td className="bg-slate-50 p-3"><input type="date" aria-label={`Fecha de ${row.file.name}`} value={row.fields.requestDate ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { requestDate: event.target.value || null })} className="mb-2 w-full rounded border p-2" /><input aria-label={`Tipo de trabajo de ${row.file.name}`} value={row.fields.jobType ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { jobType: event.target.value || null })} placeholder="Tipo de trabajo" className="w-full rounded border p-2" /></td>
               <td className="bg-slate-50 p-3"><input aria-label={`Cliente de ${row.file.name}`} value={row.fields.customerName ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { customerName: event.target.value || null })} placeholder="Cliente (si aparece)" className="mb-2 w-full rounded border p-2" /><textarea aria-label={`Descripción de ${row.file.name}`} value={row.fields.description ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { description: event.target.value || null })} rows={3} className="w-full rounded border p-2" /></td>
-              <td className="rounded-r-xl bg-slate-50 p-3"><select aria-label={`Asignación de ${row.file.name}`} value={assigneeValue(row)} disabled={assignmentLocked} onChange={(event) => setRowAssignee(row.key, event.target.value)} className="w-full rounded border p-2"><option value="">Sin asignar</option>{options.map((option) => <option key={`${option.type}:${option.id}`} value={`${option.type}:${option.id}`}>{option.type === "crew" ? "Cuadrilla" : "Técnico"}: {option.label}</option>)}</select>{row.responsibleSuggestion && <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">Sugerencia: {row.responsibleSuggestion}. Confirma manualmente una opción.</p>}</td>
+              <td className="rounded-r-xl bg-slate-50 p-3"><fieldset disabled={assignmentLocked}><AssigneeSelect ariaLabel={`Asignación de ${row.file.name}`} options={options} value={assigneeValue(row)} onChange={(value) => setRowAssignee(row.key, value)} className="w-full rounded border p-2" /></fieldset>{row.responsibleSuggestion && <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">Sugerencia: {row.responsibleSuggestion}. Confirma manualmente una opción.</p>}</td>
             </tr>;
           })}</tbody>
         </table>

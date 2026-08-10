@@ -116,16 +116,24 @@ export interface JobPhoto {
 
 export type DeliveredPdfStatus = "pending" | "current" | "stale";
 
-export interface AssigneeOption {
-  type: AssigneeType;
-  id: string;
-  label: string;
+export interface OfficeJobPreview extends Job {
+  assignee_label: string;
+  photo_count: number;
+  delivered_pdf_status: DeliveredPdfStatus;
 }
 
 export interface TechnicianDirectoryOption {
   id: string;
   label: string;
 }
+
+export type AssigneeOption =
+  | ({ type: "technician" } & TechnicianDirectoryOption)
+  | ({
+      type: "crew";
+      leadLabel: string;
+      members: TechnicianDirectoryOption[];
+    } & TechnicianDirectoryOption);
 
 export interface CrewOfficeDto extends Crew {
   lead_label: string;

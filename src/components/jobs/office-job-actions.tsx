@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { assignJob, transitionJob } from "@/lib/jobs/actions";
 import type { AssigneeOption, JobAssignment, JobStatus } from "@/lib/jobs/types";
+import { AssigneeSelect } from "./assignee-select";
 
 const nextOfficeStatus: Partial<Record<JobStatus, { status: JobStatus; label: string }>> = {
   enviado_revision: { status: "aprobado", label: "Aprobar trabajo" },
@@ -22,7 +23,7 @@ export function OfficeJobActions({ jobId, status, assignment, options }: { jobId
   return <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
     <h2 className="text-lg font-semibold">Asignación y estado</h2>
     <form action={(data) => { const [assigneeType, assigneeId] = String(data.get("assignee")).split(":"); void run(() => assignJob({ jobId, assigneeType: assigneeType as "technician" | "crew", assigneeId })); }} className="flex flex-col gap-3 sm:flex-row">
-      <label className="grid flex-1 gap-1 text-sm font-medium">Asignar a<select name="assignee" required defaultValue={current} className="rounded-lg border p-3"><option value="">Selecciona un técnico o crew</option>{options.map((option) => <option key={`${option.type}:${option.id}`} value={`${option.type}:${option.id}`}>{option.type === "crew" ? "Crew" : "Técnico"}: {option.label}</option>)}</select></label>
+      <label className="grid flex-1 gap-1 text-sm font-medium">Asignar a<AssigneeSelect name="assignee" options={options} defaultValue={current} required /></label>
       <button disabled={pending || !options.length} className="self-end rounded-lg border border-slate-900 px-5 py-3 font-semibold disabled:opacity-60">Guardar asignación</button>
     </form>
     {next && <button type="button" disabled={pending} onClick={() => run(() => transitionJob({ jobId, newStatus: next.status }))} className="w-fit rounded-lg bg-emerald-700 px-5 py-3 font-semibold text-white disabled:opacity-60">{next.label}</button>}

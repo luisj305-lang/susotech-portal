@@ -183,12 +183,12 @@ async function main() {
   const importRedirect = deniedImport.response.headers.get("location")?.endsWith("/acceso-denegado") || deniedImport.body.includes("/acceso-denegado");
   check(Boolean(importRedirect) && !deniedImport.body.includes("Crear trabajos desde PDF"), "technician receives access-denied navigation from office import route");
   const supervisorList = await html(base, "/trabajos", supervisor.cookie);
-  check(supervisorList.response.status === 200 && supervisorList.body.includes("Operaciones") && supervisorList.body.includes("Importar trabajos"), "supervisor renders allowed office view");
+  check(supervisorList.response.status === 200 && supervisorList.body.includes("Operaciones") && supervisorList.body.includes("Importar PDF"), "supervisor renders allowed office view");
   const searched = await html(base, `/trabajos?q=${encodeURIComponent(importedTitle)}`, supervisor.cookie);
   check(searched.response.status === 200 && searched.body.includes(importedTitle), "office route renders filename-style search match");
   check(!searched.body.includes(directTitle) && !searched.body.includes(crewTitle) && !searched.body.includes(foreignTitle), "office search omits unrelated titles");
   const field = await html(base, "/trabajos", technician.cookie);
-  check(field.response.status === 200 && field.body.includes("Mis trabajos") && !field.body.includes("Importar trabajos"), "technician renders field view without office controls");
+  check(field.response.status === 200 && field.body.includes("Mis trabajos") && !field.body.includes("Importar PDF"), "technician renders field view without office controls");
   check(field.body.includes(directTitle) && field.body.includes(crewTitle) && !field.body.includes(foreignTitle), "mixed direct and crew list excludes foreign job");
   const emptyList = await html(base, "/trabajos", empty.cookie);
   check(emptyList.response.status === 200 && emptyList.body.includes("No tienes trabajos asignados"), "empty technician state renders");

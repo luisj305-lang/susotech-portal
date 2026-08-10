@@ -36,13 +36,14 @@ async function anonymousRoutePreflight() {
   }
 }
 
-const [page, manager, loading, error, dashboard, jobs, queries, migration, session, actions, usersPage, usersManager] = await Promise.all([
+const [page, manager, loading, error, dashboard, jobs, queries, migration, session, actions, usersPage, usersManager, assigneeSelect] = await Promise.all([
   read("../app/equipos/page.tsx"), read("../src/components/jobs/crew-manager.tsx"),
   read("../app/equipos/loading.tsx"), read("../app/equipos/error.tsx"),
   read("../src/components/dashboard-client.tsx"), read("../app/trabajos/page.tsx"),
   read("../src/lib/jobs/queries.ts"), read("../supabase/migrations/20260810_jobs_crew_directory.sql"),
   read("../src/lib/auth/session.ts"), read("../src/lib/jobs/actions.ts"),
   read("../app/usuarios/page.tsx"), read("../src/components/users-manager.tsx"),
+  read("../src/components/jobs/assignee-select.tsx"),
 ]);
 
 ok(page.indexOf("await requireSupervisor()") < page.indexOf("await listCrewManagementData()"), "route guard must run before data query");
@@ -60,13 +61,15 @@ ok(/aria-busy="true"/u.test(loading), "loading state missing");
 ok((dashboard.match(/href="\/equipos"/gu) ?? []).length === 1 && /\{canCreateJobs && \(/u.test(dashboard), "dashboard office-only link missing");
 ok((jobs.match(/href="\/equipos"/gu) ?? []).length === 1, "office jobs link missing");
 ok(jobs.indexOf('profile.role === "tecnico"') < jobs.indexOf('href="/equipos"'), "technician branch must return before office controls");
-ok(/from\("crews"\)[\s\S]*\.eq\("is_active", true\)/u.test(queries), "assignment selectors must exclude inactive crews");
+ok(/crews\.filter\(\(crew\) => crew\.is_active\)/u.test(queries), "assignment selectors must exclude inactive crews");
 ok(/if not public\.is_office_staff\(auth\.uid\(\)\)/u.test(migration), "technician/inactive RPC guard missing");
 ok(/if \(!user\)[\s\S]*redirect\("\/login"\)/u.test(session), "anonymous route guard missing");
 ok(/if \(!profile\.is_active\)[\s\S]*redirect\("\/acceso-denegado"\)/u.test(session), "inactive route guard missing");
 ok(/profile\.role === "admin" \? profile : requireRole\("supervisor"\)/u.test(session), "admin/supervisor allow and technician denial contract missing");
 ok(/crew_members\(technician_id\)/u.test(usersPage) && /crew_names/u.test(usersPage), "users page must derive crews from crew_members");
 ok(/Crew \/ Equipos/u.test(usersManager) && /crew_names\.join/u.test(usersManager), "users crew column missing");
+ok(/optgroup label="Técnicos individuales"/u.test(assigneeSelect) && /optgroup label="Crews \/ equipos"/u.test(assigneeSelect), "assignment type groups missing");
+ok(/Líder técnico/u.test(assigneeSelect) && /Miembros:/u.test(assigneeSelect), "crew assignment details missing");
 
 const techs = [{ id: "a", label: "Ana" }, { id: "b", label: "Beto" }];
 const crew = { lead_technician_id: "a", members: [{ id: "a", label: "Ana" }] };

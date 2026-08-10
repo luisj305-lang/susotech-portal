@@ -1,21 +1,23 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { listActiveTechniciansCore } from "./crew-core";
-import type { AssigneeOption, CrewOfficeDto, Job, JobAssignment, JobCategory, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry } from "./types";
+import { getDeliveredPdfStatus } from "./delivered-status";
+import type { AssigneeOption, CrewOfficeDto, Job, JobAssignment, JobCategory, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview } from "./types";
 
 const statuses: JobStatus[] = ["asignado", "en_progreso", "enviado_revision", "aprobado", "listo_pagar", "pagado"];
 const categories: JobCategory[] = ["categoria_1", "categoria_2", "categoria_3"];
 
 export async function listAssigneeOptions(): Promise<AssigneeOption[]> {
-  const supabase = await createClient();
-  const [technicians, crews] = await Promise.all([
-    listActiveTechniciansCore(supabase),
-    supabase.from("crews").select("id, name").eq("is_active", true).order("name"),
-  ]);
-  if (crews.error) throw new Error("No se pudieron cargar los asignados disponibles.");
+  const { technicians, crews } = await listCrewManagementData();
   return [
     ...technicians.map((profile) => ({ type: "technician" as const, ...profile })),
-    ...(crews.data ?? []).map((crew) => ({ type: "crew" as const, id: crew.id, label: crew.name })),
+    ...crews.filter((crew) => crew.is_active).map((crew) => ({
+      type: "crew" as const,
+      id: crew.id,
+      label: crew.name,
+      leadLabel: crew.lead_label,
+      members: crew.members,
+    })),
   ];
 }
 
@@ -43,13 +45,33 @@ export async function listCrewsForOffice(): Promise<CrewOfficeDto[]> {
 export async function listOfficeJobs(filters: { query?: string; status?: string; category?: string }) {
   const supabase = await createClient();
   let request = supabase.from("jobs").select("*").order("updated_at", { ascending: false });
-  const query = filters.query?.trim();
-  if (query) request = request.ilike("title", `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
   if (statuses.includes(filters.status as JobStatus)) request = request.eq("main_status", filters.status);
   if (categories.includes(filters.category as JobCategory)) request = request.eq("category", filters.category);
-  const { data, error } = await request;
-  if (error) throw new Error("No se pudieron cargar los trabajos.");
-  return (data ?? []) as Job[];
+  const [jobsResult, assignmentsResult, photosResult, options] = await Promise.all([
+    request,
+    supabase.from("job_assignments").select("job_id, assignee_type, technician_id, crew_id").eq("active", true).eq("is_primary", true),
+    supabase.from("job_photos").select("id, job_id"),
+    listAssigneeOptions(),
+  ]);
+  if (jobsResult.error || assignmentsResult.error || photosResult.error) throw new Error("No se pudieron cargar los trabajos.");
+  const labels = new Map(options.map((option) => [`${option.type}:${option.id}`, option.label]));
+  const assignments = new Map((assignmentsResult.data ?? []).map((item) => [item.job_id, item]));
+  const photoIds = new Map<string, string[]>();
+  for (const photo of photosResult.data ?? []) photoIds.set(photo.job_id, [...(photoIds.get(photo.job_id) ?? []), photo.id]);
+  const query = filters.query?.trim().toLocaleLowerCase("es") ?? "";
+  return ((jobsResult.data ?? []) as Job[])
+    .filter((job) => !query || [job.prism_number, job.title, job.address, job.location].some((value) => value?.toLocaleLowerCase("es").includes(query)))
+    .map((job): OfficeJobPreview => {
+      const assignment = assignments.get(job.id);
+      const key = assignment ? `${assignment.assignee_type}:${assignment.assignee_type === "crew" ? assignment.crew_id : assignment.technician_id}` : "";
+      const currentIds = [...(photoIds.get(job.id) ?? [])].sort();
+      return {
+        ...job,
+        assignee_label: (key && labels.get(key)) || "Sin asignar",
+        photo_count: currentIds.length,
+        delivered_pdf_status: getDeliveredPdfStatus(job, currentIds),
+      };
+    });
 }
 
 export async function listTechnicianJobs() {
@@ -74,20 +96,28 @@ export async function getTechnicianJob(jobId: string) {
 
 export async function getOfficeJob(jobId: string) {
   const supabase = await createClient();
-  const [jobResult, assignmentResult, historyResult, photosResult, technicians, crewsResult] = await Promise.all([
+  const [jobResult, assignmentResult, historyResult, photosResult, crewData] = await Promise.all([
     supabase.from("jobs").select("*").eq("id", jobId).maybeSingle(),
     supabase.from("job_assignments").select("*").eq("job_id", jobId).eq("active", true).eq("is_primary", true).maybeSingle(),
     supabase.from("job_status_history").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
     supabase.from("job_photos").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
-    listActiveTechniciansCore(supabase),
-    supabase.from("crews").select("id, name").eq("is_active", true).order("name"),
+    listCrewManagementData(),
   ]);
   if (jobResult.error) throw new Error("No se pudo cargar el trabajo.");
-  for (const result of [assignmentResult, historyResult, photosResult, crewsResult]) {
+  for (const result of [assignmentResult, historyResult, photosResult]) {
     if (result.error) throw new Error("No se pudieron cargar los datos relacionados.");
   }
   if (!jobResult.data) return null;
-  const options: AssigneeOption[] = [...technicians.map((profile) => ({ type: "technician" as const, ...profile })), ...(crewsResult.data ?? []).map((crew) => ({ type: "crew" as const, id: crew.id, label: crew.name }))];
+  const options: AssigneeOption[] = [
+    ...crewData.technicians.map((profile) => ({ type: "technician" as const, ...profile })),
+    ...crewData.crews.filter((crew) => crew.is_active).map((crew) => ({
+      type: "crew" as const,
+      id: crew.id,
+      label: crew.name,
+      leadLabel: crew.lead_label,
+      members: crew.members,
+    })),
+  ];
   return {
     job: jobResult.data as Job,
     assignment: assignmentResult.data as JobAssignment | null,
