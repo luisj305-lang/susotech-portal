@@ -238,18 +238,23 @@ export async function addPhotoComment(input: { jobId: string; storagePath?: stri
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");
   const hasPhoto = Boolean(input.storagePath || input.photoType);
   const hasComment = input.comment !== undefined;
-  if (hasPhoto === hasComment) return failure("Envía una foto o un comentario por operación.");
+  if (!hasPhoto && !hasComment) return failure("Envía una foto o un comentario por operación.");
   const supabase = await createClient();
-  if (hasComment) {
+  if (!hasPhoto && hasComment) {
     const comment = cleanText(input.comment, "El comentario", 5000);
     if (!comment) return failure("El comentario es obligatorio.");
     const { error } = await supabase.from("jobs").update({ comments: comment }).eq("id", input.jobId).select("id").single();
     if (error) return failure("No se pudo guardar el comentario.");
   } else {
     if (!input.storagePath?.startsWith(`${input.jobId}/`) || !input.photoType || !photoTypes.includes(input.photoType)) return failure("La foto no es válida.");
-    const confirmed = await confirmPhotoEvidence(supabase, profile.id, { jobId: input.jobId, storagePath: input.storagePath, photoType: input.photoType });
+    let photoComment: string | null = null;
+    if (hasComment && input.comment?.trim()) {
+      photoComment = cleanText(input.comment, "El comentario de la foto", 2000);
+      if (!photoComment) return failure("El comentario de la foto no es válido.");
+    }
+    const confirmed = await confirmPhotoEvidence(supabase, profile.id, { jobId: input.jobId, storagePath: input.storagePath, photoType: input.photoType, comment: photoComment });
     if (!confirmed.success) return failure(confirmed.message);
   }
   refresh(input.jobId);
-  return { success: true, message: hasComment ? "Comentario guardado." : "Foto confirmada.", data: null };
+  return { success: true, message: hasPhoto ? "Foto confirmada." : "Comentario guardado.", data: null };
 }

@@ -78,6 +78,7 @@ async function main() {
   await ok("upload project fixture", supervisor.client.storage.from("project-files").upload(projectPath, new Uint8Array([37, 80, 68, 70, 45]), { contentType: "application/pdf" }));
   objects.push({ bucket: "project-files", path: projectPath });
   await ok("assign evidence fixture", supervisor.client.rpc("assign_jobs_atomic", { job_ids: [job.id], new_assignee_type: "technician", new_assignee_id: assigned.id }));
+  await ok("start evidence fixture", assigned.client.from("jobs").update({ main_status: "en_progreso" }).eq("id", job.id).select("id").single());
   const assignedPdf = await authorizeDownload(assigned.client, { bucket: "project-files", path: projectPath });
   check(assignedPdf.success && assignedPdf.data.expiresIn === 60, "assigned technician receives signed PDF access");
   const foreignPdf = await authorizeDownload(foreign.client, { bucket: "project-files", path: projectPath });

@@ -18,9 +18,15 @@ async function readableJob(supabase: SupabaseClient, jobId: string) {
   return Boolean(data);
 }
 
+async function editableEvidenceJob(supabase: SupabaseClient, jobId: string) {
+  if (!uuidPattern.test(jobId)) return false;
+  const { data } = await supabase.from("jobs").select("id").eq("id", jobId).eq("main_status", "en_progreso").maybeSingle();
+  return Boolean(data);
+}
+
 export async function preparePhotoUpload(supabase: SupabaseClient, input: { jobId: string; mimeType: string; size: number }): Promise<CoreResult<{ path: string; token: string; signedUrl: string }>> {
   if (!(input.mimeType in imageTypes) || !Number.isFinite(input.size) || input.size <= 0 || input.size > PHOTO_LIMIT) return fail("La imagen no es válida o supera 10 MB.");
-  if (!(await readableJob(supabase, input.jobId))) return fail("Trabajo no disponible.");
+  if (!(await editableEvidenceJob(supabase, input.jobId))) return fail("Solo se puede agregar evidencia mientras el trabajo está en progreso.");
   const extension = imageTypes[input.mimeType as keyof typeof imageTypes];
   const path = `${input.jobId}/${randomUUID()}.${extension}`;
   const { data, error } = await supabase.storage.from("job-evidence").createSignedUploadUrl(path);
@@ -48,7 +54,7 @@ export async function authorizeDownload(supabase: SupabaseClient, input: { bucke
   return { success: true, message: "Acceso temporal creado.", data: { signedUrl: data.signedUrl, expiresIn } };
 }
 
-export async function confirmPhotoEvidence(supabase: SupabaseClient, actorId: string, input: { jobId: string; storagePath: string; photoType: PhotoType }): Promise<CoreResult<null>> {
+export async function confirmPhotoEvidence(supabase: SupabaseClient, actorId: string, input: { jobId: string; storagePath: string; photoType: PhotoType; comment?: string | null }): Promise<CoreResult<null>> {
   if (!input.storagePath.startsWith(`${input.jobId}/`) || !["before", "after", "evidence"].includes(input.photoType)) return fail("La foto no es válida.");
   const fileName = input.storagePath.slice(input.jobId.length + 1);
   if (!fileName || fileName.includes("/")) return fail("La ruta de la foto no es válida.");
@@ -59,7 +65,7 @@ export async function confirmPhotoEvidence(supabase: SupabaseClient, actorId: st
   if (fileError || !stored || typeof mimeType !== "string" || !Object.hasOwn(imageTypes, mimeType) || !Number.isFinite(size) || size <= 0 || size > PHOTO_LIMIT) return fail("El objeto de la foto no es válido.");
   const { data: existing } = await supabase.from("job_photos").select("id").eq("job_id", input.jobId).eq("storage_path", input.storagePath).maybeSingle();
   if (existing) return { success: true, message: "Foto confirmada.", data: null };
-  const { error } = await supabase.from("job_photos").insert({ job_id: input.jobId, storage_path: input.storagePath, photo_type: input.photoType, uploaded_by: actorId });
+  const { error } = await supabase.from("job_photos").insert({ job_id: input.jobId, storage_path: input.storagePath, photo_type: input.photoType, uploaded_by: actorId, comment: input.comment || null });
   if (error) return fail("No se pudo confirmar la foto.");
   return { success: true, message: "Foto confirmada.", data: null };
 }

@@ -39,6 +39,10 @@ export interface Job {
   estimated_total: number | null;
   project_map_url: string | null;
   project_pdf_url: string | null;
+  delivered_pdf_path: string | null;
+  delivered_pdf_generated_at: string | null;
+  delivered_pdf_generated_by: string | null;
+  delivered_pdf_source_photo_ids: string[];
   assignment_date: string | null;
   deadline_date: string | null;
   submitted_at: string | null;
@@ -106,8 +110,11 @@ export interface JobPhoto {
   storage_path: string;
   photo_type: "before" | "after" | "evidence";
   uploaded_by: string;
+  comment: string | null;
   created_at: string;
 }
+
+export type DeliveredPdfStatus = "pending" | "current" | "stale";
 
 export interface AssigneeOption {
   type: AssigneeType;
