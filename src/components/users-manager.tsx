@@ -281,7 +281,7 @@ export function UsersManager({
               const isCurrentUser = user.id === currentUserId;
 
               return (
-                <tr key={user.id} style={{ borderTop: "1px solid #d1d5db" }}>
+                <tr key={user.id} style={{ borderTop: "1px solid #ffffff" }}>
                   <td style={{ padding: "12px" }}>
                     {user.full_name ?? "Sin nombre"}
                   </td>
@@ -362,7 +362,7 @@ export function UsersManager({
           style={{
             position: "fixed",
             inset: 0,
-            backgroundColor: "rgba(0,0,0,0.5)",
+            backgroundColor: "rgba(0,0,0,0.85)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -372,8 +372,9 @@ export function UsersManager({
         >
           <div
             style={{
-              backgroundColor: "white",
-              color: "black",
+              backgroundColor: "black",
+              color: "white",
+              border: "1px solid white",
               padding: "24px",
               borderRadius: "8px",
               width: "100%",

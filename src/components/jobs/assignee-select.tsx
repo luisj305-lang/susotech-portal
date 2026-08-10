@@ -50,8 +50,8 @@ export function AssigneeSelect({
         {crews.map((option) => <option key={option.id} value={`crew:${option.id}`}>{option.label}</option>)}
       </optgroup>
     </select>
-    {selected?.type === "technician" && <p className="text-xs text-slate-600">Asignación individual: {selected.label}</p>}
-    {selected?.type === "crew" && <div className="rounded-lg bg-slate-100 p-2 text-xs text-slate-700">
+    {selected?.type === "technician" && <p className="text-xs text-white">Asignación individual: {selected.label}</p>}
+    {selected?.type === "crew" && <div className="rounded-lg bg-black p-2 text-xs text-white">
       <strong className="block">Crew: {selected.label}</strong>
       <span className="block">Líder técnico: {selected.leadLabel}</span>
       <span className="block">Miembros: {selected.members.map((member) => member.label).join(", ") || "Sin miembros"}</span>

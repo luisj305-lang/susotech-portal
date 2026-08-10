@@ -46,23 +46,23 @@ export function JobDocuments({
   });
   const editable = jobStatus === "en_progreso" || jobStatus === "enviado_revision";
 
-  return <section className="rounded-2xl border bg-white p-5 text-slate-950 shadow-lg">
+  return <section className="rounded-2xl border border-white bg-black p-5 text-white shadow-lg">
     <h2 className="text-xl font-bold">Documentos</h2>
     <div className="mt-4 grid gap-4 sm:grid-cols-2">
-      <article className="rounded-xl border bg-slate-50 p-4">
+      <article className="rounded-xl border border-white bg-black p-4">
         <h3 className="font-bold">PDF original</h3>
-        <p className="mt-1 text-sm text-slate-600">Documento recibido, sin modificaciones.</p>
-        {originalPath ? <button type="button" disabled={pending} onClick={() => open(originalPath)} className="mt-4 min-h-11 rounded-lg border border-slate-900 px-4 font-semibold disabled:opacity-60">Ver PDF original</button> : <p className="mt-4 text-sm text-slate-600">No disponible</p>}
+        <p className="mt-1 text-sm text-white">Documento recibido, sin modificaciones.</p>
+        {originalPath ? <button type="button" disabled={pending} onClick={() => open(originalPath)} className="mt-4 min-h-11 rounded-lg border border-white px-4 font-semibold text-white disabled:opacity-60">Ver PDF original</button> : <p className="mt-4 text-sm text-white">No disponible</p>}
       </article>
-      <article className="rounded-xl border bg-slate-50 p-4">
-        <div className="flex items-center justify-between gap-3"><h3 className="font-bold">PDF entregado por técnico</h3><span className={`rounded-full px-3 py-1 text-xs font-bold ${deliveredStatus === "current" ? "bg-emerald-100 text-emerald-800" : deliveredStatus === "stale" ? "bg-amber-100 text-amber-900" : "bg-slate-200 text-slate-700"}`}>{statusCopy[deliveredStatus]}</span></div>
-        <p className="mt-1 text-sm text-slate-600">Original más las evidencias fotográficas confirmadas.</p>
+      <article className="rounded-xl border border-white bg-black p-4">
+        <div className="flex items-center justify-between gap-3"><h3 className="font-bold">PDF entregado por técnico</h3><span className={`rounded-full px-3 py-1 text-xs font-bold ${deliveredStatus === "current" ? "bg-black text-white" : deliveredStatus === "stale" ? "bg-black text-white" : "bg-black text-white"}`}>{statusCopy[deliveredStatus]}</span></div>
+        <p className="mt-1 text-sm text-white">Original más las evidencias fotográficas confirmadas.</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          {deliveredPath && <button type="button" disabled={pending} onClick={() => open(deliveredPath)} className="min-h-11 rounded-lg border border-slate-900 px-4 font-semibold disabled:opacity-60">Ver PDF entregado</button>}
-          {canRegenerate && editable && originalPath && <button type="button" disabled={pending} onClick={regenerate} className="min-h-11 rounded-lg bg-slate-900 px-4 font-bold text-white disabled:opacity-60">{deliveredPath ? "Regenerar" : "Generar"}</button>}
+          {deliveredPath && <button type="button" disabled={pending} onClick={() => open(deliveredPath)} className="min-h-11 rounded-lg border border-white px-4 font-semibold text-white disabled:opacity-60">Ver PDF entregado</button>}
+          {canRegenerate && editable && originalPath && <button type="button" disabled={pending} onClick={regenerate} className="min-h-11 rounded-lg bg-black px-4 font-bold text-white disabled:opacity-60">{deliveredPath ? "Regenerar" : "Generar"}</button>}
         </div>
       </article>
     </div>
-    <p role="status" aria-live="polite" className="mt-3 text-sm text-slate-600">{pending ? "Procesando…" : message}</p>
+    <p role="status" aria-live="polite" className="mt-3 text-sm text-white">{pending ? "Procesando…" : message}</p>
   </section>;
 }

@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #000000;
+  --foreground: #ffffff;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -12,15 +13,86 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+}
+
+a {
+  display: inline-block;
+  padding: 0.625rem 0.875rem;
+  text-decoration: none;
+}
+
+input,
+select,
+textarea,
+option,
+::file-selector-button {
+  background: #000000;
+  color: #ffffff;
+}
+
+section[class*="rounded"],
+article[class*="rounded"],
+form[class*="rounded"],
+li[class*="rounded"],
+div[class*="rounded"],
+span[class*="rounded"],
+::file-selector-button {
+  border: 1px solid #ffffff;
+}
+
+table {
+  border: 1px solid #ffffff;
+}
+
+th,
+td {
+  border-color: #ffffff;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #ffffff;
+  opacity: 0.7;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #ffffff;
+  box-shadow: 0 0 0 1000px #000000 inset;
+  caret-color: #ffffff;
 }

@@ -114,8 +114,8 @@ export default function LoginPage() {
               disabled={isLoading}
               style={{
                 background: "none",
-                border: "none",
-                padding: 0,
+                border: "1px solid currentColor",
+                padding: "10px 14px",
                 textAlign: "left",
                 cursor: "pointer",
                 textDecoration: "underline",
@@ -154,8 +154,8 @@ export default function LoginPage() {
               disabled={isLoading}
               style={{
                 background: "none",
-                border: "none",
-                padding: 0,
+                border: "1px solid currentColor",
+                padding: "10px 14px",
                 textAlign: "left",
                 cursor: "pointer",
                 textDecoration: "underline",
