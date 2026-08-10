@@ -114,26 +114,27 @@ async function cleanup() {
 }
 
 async function main() {
+  const admin = await identity("admin", "admin");
   const supervisor = await identity("supervisor", "supervisor");
   const technician = await identity("technician", "tecnico");
   const other = await identity("other", "tecnico");
   const outsider = await identity("outsider", "tecnico");
   const inactive = await identity("inactive", "tecnico", false);
 
-  await denied("non-technician crew lead rejected", supervisor.client.from("crews").insert({
+  await denied("non-technician crew lead rejected", admin.client.from("crews").insert({
     name: `Invalid role ${runId}`, lead_technician_id: supervisor.id,
   }).select("id"));
-  await denied("inactive crew lead rejected", supervisor.client.from("crews").insert({
+  await denied("inactive crew lead rejected", admin.client.from("crews").insert({
     name: `Invalid inactive ${runId}`, lead_technician_id: inactive.id,
   }).select("id"));
-  const crew = await ok("office creates valid crew", supervisor.client.from("crews").insert({
+  const crew = await ok("admin creates valid crew", admin.client.from("crews").insert({
     name: `Final crew ${runId}`, lead_technician_id: technician.id,
   }).select("id").single());
   crews.push(crew.id);
-  await ok("office explicitly adds crew member", supervisor.client.from("crew_members").insert({
+  await ok("admin explicitly adds crew member", admin.client.from("crew_members").insert({
     crew_id: crew.id, technician_id: other.id,
   }));
-  await denied("duplicate crew member rejected", supervisor.client.from("crew_members").insert({
+  await denied("duplicate crew member rejected", admin.client.from("crew_members").insert({
     crew_id: crew.id, technician_id: other.id,
   }).select("crew_id"));
   const leadCrew = await ok("lead queries own crew", technician.client.from("crews").select("id").eq("id", crew.id));

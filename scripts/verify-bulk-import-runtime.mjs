@@ -99,7 +99,7 @@ async function main() {
   const direct = await identity("direct", "tecnico");
   const crewTech = await identity("crew-tech", "tecnico");
   const foreign = await identity("foreign", "tecnico");
-  const crew = await ok("create active crew", supervisor.client.from("crews").insert({ name: `Bulk crew ${runId}`, lead_technician_id: crewTech.id }).select("id").single());
+  const crew = await ok("admin creates active crew", admin.client.from("crews").insert({ name: `Bulk crew ${runId}`, lead_technician_id: crewTech.id }).select("id").single());
   crews.push(crew.id);
 
   const bytes = readFileSync("C:\\Users\\goofy\\Downloads\\6556114.pdf");
@@ -108,14 +108,17 @@ async function main() {
   check(realFile.size === 4_005_680, "real reference PDF has exact expected size");
   const preview = await extractPdfPreview(realFile, { wasmBinary: wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength) });
   check(preview.fields.orderIdentifier === "6556114" && preview.fields.customerName === null, "real PDF fields are used without invented customer");
+  const importFields = { ...preview.fields, orderIdentifier: `${runId}-direct`, prismNumber: `${runId}-direct` };
+  const importBytes = Buffer.concat([bytes, Buffer.from(`\n% direct ${runId}\n`)]);
+  const importFile = new File([importBytes], "6556114.pdf", { type: "application/pdf" });
 
-  const interrupted = await prepare(admin.client, realFile, preview.fields);
+  const interrupted = await prepare(admin.client, importFile, importFields);
   check(interrupted.success, "admin prepares real direct upload"); if (!interrupted.success) throw new Error(interrupted.message);
   const beforeUpload = await confirmBulkProjectUploadCore(admin.client, { itemId: interrupted.data.itemId });
   check(!beforeUpload.success, "interrupted item cannot confirm without object");
-  const resumed = await prepare(admin.client, realFile, preview.fields, interrupted.data.batchId);
+  const resumed = await prepare(admin.client, importFile, importFields, interrupted.data.batchId);
   check(resumed.success && resumed.data.itemId === interrupted.data.itemId, "reprepare reuses same hash-size item");
-  const first = await uploadAndConfirm(admin.client, realFile, preview.fields, interrupted.data.batchId);
+  const first = await uploadAndConfirm(admin.client, importFile, importFields, interrupted.data.batchId);
   check(first.status === "imported" && Boolean(first.jobId), "admin imports one real PDF after interruption");
   const repeated = await confirmBulkProjectUploadCore(admin.client, { itemId: first.itemId });
   check(repeated.success && repeated.data.jobId === first.jobId, "repeated confirmation returns same job");
@@ -127,19 +130,19 @@ async function main() {
   check(second.status === "imported" && Boolean(second.jobId), "supervisor imports same-name/different-content preview");
   await ok("assign crew import", supervisor.client.rpc("assign_jobs_atomic", { job_ids: [second.jobId], new_assignee_type: "crew", new_assignee_id: crew.id }));
 
-  const duplicateHash = await uploadAndConfirm(admin.client, realFile, { ...preview.fields, orderIdentifier: `${runId}-other`, prismNumber: `${runId}-other` }, first.batchId);
+  const duplicateHash = await uploadAndConfirm(admin.client, importFile, { ...preview.fields, orderIdentifier: `${runId}-other`, prismNumber: `${runId}-other` }, first.batchId);
   check(duplicateHash.status === "imported" && duplicateHash.itemId === first.itemId && duplicateHash.jobId === first.jobId, "same batch hash-size reuses the same item and job");
-  const duplicateAcrossBatch = await uploadAndConfirm(supervisor.client, realFile, { ...preview.fields, orderIdentifier: `${runId}-other`, prismNumber: `${runId}-other` });
+  const duplicateAcrossBatch = await uploadAndConfirm(supervisor.client, importFile, { ...preview.fields, orderIdentifier: `${runId}-other`, prismNumber: `${runId}-other` });
   check(duplicateAcrossBatch.status === "duplicate" && duplicateAcrossBatch.jobId === first.jobId, "file hash detects duplicate across batches despite edited order");
   const thirdBytes = Buffer.concat([bytes, Buffer.from(`\n% order duplicate ${runId}\n`)]);
-  const duplicateOrder = await uploadAndConfirm(admin.client, new File([thirdBytes], `order-duplicate-${runId}.pdf`, { type: "application/pdf" }), preview.fields);
+  const duplicateOrder = await uploadAndConfirm(admin.client, new File([thirdBytes], `order-duplicate-${runId}.pdf`, { type: "application/pdf" }), importFields);
   check(duplicateOrder.status === "duplicate" && duplicateOrder.jobId === first.jobId, "real order identifier detects duplicate despite changed hash");
 
   const audits = await ok("read import audit", admin.client.from("job_imports").select("job_id,imported_by,imported_at,source_file_name,source_file_hash,source_file_size,order_identifier").in("job_id", [first.jobId, second.jobId]));
   check(audits.length === 2 && audits.every((row) => /^[a-f0-9]{64}$/u.test(row.source_file_hash) && row.source_file_size > 0 && row.imported_at && row.source_file_name), "name/hash/size/importer/date audit is complete");
   const firstAudit = audits.find((row) => row.job_id === first.jobId);
   const secondAudit = audits.find((row) => row.job_id === second.jobId);
-  check(firstAudit?.source_file_name === "6556114.pdf" && firstAudit.source_file_size === 4_005_680, "real 4 MB PDF name and exact size are audited");
+  check(firstAudit?.source_file_name === "6556114.pdf" && firstAudit.source_file_size === importFile.size, "real PDF fixture name and exact uploaded size are audited");
   check(secondAudit?.source_file_name === "6556114.pdf" && secondAudit.source_file_hash !== firstAudit?.source_file_hash && secondAudit.source_file_size !== firstAudit?.source_file_size, "same name with different content keeps distinct hash-size identity");
   check(firstAudit?.imported_by === admin.id, "admin importer is audited");
   check(secondAudit?.imported_by === supervisor.id, "supervisor importer is audited");

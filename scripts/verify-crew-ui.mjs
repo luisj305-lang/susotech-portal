@@ -36,23 +36,25 @@ async function anonymousRoutePreflight() {
   }
 }
 
-const [page, manager, loading, error, dashboard, jobs, queries, migration, session, actions] = await Promise.all([
+const [page, manager, loading, error, dashboard, jobs, queries, migration, session, actions, usersPage, usersManager] = await Promise.all([
   read("../app/equipos/page.tsx"), read("../src/components/jobs/crew-manager.tsx"),
   read("../app/equipos/loading.tsx"), read("../app/equipos/error.tsx"),
   read("../src/components/dashboard-client.tsx"), read("../app/trabajos/page.tsx"),
   read("../src/lib/jobs/queries.ts"), read("../supabase/migrations/20260810_jobs_crew_directory.sql"),
   read("../src/lib/auth/session.ts"), read("../src/lib/jobs/actions.ts"),
+  read("../app/usuarios/page.tsx"), read("../src/components/users-manager.tsx"),
 ]);
 
 ok(page.indexOf("await requireSupervisor()") < page.indexOf("await listCrewManagementData()"), "route guard must run before data query");
-ok(/<CrewManager crews=\{crews\} technicians=\{technicians\}/u.test(page), "page must pass serializable DTOs");
+ok(/<CrewManager crews=\{crews\} technicians=\{technicians\} canManage=\{profile\.role === "admin"\}/u.test(page), "page must pass role-aware serializable DTOs");
 ok(!/service_role/u.test(page + manager + queries), "protected UI must not use service_role");
 for (const action of ["createCrew", "updateCrew", "setCrewActive", "addCrewMember", "removeCrewMember"]) {
   ok(manager.includes(action), `${action} missing`);
-  ok(new RegExp(`export async function ${action}\\([\\s\\S]*?await requireSupervisor\\(\\)`, "u").test(actions), `${action} forced call guard missing`);
+  ok(new RegExp(`export async function ${action}\\([\\s\\S]*?await requireAdmin\\(\\)`, "u").test(actions), `${action} admin guard missing`);
 }
+ok(/Modo consulta/u.test(manager) && /canManage/u.test(manager), "supervisor read-only UI missing");
 for (const contract of [/<form/gu, /<button/gu, /<select/gu, /role="status"/gu, /required/gu, /window\.confirm/gu, /disabled=\{pending/gu]) ok(contract.test(manager), `accessible interaction missing ${contract}`);
-ok(/No hay equipos/u.test(manager) && /Crear el primer equipo/u.test(manager), "empty state missing");
+ok(/No hay equipos/u.test(manager) && /Crea el primer equipo/u.test(manager), "empty state missing");
 ok(/No pudimos cargar los equipos/u.test(error) && /retry\(\)/u.test(error), "recoverable route error missing");
 ok(/aria-busy="true"/u.test(loading), "loading state missing");
 ok((dashboard.match(/href="\/equipos"/gu) ?? []).length === 1 && /\{canCreateJobs && \(/u.test(dashboard), "dashboard office-only link missing");
@@ -63,6 +65,8 @@ ok(/if not public\.is_office_staff\(auth\.uid\(\)\)/u.test(migration), "technici
 ok(/if \(!user\)[\s\S]*redirect\("\/login"\)/u.test(session), "anonymous route guard missing");
 ok(/if \(!profile\.is_active\)[\s\S]*redirect\("\/acceso-denegado"\)/u.test(session), "inactive route guard missing");
 ok(/profile\.role === "admin" \? profile : requireRole\("supervisor"\)/u.test(session), "admin/supervisor allow and technician denial contract missing");
+ok(/crew_members\(technician_id\)/u.test(usersPage) && /crew_names/u.test(usersPage), "users page must derive crews from crew_members");
+ok(/Crew \/ Equipos/u.test(usersManager) && /crew_names\.join/u.test(usersManager), "users crew column missing");
 
 const techs = [{ id: "a", label: "Ana" }, { id: "b", label: "Beto" }];
 const crew = { lead_technician_id: "a", members: [{ id: "a", label: "Ana" }] };
@@ -75,6 +79,8 @@ const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 if (process.env.CREW_UI_SKIP_ROUTE !== "1") await anonymousRoutePreflight();
 if (url && key) {
   const rpc = await fetch(`${url}/rest/v1/rpc/list_active_technicians_for_office`, { method: "POST", headers: { apikey: key, "Content-Type": "application/json" }, body: "{}" });
-  ok(rpc.status === 404, "preflight expected unapplied crew directory migration");
-  console.log(`[crew-ui] EXPECTED_PRECHECK_FAIL migration=20260810_jobs_crew_directory.sql anon_guard=covered cleanup=passed checks=${checks}`);
+  const body = await rpc.text();
+  ok(!body.includes("PGRST202"), "crew directory RPC must exist");
+  ok([401, 403].includes(rpc.status), "anonymous directory call must be denied");
+  console.log(`[crew-ui] PASS live=available anon_guard=covered cleanup=passed checks=${checks}`);
 } else console.log(`[crew-ui] PASS deterministic checks=${checks}; live=migration-pending cleanup=passed`);

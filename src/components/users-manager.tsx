@@ -17,6 +17,7 @@ type ManagedProfile = {
   full_name: string | null;
   role: UserRole;
   is_active: boolean;
+  crew_names: string[];
 };
 
 const roleLabels: Record<UserRole, string> = {
@@ -270,6 +271,7 @@ export function UsersManager({
               <th style={{ padding: "12px", textAlign: "left" }}>Nombre</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Correo</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Rol</th>
+              <th style={{ padding: "12px", textAlign: "left" }}>Crew / Equipos</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Estado</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Acciones</th>
             </tr>
@@ -308,6 +310,7 @@ export function UsersManager({
                       </select>
                     </label>
                   </td>
+                  <td style={{ padding: "12px" }}>{user.crew_names.join(", ") || "—"}</td>
                   <td style={{ padding: "12px" }}>
                     <button
                       type="button"

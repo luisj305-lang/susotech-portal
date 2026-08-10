@@ -2,7 +2,7 @@
 
 import "server-only";
 import { revalidatePath } from "next/cache";
-import { requireProfile, requireSupervisor } from "@/lib/auth/session";
+import { requireAdmin, requireProfile, requireSupervisor } from "@/lib/auth/session";
 import { confirmPhotoEvidence } from "@/lib/storage/core";
 import { createClient } from "@/lib/supabase/server";
 import { canTransition, INCIDENT_TYPES } from "./state";
@@ -109,7 +109,7 @@ async function crewMutation(operation: (client: Awaited<ReturnType<typeof create
 }
 
 export async function createCrew(input: { name: string; leadTechnicianId: string }): Promise<Result<{ id: string }>> {
-  await requireSupervisor();
+  await requireAdmin();
   try {
     const data = await createCrewCore(await createClient(), input);
     refreshCrews();
@@ -120,22 +120,22 @@ export async function createCrew(input: { name: string; leadTechnicianId: string
 }
 
 export async function updateCrew(input: { crewId: string; name?: string; leadTechnicianId?: string }) {
-  await requireSupervisor();
+  await requireAdmin();
   return crewMutation((client) => updateCrewCore(client, input), "Equipo actualizado.");
 }
 
 export async function setCrewActive(input: { crewId: string; active: boolean }) {
-  await requireSupervisor();
+  await requireAdmin();
   return crewMutation((client) => setCrewActiveCore(client, input), input.active ? "Equipo activado." : "Equipo desactivado.");
 }
 
 export async function addCrewMember(input: { crewId: string; technicianId: string }) {
-  await requireSupervisor();
+  await requireAdmin();
   return crewMutation((client) => addCrewMemberCore(client, input), "Integrante añadido.");
 }
 
 export async function removeCrewMember(input: { crewId: string; technicianId: string }) {
-  await requireSupervisor();
+  await requireAdmin();
   return crewMutation((client) => removeCrewMemberCore(client, input), "Integrante removido.");
 }
 

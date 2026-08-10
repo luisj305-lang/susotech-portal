@@ -148,7 +148,7 @@ async function main() {
   const directJob = created.find((row) => row.title === directTitle).id;
   const crewJob = created.find((row) => row.title === crewTitle).id;
   const foreignJob = created.find((row) => row.title === foreignTitle).id;
-  const crew = await ok("office creates route crew", supervisor.client.from("crews").insert({
+  const crew = await ok("admin creates route crew", admin.client.from("crews").insert({
     name: `Route crew ${runId}`, lead_technician_id: technician.id,
   }).select("id").single());
   crews.push(crew.id);

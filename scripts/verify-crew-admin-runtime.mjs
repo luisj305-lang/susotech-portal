@@ -9,6 +9,7 @@ const sql = await fs.readFile(new URL("../supabase/migrations/20260810_jobs_crew
 const actions = await fs.readFile(new URL("../src/lib/jobs/actions.ts", import.meta.url), "utf8");
 const queries = await fs.readFile(new URL("../src/lib/jobs/queries.ts", import.meta.url), "utf8");
 const baseSql = await fs.readFile(new URL("../supabase/migrations/20260810_jobs_module.sql", import.meta.url), "utf8");
+const permissionSql = await fs.readFile(new URL("../supabase/migrations/202608100100_crew_admin_permissions.sql", import.meta.url), "utf8");
 
 for (const pattern of [
   /returns table \(id uuid, label text\)/u,
@@ -21,11 +22,17 @@ for (const pattern of [
 
 for (const name of ["createCrew", "updateCrew", "setCrewActive", "addCrewMember", "removeCrewMember"]) {
   ok(new RegExp(`export async function ${name}\\(`, "u").test(actions), `${name} action missing`);
+  ok(new RegExp(`export async function ${name}\\([\\s\\S]*?await requireAdmin\\(\\)`, "u").test(actions), `${name} must require admin`);
 }
-ok((actions.match(/await requireSupervisor\(\)/gu) ?? []).length >= 7, "crew actions must use the office guard");
 ok(/listActiveTechniciansCore/u.test(queries), "queries must use the limited directory core");
 ok(!/from\("profiles"\)/u.test(queries), "jobs queries must not bypass profiles RLS");
 ok(/ensure_crew_lead_after_write[\s\S]*ensure_crew_lead_membership/u.test(baseSql), "lead membership must share the crew statement transaction");
+for (const pattern of [
+  /Office staff can view crews[\s\S]*for select[\s\S]*is_office_staff/u,
+  /Admins can manage crews[\s\S]*for all[\s\S]*is_admin/u,
+  /Office staff can view crew members[\s\S]*for select[\s\S]*is_office_staff/u,
+  /Admins can manage crew members[\s\S]*for all[\s\S]*is_admin/u,
+]) ok(pattern.test(permissionSql), `permission SQL contract missing: ${pattern}`);
 
 const uuid = "11111111-1111-4111-8111-111111111111";
 const calls = [];
@@ -61,7 +68,10 @@ if (url && key) {
   if (response.status === 404) {
     console.log(`[crew-admin-runtime] EXPECTED_PRECHECK_FAIL migration=20260810_jobs_crew_directory.sql cleanup=passed checks=${checks}`);
   } else {
-    console.log(`[crew-admin-runtime] PASS deterministic checks=${checks}; live=available cleanup=passed`);
+    const body = await response.text();
+    ok(!body.includes("PGRST202"), "live RPC must exist in the PostgREST schema cache");
+    ok([401, 403].includes(response.status), "anonymous RPC call must be denied");
+    console.log(`[crew-admin-runtime] PASS deterministic checks=${checks}; live=available anon=denied cleanup=passed`);
   }
 } else {
   console.log(`[crew-admin-runtime] PASS deterministic checks=${checks}; live=migration-pending cleanup=passed`);
