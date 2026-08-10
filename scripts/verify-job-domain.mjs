@@ -108,7 +108,8 @@ const technicianUiContracts = [
   ["../app/trabajos/page.tsx", [/profile\.role === "tecnico"/u, /listTechnicianJobs/u, /<JobList/u]],
   ["../app/trabajos/[id]/page.tsx", [/profile\.role === "tecnico"/u, /getTechnicianJob/u, /<TechnicianActions/u, /<CodeInput/u, /<PhotoUpload/u]],
   ["../src/components/jobs/job-list.tsx", [/min-h-40/u, /jobs\.map/u, /No tienes trabajos asignados/u]],
-  ["../src/components/jobs/technician-actions.tsx", [/^"use client";/u, /transitionJob/u, /setIncident/u, /createSignedDownloadUrl/u, /min-h-14/u]],
+  ["../src/components/jobs/technician-actions.tsx", [/^"use client";/u, /transitionJob/u, /setIncident/u, /pdf-entregado/u, /Entregar trabajo/u, /min-h-14/u]],
+  ["../src/components/jobs/job-documents.tsx", [/^"use client";/u, /createSignedDownloadUrl/u, /Ver PDF original/u, /Ver PDF entregado/u]],
   ["../src/components/jobs/photo-upload.tsx", [/^"use client";/u, /createPhotoUploadUrl/u, /uploadToSignedUrl/u, /addPhotoComment/u, /capture="environment"/u]],
   ["../src/components/jobs/code-input.tsx", [/^"use client";/u, /addProductionCode/u, /min="0\.01"/u, /disabled=\{!enabled\}/u]],
 ];

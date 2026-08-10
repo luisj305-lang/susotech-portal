@@ -194,7 +194,7 @@ async function main() {
   check(emptyList.response.status === 200 && emptyList.body.includes("No tienes trabajos asignados"), "empty technician state renders");
   const ownDetail = await html(base, `/trabajos/${directJob}`, technician.cookie);
   check(ownDetail.response.status === 200 && ownDetail.body.includes(directTitle) && ownDetail.body.includes("Iniciar trabajo"), "assigned detail renders start control");
-  check(ownDetail.body.includes("Código de producción") && ownDetail.body.includes("Evidencia fotográfica") && ownDetail.body.includes("Guardar incidencia"), "assigned detail renders operational controls");
+  check(ownDetail.body.includes("Código de producción") && ownDetail.body.includes("Documentos") && ownDetail.body.includes("Guardar incidencia") && !ownDetail.body.includes("Subir foto"), "assigned detail renders state-appropriate operational controls");
   check(ownDetail.body.includes("<button") && ownDetail.body.includes("<input") && ownDetail.body.includes("<select"), "detail uses native keyboard-operable controls");
   const foreignDetail = await html(base, `/trabajos/${foreignJob}`, technician.cookie);
   const notFoundSignal = foreignDetail.response.status === 404 || foreignDetail.body.includes("This page could not be found") || foreignDetail.body.includes("NEXT_HTTP_ERROR_FALLBACK;404");

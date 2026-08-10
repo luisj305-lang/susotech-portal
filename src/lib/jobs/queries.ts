@@ -74,15 +74,16 @@ export async function getTechnicianJob(jobId: string) {
 
 export async function getOfficeJob(jobId: string) {
   const supabase = await createClient();
-  const [jobResult, assignmentResult, historyResult, technicians, crewsResult] = await Promise.all([
+  const [jobResult, assignmentResult, historyResult, photosResult, technicians, crewsResult] = await Promise.all([
     supabase.from("jobs").select("*").eq("id", jobId).maybeSingle(),
     supabase.from("job_assignments").select("*").eq("job_id", jobId).eq("active", true).eq("is_primary", true).maybeSingle(),
     supabase.from("job_status_history").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
+    supabase.from("job_photos").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
     listActiveTechniciansCore(supabase),
     supabase.from("crews").select("id, name").eq("is_active", true).order("name"),
   ]);
   if (jobResult.error) throw new Error("No se pudo cargar el trabajo.");
-  for (const result of [assignmentResult, historyResult, crewsResult]) {
+  for (const result of [assignmentResult, historyResult, photosResult, crewsResult]) {
     if (result.error) throw new Error("No se pudieron cargar los datos relacionados.");
   }
   if (!jobResult.data) return null;
@@ -91,6 +92,7 @@ export async function getOfficeJob(jobId: string) {
     job: jobResult.data as Job,
     assignment: assignmentResult.data as JobAssignment | null,
     history: (historyResult.data ?? []) as JobStatusHistoryEntry[],
+    photos: (photosResult.data ?? []) as JobPhoto[],
     options,
   };
 }

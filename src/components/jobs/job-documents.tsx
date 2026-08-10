@@ -1,0 +1,68 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { createSignedDownloadUrl } from "@/lib/storage/actions";
+import type { DeliveredPdfStatus, JobStatus } from "@/lib/jobs/types";
+
+const statusCopy: Record<DeliveredPdfStatus, string> = {
+  pending: "Pendiente",
+  current: "Vigente",
+  stale: "Desactualizado",
+};
+
+export function JobDocuments({
+  jobId,
+  originalPath,
+  deliveredPath,
+  deliveredStatus,
+  jobStatus,
+  canRegenerate = false,
+}: {
+  jobId: string;
+  originalPath: string | null;
+  deliveredPath: string | null;
+  deliveredStatus: DeliveredPdfStatus;
+  jobStatus: JobStatus;
+  canRegenerate?: boolean;
+}) {
+  const router = useRouter();
+  const [message, setMessage] = useState("");
+  const [pending, startTransition] = useTransition();
+  const open = (path: string) => startTransition(async () => {
+    const result = await createSignedDownloadUrl({ bucket: "project-files", path });
+    setMessage(result.message);
+    if (result.success) window.open(result.data.signedUrl, "_blank", "noopener,noreferrer");
+  });
+  const regenerate = () => startTransition(async () => {
+    const response = await fetch(`/api/trabajos/${jobId}/pdf-entregado`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ submit: false }),
+    });
+    const result = await response.json().catch(() => ({ message: "No se pudo generar el PDF entregado." }));
+    setMessage(result.message || "No se pudo generar el PDF entregado.");
+    if (response.ok) router.refresh();
+  });
+  const editable = jobStatus === "en_progreso" || jobStatus === "enviado_revision";
+
+  return <section className="rounded-2xl border bg-white p-5 text-slate-950 shadow-lg">
+    <h2 className="text-xl font-bold">Documentos</h2>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <article className="rounded-xl border bg-slate-50 p-4">
+        <h3 className="font-bold">PDF original</h3>
+        <p className="mt-1 text-sm text-slate-600">Documento recibido, sin modificaciones.</p>
+        {originalPath ? <button type="button" disabled={pending} onClick={() => open(originalPath)} className="mt-4 min-h-11 rounded-lg border border-slate-900 px-4 font-semibold disabled:opacity-60">Ver PDF original</button> : <p className="mt-4 text-sm text-slate-600">No disponible</p>}
+      </article>
+      <article className="rounded-xl border bg-slate-50 p-4">
+        <div className="flex items-center justify-between gap-3"><h3 className="font-bold">PDF entregado por técnico</h3><span className={`rounded-full px-3 py-1 text-xs font-bold ${deliveredStatus === "current" ? "bg-emerald-100 text-emerald-800" : deliveredStatus === "stale" ? "bg-amber-100 text-amber-900" : "bg-slate-200 text-slate-700"}`}>{statusCopy[deliveredStatus]}</span></div>
+        <p className="mt-1 text-sm text-slate-600">Original más las evidencias fotográficas confirmadas.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {deliveredPath && <button type="button" disabled={pending} onClick={() => open(deliveredPath)} className="min-h-11 rounded-lg border border-slate-900 px-4 font-semibold disabled:opacity-60">Ver PDF entregado</button>}
+          {canRegenerate && editable && originalPath && <button type="button" disabled={pending} onClick={regenerate} className="min-h-11 rounded-lg bg-slate-900 px-4 font-bold text-white disabled:opacity-60">{deliveredPath ? "Regenerar" : "Generar"}</button>}
+        </div>
+      </article>
+    </div>
+    <p role="status" aria-live="polite" className="mt-3 text-sm text-slate-600">{pending ? "Procesando…" : message}</p>
+  </section>;
+}
