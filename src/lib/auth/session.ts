@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 export type UserRole = "admin" | "supervisor" | "tecnico";
+export type TechnicianType = "in_house" | "contractor";
 
 export type CurrentProfile = {
   id: string;
@@ -12,6 +13,7 @@ export type CurrentProfile = {
   full_name: string | null;
   role: UserRole;
   is_active: boolean;
+  technician_type: TechnicianType;
 };
 
 export const requireProfile = cache(async (): Promise<CurrentProfile> => {
@@ -26,7 +28,7 @@ export const requireProfile = cache(async (): Promise<CurrentProfile> => {
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, is_active")
+    .select("id, email, full_name, role, is_active, technician_type")
     .eq("id", user.id)
     .single();
 

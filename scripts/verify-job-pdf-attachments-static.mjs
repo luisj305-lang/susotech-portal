@@ -1,0 +1,42 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const sql = read("../supabase/migrations/202608110500_job_pdf_attachments.sql");
+const actions = read("../src/lib/storage/actions.ts");
+const component = read("../src/components/jobs/job-attachments.tsx");
+const queries = read("../src/lib/jobs/queries.ts");
+const detail = read("../app/trabajos/[id]/page.tsx");
+const hardDelete = read("../supabase/migrations/202608110400_fix_job_permanent_deletion_conflict.sql");
+
+assert.match(sql, /create table public\.job_documents/u);
+assert.match(sql, /job_id uuid not null references public\.jobs\(id\) on delete cascade/u);
+assert.match(sql, /uploaded_by uuid not null references public\.profiles/u);
+assert.match(sql, /status text not null default 'pending'/u);
+assert.match(sql, /storage_path = job_id::text \|\| '\/attachments\/' \|\| id::text \|\| '[.]pdf'/u);
+assert.match(sql, /status = 'active' and public\.can_access_job\(job_id\)/u);
+assert.match(sql, /not public\.is_admin\(actor\)/u);
+assert.match(sql, /Stored PDF does not match prepared metadata/u);
+assert.match(sql, /job_deletion_cleanup_queue/u);
+assert.match(sql, /on conflict on constraint job_deletion_cleanup_queue_bucket_id_object_name_key/u);
+assert.match(sql, /select 1 from public\.job_documents d where d\.storage_path = object_name/u);
+assert.match(sql, /public\.is_admin\(\)\s+or name !~ '\^\[0-9a-f-\]\{36\}\/attachments\/'/u);
+assert.match(sql, /create or replace function public\.reconcile_job_documents/u);
+assert.match(sql, /interval '15 minutes'/u);
+assert.match(actions, /await requireAdmin\(\)/u);
+assert.match(actions, /prepareJobDocumentUpload/u);
+assert.match(actions, /confirmJobDocumentUpload/u);
+assert.match(actions, /deleteJobDocument/u);
+assert.match(actions, /reconcileJobDocumentUploads/u);
+assert.match(actions, /createSignedUploadUrl/u);
+assert.match(component, /multiple/u);
+assert.match(component, /uploadToSignedUrl/u);
+assert.match(component, /window\.confirm/u);
+assert.match(component, /Esta acción no se puede deshacer/u);
+assert.match(component, /disabled=\{pending\}/u);
+assert.match(queries, /from\("job_documents"\)/u);
+assert.match(detail, /<JobAttachments/u);
+assert.match(detail, /canManage=\{profile\.role === "admin"\}/u);
+assert.match(hardDelete, /o\.name like p_job_id::text \|\| '\/%'/u);
+
+console.log("PASS multiple job PDF attachment static checks");

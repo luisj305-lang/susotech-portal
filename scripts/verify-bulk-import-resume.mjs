@@ -24,6 +24,22 @@ const prepared = await prepareBulkProjectUploadCore(client, base);
 assert.equal(prepared.success, true); assert.equal(prepared.data.itemId, "i1"); assert.equal(calls[0][0], "prepare_job_import_item");
 const resumed = await prepareBulkProjectUploadCore(client, { ...base, batchId: "b1" });
 assert.equal(resumed.success, true); assert.equal(resumed.data.itemId, prepared.data.itemId);
+const staleBatchClient = {
+  ...client,
+  rpc: async () => ({ data: null, error: { code: "P0001", message: "Batch unavailable", details: null } }),
+};
+const staleBatch = await prepareBulkProjectUploadCore(staleBatchClient, { ...base, batchId: "deleted-batch" });
+assert.equal(staleBatch.success, false); assert.equal(staleBatch.reason, "batch_unavailable");
+assert.match(staleBatch.message, /lote guardado ya no está disponible/u);
+for (const [message, reason] of [
+  ["Invalid import metadata", "invalid_metadata"],
+  ["Batch limit exceeded", "batch_limit_exceeded"],
+  ["Only active office staff can import jobs", "permission_denied"],
+  ["TypeError: Failed to fetch", "network_error"],
+]) {
+  const failure = await prepareBulkProjectUploadCore({ ...staleBatchClient, rpc: async () => ({ data: null, error: { code: "P0001", message, details: null } }) }, base);
+  assert.equal(failure.success, false); assert.equal(failure.reason, reason);
+}
 for (const patch of [{ mimeType: "text/plain" }, { fileName: "bad.txt" }, { fileSize: 0 }, { pdfHeader: "HELLO" }, { fileHash: "bad" }]) {
   assert.equal((await prepareBulkProjectUploadCore(client, { ...base, ...patch })).success, false);
 }
@@ -60,7 +76,7 @@ const analyzed = applyPdfPreview(applyPdfPreview(localRows, localRows[0].key, pr
 assert.equal(analyzed[0].state, "pending"); assert.equal(analyzed[1].state, "duplicate"); assert.equal(analyzed[1].selected, false);
 const component = await readFile(new URL("../src/components/jobs/bulk-import.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(component, /createSignedUploadUrl|confirmProjectPdfImport|createBulkUploadTarget/u);
-for (const contract of [/prepareBulkProjectUpload/u, /confirmBulkProjectUpload/u, /assignJobsInBulk/u, /uploadToSignedUrl/u, /localStorage/u, /> 100/u, /mapWithConcurrency\(remaining, 3/u]) assert.match(component, contract);
+for (const contract of [/prepareBulkProjectUpload/u, /confirmBulkProjectUpload/u, /assignJobsInBulk/u, /uploadToSignedUrl/u, /Storage privado/u, /localStorage/u, /> 100/u, /prepared\.reason === "batch_unavailable"/u, /localStorage\.removeItem\("jobs-import-batch"\)/u, /prepared = await prepare\(null\)/u, /const first = remaining\.shift\(\)/u, /mapWithConcurrency\(remaining, 3/u]) assert.match(component, contract);
 const core = await readFile(new URL("../src/lib/storage/bulk-import-core.ts", import.meta.url), "utf8");
 assert.match(core, /createSignedUploadUrl\(row\.storage_path, \{ upsert: true \}\)/u); assert.match(core, /response\.status !== 206/u);
 const nextConfig = await readFile(new URL("../next.config.ts", import.meta.url), "utf8");

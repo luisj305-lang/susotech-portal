@@ -112,6 +112,16 @@ async function main() {
   const importBytes = Buffer.concat([bytes, Buffer.from(`\n% direct ${runId}\n`)]);
   const importFile = new File([importBytes], "6556114.pdf", { type: "application/pdf" });
 
+  const staleSeed = await prepare(admin.client, importFile, importFields);
+  check(staleSeed.success, "admin prepares batch used for stale localStorage simulation");
+  if (!staleSeed.success) throw new Error(staleSeed.message);
+  await ok("delete stale import batch", service.from("job_import_batches").delete().eq("id", staleSeed.data.batchId));
+  batches.splice(batches.indexOf(staleSeed.data.batchId), 1);
+  const staleResult = await prepare(admin.client, importFile, importFields, staleSeed.data.batchId);
+  check(!staleResult.success && staleResult.reason === "batch_unavailable", "deleted batch maps to stable batch_unavailable reason");
+  const staleRecovered = await prepare(admin.client, importFile, importFields, null);
+  check(staleRecovered.success && staleRecovered.data.batchId !== staleSeed.data.batchId, "stale batch retry with null creates a fresh batch");
+
   const interrupted = await prepare(admin.client, importFile, importFields);
   check(interrupted.success, "admin prepares real direct upload"); if (!interrupted.success) throw new Error(interrupted.message);
   const beforeUpload = await confirmBulkProjectUploadCore(admin.client, { itemId: interrupted.data.itemId });

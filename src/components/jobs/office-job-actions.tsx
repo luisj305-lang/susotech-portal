@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { assignJob, transitionJob } from "@/lib/jobs/actions";
+import { assignJob, setJobArchived, transitionJob } from "@/lib/jobs/actions";
 import type { AssigneeOption, JobAssignment, JobStatus } from "@/lib/jobs/types";
 import { AssigneeSelect } from "./assignee-select";
 
@@ -12,7 +12,7 @@ const nextOfficeStatus: Partial<Record<JobStatus, { status: JobStatus; label: st
   listo_pagar: { status: "pagado", label: "Marcar como pagado" },
 };
 
-export function OfficeJobActions({ jobId, status, assignment, options }: { jobId: string; status: JobStatus; assignment: JobAssignment | null; options: AssigneeOption[] }) {
+export function OfficeJobActions({ jobId, status, assignment, options, canArchive, archived }: { jobId: string; status: JobStatus; assignment: JobAssignment | null; options: AssigneeOption[]; canArchive?: boolean; archived?: boolean }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
@@ -28,6 +28,7 @@ export function OfficeJobActions({ jobId, status, assignment, options }: { jobId
     </form>
     {next && <button type="button" disabled={pending} onClick={() => run(() => transitionJob({ jobId, newStatus: next.status }))} className="w-fit rounded-lg bg-black px-5 py-3 font-semibold text-white disabled:opacity-60">{next.label}</button>}
     {status === "enviado_revision" && <form action={(data) => void run(() => transitionJob({ jobId, newStatus: "en_progreso", reason: String(data.get("reason") ?? "") }))} className="flex flex-col gap-3 sm:flex-row"><label className="grid flex-1 gap-1 text-sm font-medium">Motivo de devolución<input name="reason" required className="rounded-lg border p-3" /></label><button disabled={pending} className="self-end rounded-lg border px-5 py-3 font-semibold">Devolver a corrección</button></form>}
+    {canArchive && (archived ? <button type="button" disabled={pending} onClick={() => run(() => setJobArchived({ jobId, archived: false }))} className="w-fit rounded-lg border border-white px-5 py-3 font-semibold disabled:opacity-60">Restaurar trabajo</button> : <form action={(data) => void run(() => setJobArchived({ jobId, archived: true, reason: String(data.get("archiveReason") ?? "") }))} className="grid gap-3 border-t border-white pt-4"><label className="grid gap-1 text-sm font-medium">Motivo para retirar del dashboard<input name="archiveReason" required maxLength={1000} className="rounded-lg border border-white bg-black p-3 text-white" /></label><button disabled={pending} className="w-fit rounded-lg border border-white px-5 py-3 font-semibold disabled:opacity-60">Archivar trabajo</button></form>)}
     <p role="status" aria-live="polite" className="text-sm">{message}</p>
   </section>;
 }

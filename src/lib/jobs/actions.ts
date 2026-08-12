@@ -7,6 +7,8 @@ import { confirmPhotoEvidence } from "@/lib/storage/core";
 import { createClient } from "@/lib/supabase/server";
 import { canTransition, INCIDENT_TYPES } from "./state";
 import { addCrewMemberCore, createCrewCore, removeCrewMemberCore, setCrewActiveCore, updateCrewCore } from "./crew-core";
+import { cleanupJobDeletionQueue, type JobDeletionCleanupRow } from "./deletion-core";
+import { validatePlacements, type PdfCodePlacement } from "./pdf-code-editor-core";
 import type { AssigneeType, IncidentType, JobCategory, JobStatus } from "./types";
 
 type Result<T = null> =
@@ -222,15 +224,101 @@ export async function setIncident(input: { jobId: string; incident: IncidentType
   return { success: true, message: "Incidencia actualizada.", data: null };
 }
 
-export async function addProductionCode(input: { jobId: string; code: string; quantity: number; notes?: string | null }): Promise<Result> {
-  const profile = await requireProfile();
-  const code = cleanText(input.code, "El código", 100);
-  if (!validId(input.jobId) || !code || !Number.isFinite(input.quantity) || input.quantity <= 0) return failure("Código o cantidad no válidos.");
+export async function addProductionCode(input: { jobId: string; catalogId: string; quantity: number; productionDate?: string | null; notes?: string | null }): Promise<Result> {
+  await requireProfile();
+  if (!validId(input.jobId) || !validId(input.catalogId) || !Number.isFinite(input.quantity) || input.quantity <= 0) return failure("Código o cantidad no válidos.");
+  const productionDate = input.productionDate?.trim() || null;
+  if (productionDate && !/^\d{4}-\d{2}-\d{2}$/.test(productionDate)) return failure("La fecha de producción no es válida.");
   const supabase = await createClient();
-  const { error } = await supabase.from("job_production_codes").insert({ job_id: input.jobId, code, quantity: input.quantity, notes: cleanText(input.notes, "Las notas", 2000), added_by: profile.id });
+  const { error } = await supabase.rpc("add_job_production", {
+    p_job_id: input.jobId,
+    p_catalog_id: input.catalogId,
+    p_quantity: input.quantity,
+    p_production_date: productionDate,
+    p_notes: cleanText(input.notes, "Las notas", 2000),
+  });
   if (error) return failure("No se pudo añadir el código.");
   refresh(input.jobId);
   return { success: true, message: "Código añadido.", data: null };
+}
+
+export async function setJobArchived(input: { jobId: string; archived: boolean; reason?: string }): Promise<Result> {
+  await requireAdmin();
+  if (!validId(input.jobId)) return failure("El trabajo no es válido.");
+  const reason = cleanText(input.reason, "El motivo", 1000);
+  if (input.archived && !reason) return failure("Indica por qué se retirará el trabajo del dashboard.");
+
+  const { error } = await (await createClient()).rpc("set_job_archived", {
+    p_job_id: input.jobId,
+    p_archived: input.archived,
+    p_reason: reason,
+  });
+  if (error) return failure(input.archived ? "No se pudo archivar el trabajo." : "No se pudo restaurar el trabajo.");
+  revalidatePath("/trabajos");
+  revalidatePath(`/trabajos/${input.jobId}`);
+  return { success: true, message: input.archived ? "Trabajo retirado del dashboard." : "Trabajo restaurado.", data: null };
+}
+
+export async function deleteArchivedJob(input: { jobId: string }): Promise<Result> {
+  await requireAdmin();
+  if (!validId(input.jobId)) return failure("El trabajo no es válido.");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("delete_archived_job", { p_job_id: input.jobId });
+  if (error) {
+    if (error.message.includes("Only archived jobs")) {
+      return failure("Solo se pueden eliminar permanentemente trabajos archivados.");
+    }
+    return failure("No se pudo eliminar permanentemente el trabajo.");
+  }
+
+  const cleanup = await cleanupJobDeletionQueue(
+    supabase,
+    (data ?? []) as JobDeletionCleanupRow[],
+  );
+  revalidatePath("/trabajos");
+  revalidatePath(`/trabajos/${input.jobId}`);
+  return {
+    success: true,
+    message: cleanup.pending
+      ? `Trabajo eliminado. Quedaron ${cleanup.pending} archivo(s) en la cola de limpieza para reintentar.`
+      : "Trabajo eliminado permanentemente.",
+    data: null,
+  };
+}
+
+export async function retryPendingJobDeletionCleanup(): Promise<Result<{ pending: number }>> {
+  await requireAdmin();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("list_job_deletion_cleanup", { p_limit: 500 });
+  if (error) return failure("No se pudo cargar la cola de limpieza.");
+
+  const cleanup = await cleanupJobDeletionQueue(
+    supabase,
+    (data ?? []) as JobDeletionCleanupRow[],
+  );
+  return {
+    success: true,
+    message: cleanup.pending
+      ? `La limpieza conserva ${cleanup.pending} archivo(s) pendientes para otro reintento.`
+      : cleanup.completed
+        ? `Limpieza completada para ${cleanup.completed} archivo(s).`
+        : "No hay archivos pendientes de limpieza.",
+    data: { pending: cleanup.pending },
+  };
+}
+
+export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: number; pageCount: number; placements: PdfCodePlacement[] }): Promise<Result<{ version: number }>> {
+  await requireProfile();
+  if (!validId(input.jobId) || !Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) return failure("El borrador no es válido.");
+  const validation = validatePlacements(input.placements, input.pageCount);
+  if (validation) return failure(validation);
+  const { data, error } = await (await createClient()).rpc("save_job_pdf_draft", {
+    p_job_id: input.jobId, p_expected_version: input.expectedVersion, p_placements: input.placements,
+  });
+  if (error) return failure(error.message.includes("version conflict") ? "El borrador cambió en otro dispositivo. Recarga antes de guardar." : "No se pudo guardar el borrador.");
+  revalidatePath(`/trabajos/${input.jobId}`);
+  return { success: true, message: "Borrador guardado.", data: { version: Number(data) } };
 }
 
 export async function addPhotoComment(input: { jobId: string; storagePath?: string; photoType?: typeof photoTypes[number]; comment?: string }): Promise<Result> {

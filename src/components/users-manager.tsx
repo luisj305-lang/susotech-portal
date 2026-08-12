@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { UserRole } from "@/lib/auth/session";
+import type { TechnicianType, UserRole } from "@/lib/auth/session";
 import {
   createUser,
   deleteUser,
   updateUserProfile,
   updateUserRoleAndStatus,
+  updateTechnicianType,
 } from "@/lib/users/actions";
 
 type ManagedProfile = {
@@ -18,6 +19,7 @@ type ManagedProfile = {
   role: UserRole;
   is_active: boolean;
   crew_names: string[];
+  technician_type: TechnicianType;
 };
 
 const roleLabels: Record<UserRole, string> = {
@@ -161,6 +163,14 @@ export function UsersManager({
     }
   };
 
+  const handleTechnicianTypeChange = async (userId: string, technicianType: TechnicianType) => {
+    setIsLoading(true);
+    const result = await updateTechnicianType({ userId, technicianType });
+    setIsLoading(false);
+    setMessage(result.message);
+    if (result.success) setUsers((current) => current.map((user) => user.id === userId ? { ...user, technician_type: technicianType } : user));
+  };
+
   const handleStatusToggle = async (userId: string) => {
     if (userId === currentUserId) {
       setMessage("No puedes desactivar tu propia cuenta.");
@@ -271,6 +281,7 @@ export function UsersManager({
               <th style={{ padding: "12px", textAlign: "left" }}>Nombre</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Correo</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Rol</th>
+              <th style={{ padding: "12px", textAlign: "left" }}>Tipo técnico</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Crew / Equipos</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Estado</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Acciones</th>
@@ -310,6 +321,7 @@ export function UsersManager({
                       </select>
                     </label>
                   </td>
+                  <td style={{ padding: "12px" }}>{user.role === "tecnico" ? <select value={user.technician_type} disabled={isLoading} onChange={(event) => void handleTechnicianTypeChange(user.id, event.target.value as TechnicianType)}><option value="in_house">In-house</option><option value="contractor">Contractor</option></select> : "—"}</td>
                   <td style={{ padding: "12px" }}>{user.crew_names.join(", ") || "—"}</td>
                   <td style={{ padding: "12px" }}>
                     <button

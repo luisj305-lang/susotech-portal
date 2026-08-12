@@ -100,8 +100,8 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
         row = { ...row, ...preview, fields: preview.fields };
         setRows((current) => applyPdfPreview(current, row.key, preview));
       }
-      const prepared = await prepareBulkProjectUpload({
-        batchId: batchRef.current,
+      const prepare = (batchId: string | null) => prepareBulkProjectUpload({
+        batchId,
         fileName: row.file.name,
         fileHash: row.fileHash!,
         fileSize: row.file.size,
@@ -109,6 +109,12 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
         pdfHeader: "%PDF-",
         fields: row.fields,
       });
+      let prepared = await prepare(batchRef.current);
+      if (!prepared.success && prepared.reason === "batch_unavailable" && batchRef.current) {
+        batchRef.current = null;
+        localStorage.removeItem("jobs-import-batch");
+        prepared = await prepare(null);
+      }
       if (!prepared.success) throw new Error(prepared.message);
       if (prepared.data.batchId !== batchRef.current) {
         batchRef.current = prepared.data.batchId; localStorage.setItem("jobs-import-batch", prepared.data.batchId);
@@ -118,7 +124,7 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
         const upload = await supabase.storage.from("project-files").uploadToSignedUrl(
           prepared.data.path, prepared.data.token, row.file, { contentType: "application/pdf" },
         );
-        if (upload.error) throw new Error("No se pudo subir el PDF.");
+        if (upload.error) throw new Error("No se pudo subir el PDF a Storage privado.");
       }
       const confirmed = prepared.data.status === "imported" || prepared.data.status === "duplicate"
         ? { success: true as const, data: { status: prepared.data.status, jobId: prepared.data.jobId }, message: "Importación recuperada." }
@@ -164,7 +170,10 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
     setMessage(`Procesando ${targets.length} archivo(s) con hasta 3 cargas simultáneas…`);
     const confirmed: Array<NonNullable<Awaited<ReturnType<typeof processRow>>>> = [];
     const remaining = [...targets];
-    if (!batchRef.current) { const result = await processRow(remaining.shift()!); if (result) confirmed.push(result); }
+    // Establish or validate the shared batch before concurrent rows use it. This
+    // also makes stale localStorage recovery deterministic for the whole batch.
+    const first = remaining.shift();
+    if (first) { const result = await processRow(first); if (result) confirmed.push(result); }
     await mapWithConcurrency(remaining, 3, async (row) => { const result = await processRow(row); if (result) confirmed.push(result); });
     await assignGroups(groupAssignmentChunks(confirmed));
     setBusy(false);

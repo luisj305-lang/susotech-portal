@@ -13,12 +13,7 @@ export function TechnicianActions({ jobId, status, incident }: { jobId: string; 
   const [pending, startTransition] = useTransition();
   const advance = next[status];
   const run = (action: () => Promise<{ success: boolean; message: string }>) => startTransition(async () => { const result = await action(); setMessage(result.message); if (result.success) router.refresh(); });
-  const deliver = () => startTransition(async () => {
-    const response = await fetch(`/api/trabajos/${jobId}/pdf-entregado`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ submit: true }) });
-    const result = await response.json().catch(() => ({ message: "No se pudo entregar el trabajo." }));
-    setMessage(result.message || "No se pudo entregar el trabajo.");
-    if (response.ok) router.refresh();
-  });
+  const deliver = () => startTransition(() => router.push(`/trabajos/${jobId}/entregar`));
 
   return <section className="grid gap-4 rounded-2xl bg-black p-5 text-white shadow-lg"><h2 className="text-xl font-bold">Acciones</h2>{advance && <button type="button" disabled={pending} onClick={() => run(() => transitionJob({ jobId, newStatus: advance.status }))} className="min-h-14 rounded-xl bg-black px-5 text-lg font-bold text-white disabled:opacity-60">{advance.label}</button>}{status === "en_progreso" && <button type="button" disabled={pending} onClick={deliver} className="min-h-14 rounded-xl bg-black px-5 text-lg font-bold text-white disabled:opacity-60">Entregar trabajo</button>}
     <form action={(data) => run(() => setIncident({ jobId, incident: (String(data.get("incident")) || null) as IncidentType | null, notes: String(data.get("notes") ?? "") }))} className="grid gap-3"><label className="grid gap-1 font-semibold">Incidencia<select name="incident" defaultValue={incident ?? ""} className="min-h-12 rounded-xl border p-3"><option value="">Sin incidencia / resolver</option><option value="need_splicing">Requiere empalme</option><option value="no_access">Sin acceso</option><option value="need_cr">Requiere CR</option><option value="permit_pending">Permiso pendiente</option><option value="returned">Devuelto</option><option value="incomplete">Incompleto</option></select></label><label className="grid gap-1 font-semibold">Notas<input name="notes" className="min-h-12 rounded-xl border p-3" /></label><button disabled={pending} className="min-h-14 rounded-xl bg-black px-5 text-lg font-bold text-white disabled:opacity-60">Guardar incidencia</button></form><p role="status" aria-live="polite">{message}</p>

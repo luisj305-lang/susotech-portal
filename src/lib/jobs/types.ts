@@ -48,6 +48,9 @@ export interface Job {
   submitted_at: string | null;
   approved_at: string | null;
   paid_at: string | null;
+  archived_at: string | null;
+  archived_by: string | null;
+  archive_reason: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -101,7 +104,49 @@ export interface JobProductionCode {
   quantity: number;
   notes: string | null;
   added_by: string;
+  catalog_id: string | null;
+  credited_technician_id: string | null;
+  technician_type_snapshot: "in_house" | "contractor" | null;
+  unit_snapshot: ProductionUnit | null;
+  unit_rate_snapshot: number | null;
+  amount_snapshot: number | null;
+  production_date: string | null;
   created_at: string;
+}
+
+export type ProductionUnit = "fixed" | "foot" | "hour" | "event";
+
+export interface ProductionCatalogOption {
+  id: string;
+  code: string;
+  description: string;
+  unit: ProductionUnit;
+  unit_rate: number;
+}
+
+export interface WeeklyProductionLine {
+  week_start: string;
+  week_end: string;
+  production_date: string;
+  code: string;
+  description: string | null;
+  unit: ProductionUnit;
+  quantity: number;
+  amount: number;
+  billing_state: "pending" | "confirmed";
+}
+
+export interface ProductionReportLine {
+  production_date: string;
+  technician_id: string;
+  technician_name: string;
+  code: string;
+  description: string | null;
+  unit: ProductionUnit;
+  quantity: number;
+  unit_rate: number;
+  amount: number;
+  billing_state: "pending" | "confirmed";
 }
 
 export interface JobPhoto {
@@ -112,6 +157,27 @@ export interface JobPhoto {
   uploaded_by: string;
   comment: string | null;
   created_at: string;
+}
+
+export interface JobDocument {
+  id: string;
+  job_id: string;
+  display_name: string;
+  storage_path: string;
+  mime_type: "application/pdf";
+  size_bytes: number;
+  status: "active";
+  uploaded_by: string;
+  created_at: string;
+  confirmed_at: string;
+}
+
+export interface JobPdfDraft {
+  job_id: string;
+  version: number;
+  source_page_count: number;
+  placements: import("./pdf-code-editor-core").PdfCodePlacement[];
+  updated_at: string;
 }
 
 export type DeliveredPdfStatus = "pending" | "current" | "stale";

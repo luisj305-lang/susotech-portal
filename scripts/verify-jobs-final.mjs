@@ -202,12 +202,15 @@ async function main() {
   const cleared = await ok("technician clears incident", technician.client.from("jobs")
     .update({ incident: null, incident_notes: null }).eq("id", fieldJob).select("main_status,incident").single());
   check(cleared.main_status === "en_progreso" && cleared.incident === null, "incident clear preserves progress");
-  await ok("technician adds production code", technician.client.from("job_production_codes").insert({
-    job_id: fieldJob, code: "FINAL-CODE", quantity: 2, added_by: technician.id,
+  const catalog = await ok("technician lists applicable production catalog", technician.client.rpc("list_my_production_catalog"));
+  const activity = catalog.find((row) => row.code === "AC01");
+  check(Boolean(activity), "production catalog includes AC01");
+  await ok("technician adds priced production code", technician.client.rpc("add_job_production", {
+    p_job_id: fieldJob, p_catalog_id: activity.id, p_quantity: 2, p_production_date: null, p_notes: "final runtime",
   }));
   const visibleCodes = await ok("technician reads assigned production codes", technician.client.from("job_production_codes")
     .select("code,quantity,added_by").eq("job_id", fieldJob));
-  check(visibleCodes.length === 1 && visibleCodes[0].code === "FINAL-CODE" && visibleCodes[0].added_by === technician.id, "authorized production code read succeeds");
+  check(visibleCodes.length === 1 && visibleCodes[0].code === "AC01" && visibleCodes[0].added_by === technician.id, "authorized production code read succeeds");
   await status(technician.client, fieldJob, "enviado_revision");
   const fieldHistory = await ok("read field history", technician.client.from("job_status_history")
     .select("previous_status,new_status,previous_incident,new_incident,changed_by").eq("job_id", fieldJob));

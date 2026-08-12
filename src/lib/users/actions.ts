@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/service";
-import type { UserRole } from "@/lib/auth/session";
+import type { TechnicianType, UserRole } from "@/lib/auth/session";
 
 const allowedRoles: UserRole[] = ["admin", "supervisor", "tecnico"];
 
@@ -323,5 +323,19 @@ export async function deleteUser(input: {
       message:
         error instanceof Error ? error.message : "Error al eliminar el usuario.",
     };
+  }
+}
+
+export async function updateTechnicianType(input: { userId: string; technicianType: TechnicianType }): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    if (!['in_house', 'contractor'].includes(input.technicianType)) return { success: false, message: "El tipo de técnico no es válido." };
+    const { error } = await createServiceClient().from("profiles").update({ technician_type: input.technicianType, updated_at: new Date().toISOString() }).eq("id", input.userId).eq("role", "tecnico");
+    if (error) return { success: false, message: "No se pudo actualizar el tipo de técnico." };
+    revalidatePath("/usuarios");
+    return { success: true, message: "Tipo de técnico actualizado." };
+  } catch (error) {
+    if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error;
+    return { success: false, message: "No se pudo actualizar el tipo de técnico." };
   }
 }

@@ -24,6 +24,16 @@ export type DeliveredPdfEvidence = {
   comment?: string | null;
 };
 
+export type DeliveredPdfCodePlacement = {
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  code: string;
+  color: string;
+};
+
 export type DeliveredPdfResult = {
   bytes: Uint8Array;
   pageCount: number;
@@ -91,7 +101,7 @@ function renderPage(pdfium: WrappedPdfiumModule, document: number, pageIndex: nu
     if (!bitmap) throw new Error(`PDFium no pudo rasterizar la página ${pageIndex + 1}.`);
     try {
       pdfium.FPDFBitmap_FillRect(bitmap, 0, 0, width, height, 0xffffffff);
-      pdfium.FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, 0, 0x01 | 0x08);
+      pdfium.FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, 0, 0x01);
       const stride = pdfium.FPDFBitmap_GetStride(bitmap);
       const bufferPointer = pdfium.FPDFBitmap_GetBuffer(bitmap);
       const heap = (pdfium.pdfium as unknown as { HEAPU8: Uint8Array }).HEAPU8;
@@ -177,6 +187,7 @@ function drawCaption(page: PDFPage, font: PDFFont, photo: DeliveredPdfEvidence, 
 async function composeUnlocked(
   originalPdf: Uint8Array,
   evidence: DeliveredPdfEvidence[],
+  codes: DeliveredPdfCodePlacement[] = [],
 ): Promise<DeliveredPdfResult> {
   if (!originalPdf.length || originalPdf.length > MAX_ORIGINAL_BYTES) {
     throw new Error("El PDF original supera el límite de 25 MB.");
@@ -190,11 +201,16 @@ async function composeUnlocked(
   const pdfium = await loadPdfium();
   const source = openDocument(pdfium, originalPdf);
   const output = await PDFDocument.create();
+  const codeFont = await output.embedFont(StandardFonts.HelveticaBold);
   let originalPageCount = 0;
   try {
     originalPageCount = pdfium.FPDF_GetPageCount(source.document);
     if (originalPageCount < 1 || originalPageCount > MAX_SOURCE_PAGES) {
       throw new Error(`El PDF original debe tener entre 1 y ${MAX_SOURCE_PAGES} páginas.`);
+    }
+    if (codes.some((item) => !Number.isInteger(item.page) || item.page < 1 || item.page > originalPageCount
+      || item.x < 0 || item.y < 0 || item.width <= 0 || item.height <= 0 || item.x + item.width > 1 || item.y + item.height > 1)) {
+      throw new Error("El borrador contiene códigos fuera de las páginas o bordes del PDF.");
     }
     for (let index = 0; index < originalPageCount; index += 1) {
       const rendered = renderPage(pdfium, source.document, index);
@@ -208,6 +224,16 @@ async function composeUnlocked(
       const image = await output.embedJpg(jpeg);
       const page = output.addPage([rendered.pointsWidth, rendered.pointsHeight]);
       page.drawImage(image, { x: 0, y: 0, width: rendered.pointsWidth, height: rendered.pointsHeight });
+      for (const placement of codes.filter((item) => item.page === index + 1)) {
+        const hex = placement.color.replace("#", "");
+        const color = rgb(parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255);
+        const x = placement.x * rendered.pointsWidth;
+        const width = placement.width * rendered.pointsWidth;
+        const height = placement.height * rendered.pointsHeight;
+        const y = rendered.pointsHeight - (placement.y * rendered.pointsHeight) - height;
+        page.drawRectangle({ x, y, width, height, color, borderColor: rgb(1, 1, 1), borderWidth: 1, opacity: 0.92 });
+        page.drawText(asciiText(placement.code).slice(0, 24), { x: x + 3, y: y + Math.max(2, height * 0.25), size: Math.max(7, Math.min(18, height * 0.55)), font: codeFont, color: rgb(1, 1, 1) });
+      }
     }
   } finally {
     closeDocument(pdfium, source);
@@ -272,14 +298,34 @@ async function composeUnlocked(
 export async function composeDeliveredPdf(
   originalPdf: Uint8Array,
   evidence: DeliveredPdfEvidence[],
+  codes: DeliveredPdfCodePlacement[] = [],
 ) {
   const previous = compositionTail;
   let release!: () => void;
   compositionTail = new Promise<void>((resolve) => { release = resolve; });
   await previous;
   try {
-    return await composeUnlocked(originalPdf, evidence);
+    return await composeUnlocked(originalPdf, evidence, codes);
   } finally {
     release();
   }
+}
+
+export async function renderOriginalPdfPreview(originalPdf: Uint8Array, pageNumber: number) {
+  const previous = compositionTail;
+  let release!: () => void;
+  compositionTail = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    if (!originalPdf.length || originalPdf.length > MAX_ORIGINAL_BYTES) throw new Error("El PDF original supera el límite de 25 MB.");
+    const pdfium = await loadPdfium();
+    const source = openDocument(pdfium, originalPdf);
+    try {
+      const pageCount = pdfium.FPDF_GetPageCount(source.document);
+      if (pageCount < 1 || pageCount > MAX_SOURCE_PAGES || pageNumber < 1 || pageNumber > pageCount) throw new Error("La página solicitada no es válida.");
+      const rendered = renderPage(pdfium, source.document, pageNumber - 1);
+      const png = await sharp(rendered.rgba, { raw: { width: rendered.width, height: rendered.height, channels: 4 } }).png().toBuffer();
+      return { png, pageCount, width: rendered.width, height: rendered.height };
+    } finally { closeDocument(pdfium, source); }
+  } finally { release(); }
 }

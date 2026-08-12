@@ -4,11 +4,47 @@ import { safeStorageName } from "./names.ts";
 
 const PDF_LIMIT = 25 * 1024 * 1024;
 const hashPattern = /^[a-f0-9]{64}$/u;
-type Result<T> = { success: true; message: string; data: T } | { success: false; message: string };
+type PrepareFailureReason =
+  | "batch_unavailable"
+  | "batch_limit_exceeded"
+  | "invalid_metadata"
+  | "network_error"
+  | "permission_denied"
+  | "prepare_failed"
+  | "upload_authorization_failed";
+type Result<T, TReason extends string = string> =
+  | { success: true; message: string; data: T }
+  | { success: false; message: string; reason?: TReason };
 export type BulkPrepareInput = { batchId: string | null; fileName: string; fileHash: string; fileSize: number; mimeType: string; pdfHeader: string; fields: PdfDraft };
 type Prepared = { batchId: string; itemId: string; jobId: string; path: string; status: string; token?: string; signedUrl?: string };
 
-function fail<T>(message: string): Result<T> { return { success: false, message }; }
+function fail<T, TReason extends string = string>(message: string, reason?: TReason): Result<T, TReason> {
+  return reason ? { success: false, message, reason } : { success: false, message };
+}
+
+function isBatchUnavailable(error: { code?: string; message?: string } | null) {
+  return error?.code === "P0001" && /batch unavailable/iu.test(error.message ?? "");
+}
+
+function prepareRpcFailure(error: { code?: string; message?: string } | null): Result<never, PrepareFailureReason> {
+  const message = error?.message ?? "";
+  if (isBatchUnavailable(error)) {
+    return fail("El lote guardado ya no está disponible. Se iniciará un lote nuevo.", "batch_unavailable");
+  }
+  if (/invalid import metadata/iu.test(message)) {
+    return fail("Los metadatos extraídos del PDF no son válidos.", "invalid_metadata");
+  }
+  if (/batch limit exceeded/iu.test(message)) {
+    return fail("El lote alcanzó el máximo de 100 archivos. Inicia un lote nuevo.", "batch_limit_exceeded");
+  }
+  if (/only active office staff can import jobs|permission denied/iu.test(message) || error?.code === "42501") {
+    return fail("Tu usuario no tiene permiso para importar trabajos.", "permission_denied");
+  }
+  if (/failed to fetch|fetch failed|network error/iu.test(message)) {
+    return fail("No se pudo contactar al servidor para preparar el PDF.", "network_error");
+  }
+  return fail(`No se pudo preparar el item de importación (${error?.code ?? "sin código"}).`, "prepare_failed");
+}
 function valid(input: BulkPrepareInput) {
   const name = safeStorageName(input.fileName);
   return name.toLowerCase().endsWith(".pdf") && input.mimeType === "application/pdf"
@@ -17,19 +53,31 @@ function valid(input: BulkPrepareInput) {
     && Object.values(input.fields).every((value) => value === null || typeof value === "string");
 }
 
-export async function prepareBulkProjectUploadCore(supabase: SupabaseClient, input: BulkPrepareInput): Promise<Result<Prepared>> {
-  if (!valid(input)) return fail("Los metadatos del PDF no son válidos o superan 25 MB.");
+export async function prepareBulkProjectUploadCore(
+  supabase: SupabaseClient,
+  input: BulkPrepareInput,
+): Promise<Result<Prepared, PrepareFailureReason>> {
+  if (!valid(input)) return fail("Los metadatos del PDF no son válidos o superan 25 MB.", "invalid_metadata");
   const { data, error } = await supabase.rpc("prepare_job_import_item", {
     p_batch_id: input.batchId, p_source_file_name: input.fileName, p_stored_file_name: safeStorageName(input.fileName),
     p_source_file_hash: input.fileHash, p_source_file_size: input.fileSize, p_source_mime_type: input.mimeType,
     p_declared_pdf_header: input.pdfHeader, p_fields: input.fields,
   });
   const row = Array.isArray(data) ? data[0] : null;
-  if (error || !row?.item_id) return fail("No se pudo preparar el item de importación.");
+  if (error || !row?.item_id) {
+    // Do not log filenames, parsed fields, hashes, or credentials. The database
+    // error identity is enough to diagnose the failed preparation server-side.
+    console.error("[bulk-import] prepare_job_import_item failed", {
+      code: error?.code ?? "missing_row",
+      message: error?.message ?? "RPC returned no import item",
+      details: error?.details ?? null,
+    });
+    return prepareRpcFailure(error);
+  }
   const prepared: Prepared = { batchId: row.batch_id, itemId: row.item_id, jobId: row.proposed_job_id, path: row.storage_path, status: row.item_status };
   if (row.confirmed_job_id) return { success: true, message: "El PDF ya estaba confirmado.", data: { ...prepared, jobId: row.confirmed_job_id } };
   const signed = await supabase.storage.from("project-files").createSignedUploadUrl(row.storage_path, { upsert: true });
-  if (signed.error || !signed.data) return fail("No se pudo autorizar la carga privada.");
+  if (signed.error || !signed.data) return fail("No se pudo autorizar la carga privada.", "upload_authorization_failed");
   return { success: true, message: "Carga preparada.", data: { ...prepared, token: signed.data.token, signedUrl: signed.data.signedUrl } };
 }
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { composeDeliveredPdf } from "@/lib/jobs/delivered-pdf";
+import { codeColor, validatePlacements, type PdfCodePlacement } from "@/lib/jobs/pdf-code-editor-core";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 
@@ -73,6 +74,18 @@ export async function POST(
     return json("Este trabajo no tiene un PDF original válido.", 409);
   }
 
+  const service = createServiceClient();
+  const [{ data: draft, error: draftError }, { data: catalog, error: catalogError }] = await Promise.all([
+    supabase.from("job_pdf_drafts").select("version,source_page_count,placements").eq("job_id", jobId).maybeSingle(),
+    service.from("production_code_catalog").select("id,code").eq("is_active", true),
+  ]);
+  if (draftError || !draft || catalogError) return json("Abre el editor y guarda el borrador antes de entregar.", 409);
+  const placements = draft.placements as PdfCodePlacement[];
+  const placementError = validatePlacements(placements, draft.source_page_count);
+  if (placementError) return json(placementError, 409);
+  const catalogById = new Map((catalog ?? []).map((item) => [item.id, item.code]));
+  if (placements.some((item) => !catalogById.has(item.catalogId))) return json("El borrador contiene un código no disponible.", 409);
+
   const { data: photos, error: photoError } = await supabase
     .from("job_photos")
     .select("id, storage_path, uploaded_by, created_at, comment")
@@ -86,7 +99,6 @@ export async function POST(
     return json("Una evidencia tiene una ruta inválida.", 409);
   }
 
-  const service = createServiceClient();
   const deliveredPath = `${jobId}/delivered/${randomUUID()}.pdf`;
   let uploaded = false;
   try {
@@ -121,6 +133,7 @@ export async function POST(
         technicianName: uploaderNames.get(photo.uploaded_by) ?? null,
         comment: photo.comment,
       })),
+      placements.map((item) => ({ ...item, code: catalogById.get(item.catalogId)!, color: codeColor(catalogById.get(item.catalogId)!) })),
     );
 
     const { error: uploadError } = await service.storage.from("project-files").upload(
@@ -141,12 +154,13 @@ export async function POST(
     uploaded = true;
 
     const { data: confirmation, error: confirmationError } = await supabase.rpc(
-      "confirm_delivered_job_pdf",
+      "confirm_delivered_job_pdf_versioned",
       {
         p_job_id: jobId,
         p_storage_path: deliveredPath,
         p_source_photo_ids: delivered.sourcePhotoIds,
         p_submit: input.submit,
+        p_expected_draft_version: draft.version,
       },
     );
 

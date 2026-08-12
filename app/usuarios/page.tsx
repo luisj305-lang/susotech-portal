@@ -7,7 +7,7 @@ export default async function UsersPage() {
   const supabase = await createClient();
   const { data: users, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, is_active")
+    .select("id, email, full_name, role, is_active, technician_type")
     .order("full_name");
 
   if (error) {
