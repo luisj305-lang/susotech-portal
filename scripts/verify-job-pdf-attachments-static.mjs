@@ -7,10 +7,22 @@ const complete = read("../supabase/migrations/20260813030000_complete_pdf_delive
 const contract = read("../supabase/migrations/20260813032000_retire_legacy_job_mutations.sql");
 const actions = read("../src/lib/storage/actions.ts");
 const component = read("../src/components/jobs/job-attachments.tsx");
+const documentsComponent = read("../src/components/jobs/job-documents.tsx");
 const confirmationRoute = read("../app/api/trabajos/[id]/documentos/[documentId]/confirmar/route.ts");
 const queries = read("../src/lib/jobs/queries.ts");
 const detail = read("../app/trabajos/[id]/page.tsx");
 const hardDelete = read("../supabase/migrations/202608110400_fix_job_permanent_deletion_conflict.sql");
+
+function assertPopupOpensBeforeSignedUrl(componentSource, label) {
+  const handlerStart = componentSource.indexOf("const open = (path: string) => {");
+  const popupOpen = componentSource.indexOf('window.open("about:blank", "_blank")', handlerStart);
+  const signedUrlRequest = componentSource.indexOf("await createSignedDownloadUrl", handlerStart);
+  assert.ok(handlerStart >= 0, `${label} defines the PDF open handler`);
+  assert.ok(popupOpen > handlerStart, `${label} opens a placeholder tab synchronously`);
+  assert.ok(signedUrlRequest > popupOpen, `${label} opens the tab before awaiting the signed URL`);
+  assert.match(componentSource.slice(handlerStart, signedUrlRequest), /preview\.opener = null/u);
+  assert.match(componentSource.slice(handlerStart), /preview\.close\(\)/u);
+}
 
 assert.match(sql, /create table public\.job_documents/u);
 assert.match(sql, /job_id uuid not null references public\.jobs\(id\) on delete cascade/u);
@@ -46,6 +58,8 @@ assert.match(component, /\/documentos\/\$\{prepared\.data\.documentId\}\/confirm
 assert.match(component, /window\.confirm/u);
 assert.match(component, /Esta acción no se puede deshacer/u);
 assert.match(component, /disabled=\{pending\}/u);
+assertPopupOpensBeforeSignedUrl(component, "Job attachments");
+assertPopupOpensBeforeSignedUrl(documentsComponent, "Job documents");
 assert.match(queries, /from\("job_documents"\)/u);
 assert.match(detail, /<JobAttachments/u);
 assert.match(detail, /canManage=\{profile\.role === "admin"\}/u);

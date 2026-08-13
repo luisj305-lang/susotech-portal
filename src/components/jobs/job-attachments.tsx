@@ -28,11 +28,27 @@ export function JobAttachments({
   const [progress, setProgress] = useState("");
   const [pending, startTransition] = useTransition();
 
-  const open = (path: string) => startTransition(async () => {
-    const result = await createSignedDownloadUrl({ bucket: "project-files", path });
-    setMessage(result.message);
-    if (result.success) window.open(result.data.signedUrl, "_blank", "noopener,noreferrer");
-  });
+  const open = (path: string) => {
+    const preview = window.open("about:blank", "_blank");
+    if (!preview) {
+      setMessage("El navegador bloqueó la ventana del PDF. Permite ventanas emergentes e inténtalo de nuevo.");
+      return;
+    }
+    preview.opener = null;
+    startTransition(async () => {
+      try {
+        const result = await createSignedDownloadUrl({ bucket: "project-files", path });
+        setMessage(result.message);
+        if (result.success) {
+          preview.location.replace(result.data.signedUrl);
+          return;
+        }
+      } catch {
+        setMessage("No se pudo abrir el PDF.");
+      }
+      preview.close();
+    });
+  };
 
   const upload = () => {
     const files = [...(input.current?.files ?? [])];
