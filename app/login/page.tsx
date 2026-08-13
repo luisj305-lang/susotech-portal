@@ -1,8 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { recoveryClient } from "@/lib/supabase/recovery-client";
+import styles from "./login.module.css";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "recovery">("login");
@@ -38,7 +41,7 @@ export default function LoginPage() {
     setIsLoading(true);
     setMessage("");
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await recoveryClient.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
 
@@ -54,120 +57,137 @@ export default function LoginPage() {
   };
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "20px",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "400px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "16px",
-        }}
-      >
-        <h1 style={{ fontSize: "32px", fontWeight: "bold" }}>SUSOTECH</h1>
+    <main className={styles.shell}>
+      <section className={styles.visual} aria-hidden="true">
+        <Image
+          src="/login/login-hero.jpg"
+          alt=""
+          fill
+          priority
+          sizes="(max-width: 767px) 100vw, (max-width: 1199px) 55vw, 65vw"
+          className={styles.heroImage}
+        />
+      </section>
 
-        {mode === "login" ? (
-          <>
-            <h2>Iniciar sesión</h2>
+      <section className={styles.panel} aria-labelledby="login-title">
+        <div className={styles.brand}>
+          <Image
+            src="/login/susotech-logo.png"
+            alt="Susotech — Support and Solutions Tech"
+            width={1890}
+            height={684}
+            priority
+            className={styles.logo}
+          />
+        </div>
 
-            <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <input
-                type="email"
-                placeholder="Correo electrónico"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-                disabled={isLoading}
-                style={{ padding: "12px" }}
-              />
+        <div className={styles.content}>
+          <div className={styles.formBlock}>
+            <div className={styles.heading}>
+              <p className={styles.eyebrow}>Portal Susotech</p>
+              <h1 id="login-title">
+                {mode === "login" ? "Iniciar sesión" : "Recuperar contraseña"}
+              </h1>
+              <p>
+                {mode === "login"
+                  ? "Acceso para personal autorizado."
+                  : "Ingresa tu correo y te enviaremos un enlace para continuar."}
+              </p>
+            </div>
 
-              <input
-                type="password"
-                placeholder="Contraseña"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-                disabled={isLoading}
-                style={{ padding: "12px" }}
-              />
+            {mode === "login" ? (
+              <>
+                <form onSubmit={handleLogin} className={styles.form}>
+                  <label className={styles.field}>
+                    <span>Correo electrónico</span>
+                    <input
+                      type="email"
+                      name="email"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      required
+                      disabled={isLoading}
+                    />
+                  </label>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                style={{ padding: "12px", cursor: isLoading ? "not-allowed" : "pointer" }}
-              >
-                {isLoading ? "Ingresando..." : "Iniciar sesión"}
-              </button>
-            </form>
+                  <label className={styles.field}>
+                    <span>Contraseña</span>
+                    <input
+                      type="password"
+                      name="password"
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      required
+                      disabled={isLoading}
+                    />
+                  </label>
 
-            <button
-              type="button"
-              onClick={() => setMode("recovery")}
-              disabled={isLoading}
-              style={{
-                background: "none",
-                border: "1px solid currentColor",
-                padding: "10px 14px",
-                textAlign: "left",
-                cursor: "pointer",
-                textDecoration: "underline",
-              }}
-            >
-              ¿Olvidaste tu contraseña?
-            </button>
-          </>
-        ) : (
-          <>
-            <h2>Recuperar contraseña</h2>
+                  <button
+                    type="button"
+                    onClick={() => setMode("recovery")}
+                    disabled={isLoading}
+                    className={styles.textButton}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
 
-            <form onSubmit={handleRecovery} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <input
-                type="email"
-                placeholder="Correo electrónico"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-                disabled={isLoading}
-                style={{ padding: "12px" }}
-              />
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    aria-busy={isLoading}
+                    className={styles.primaryButton}
+                  >
+                    {isLoading ? "Ingresando..." : "Iniciar sesión"}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <form onSubmit={handleRecovery} className={styles.form}>
+                <label className={styles.field}>
+                  <span>Correo electrónico</span>
+                  <input
+                    type="email"
+                    name="recovery-email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </label>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                style={{ padding: "12px", cursor: isLoading ? "not-allowed" : "pointer" }}
-              >
-                {isLoading ? "Enviando..." : "Enviar enlace"}
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  aria-busy={isLoading}
+                  className={styles.primaryButton}
+                >
+                  {isLoading ? "Enviando..." : "Enviar enlace"}
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setMode("login")}
-              disabled={isLoading}
-              style={{
-                background: "none",
-                border: "1px solid currentColor",
-                padding: "10px 14px",
-                textAlign: "left",
-                cursor: "pointer",
-                textDecoration: "underline",
-              }}
-            >
-              Volver al inicio de sesión
-            </button>
-          </>
-        )}
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  disabled={isLoading}
+                  className={styles.secondaryButton}
+                >
+                  Volver al inicio de sesión
+                </button>
+              </form>
+            )}
 
-        {message && <p role="status">{message}</p>}
-      </div>
+            {message && (
+              <p role="status" aria-live="polite" className={styles.status}>
+                {message}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <footer className={styles.help}>¿Necesitas ayuda?</footer>
+      </section>
     </main>
   );
 }

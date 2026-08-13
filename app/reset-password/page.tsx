@@ -2,19 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-const recoveryClient = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    flowType: "implicit",
-    detectSessionInUrl: true,
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
+import { recoveryClient } from "@/lib/supabase/recovery-client";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -28,34 +16,41 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     let mounted = true;
 
-    const {
-      data: { subscription },
-    } = recoveryClient.auth.onAuthStateChange((event) => {
-      if (!mounted) return;
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
-        setIsReady(true);
-        setChecked(true);
-        setMessage("");
-      }
-    });
+    const validateRecoveryLink = async () => {
+      const parameters = new URLSearchParams(window.location.hash.slice(1));
+      const accessToken = parameters.get("access_token");
+      const refreshToken = parameters.get("refresh_token");
+      const recoveryType = parameters.get("type");
 
-    void recoveryClient.auth.getSession().then(({ data: { session }, error }) => {
+      if (recoveryType !== "recovery" || !accessToken || !refreshToken) {
+        if (!mounted) return;
+        setChecked(true);
+        setMessage("El enlace de recuperación no es válido o ha expirado.");
+        return;
+      }
+
+      const { error } = await recoveryClient.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
       if (!mounted) return;
       setChecked(true);
 
-      if (session) {
-        setIsReady(true);
-        setMessage("");
-      } else if (error) {
-        setMessage(`No se pudo validar el enlace: ${error.message}`);
-      } else {
-        setMessage("El enlace de recuperación no es válido o ha expirado.");
+      if (error) {
+        setMessage("El enlace de recuperación no es válido, ya fue usado o ha expirado.");
+        return;
       }
-    });
+
+      window.history.replaceState({}, "", window.location.pathname);
+      setIsReady(true);
+      setMessage("");
+    };
+
+    void validateRecoveryLink();
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
     };
   }, []);
 
@@ -85,9 +80,11 @@ export default function ResetPasswordPage() {
     }
 
     setMessage("Contraseña actualizada. Redirigiendo al login...");
+    await recoveryClient.auth.signOut();
 
     setTimeout(() => {
-      router.push("/login");
+      router.replace("/login");
+      router.refresh();
     }, 1500);
   };
 

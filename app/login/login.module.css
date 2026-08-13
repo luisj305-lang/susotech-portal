@@ -1,0 +1,310 @@
+.shell {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  grid-template-rows: minmax(25svh, 32svh) minmax(0, 1fr);
+  overflow-x: hidden;
+  background: #ffffff;
+  color: #10243d;
+  color-scheme: light;
+}
+
+.visual {
+  position: relative;
+  min-height: 25svh;
+  overflow: hidden;
+  background: #04152d;
+}
+
+.visual::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(180deg, transparent 60%, rgb(3 17 39 / 18%));
+  pointer-events: none;
+}
+
+.heroImage {
+  object-fit: cover;
+  object-position: 72% 45%;
+}
+
+.panel {
+  min-width: 0;
+  min-height: 68svh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 1.5rem clamp(1.25rem, 6vw, 2.5rem) 1.25rem;
+  background: #fffdfa;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  min-height: 3.5rem;
+}
+
+.logo {
+  width: clamp(12rem, 48vw, 15rem);
+  height: auto;
+  object-fit: contain;
+}
+
+.content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 0;
+}
+
+.formBlock {
+  width: min(100%, 25rem);
+}
+
+.heading {
+  margin-bottom: 2rem;
+}
+
+.heading h1 {
+  margin: 0;
+  color: #10243d;
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.heading > p:last-child {
+  margin: 0.75rem 0 0;
+  color: #607087;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.eyebrow {
+  margin: 0 0 0.65rem;
+  color: #0077cc;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: #263b55;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.field input {
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #ccd5df;
+  border-radius: 0.55rem;
+  outline: none;
+  background: #ffffff;
+  color: #10243d;
+  font: inherit;
+  font-size: 1rem;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.field input:hover {
+  border-color: #96a5b6;
+}
+
+.field input:focus {
+  border-color: #0094ff;
+  box-shadow: 0 0 0 3px rgb(0 148 255 / 15%);
+}
+
+.field input:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.field input:-webkit-autofill,
+.field input:-webkit-autofill:hover,
+.field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #10243d;
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  caret-color: #10243d;
+}
+
+.primaryButton,
+.secondaryButton,
+.textButton {
+  min-height: 2.75rem;
+  border-radius: 0.55rem;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  transition: background-color 160ms ease, border-color 160ms ease,
+    color 160ms ease, transform 160ms ease, opacity 160ms ease;
+}
+
+.primaryButton {
+  min-height: 3.25rem;
+  margin-top: 0.2rem;
+  border: 1px solid #0094ff;
+  background: #0094ff;
+  color: #ffffff;
+  box-shadow: 0 0.6rem 1.5rem rgb(0 148 255 / 18%);
+  cursor: pointer;
+}
+
+.primaryButton:hover:not(:disabled) {
+  border-color: #007dD8;
+  background: #007dD8;
+  transform: translateY(-1px);
+}
+
+.secondaryButton {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #263b55;
+  cursor: pointer;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  border-color: #0094ff;
+  color: #0077cc;
+}
+
+.textButton {
+  align-self: flex-end;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0077cc;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.textButton:hover:not(:disabled) {
+  color: #005fA5;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible,
+.textButton:focus-visible {
+  outline: 2px solid #0094ff;
+  outline-offset: 3px;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.textButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.status {
+  margin: 1.25rem 0 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid #dce4ec;
+  border-radius: 0.55rem;
+  background: #f4f8fb;
+  color: #334a64;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.help {
+  color: #77869a;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .shell {
+    grid-template-columns: minmax(0, 1.1fr) minmax(22.5rem, 0.9fr);
+    grid-template-rows: 1fr;
+  }
+
+  .visual,
+  .panel {
+    min-height: 100vh;
+    min-height: 100svh;
+  }
+
+  .heroImage {
+    object-position: 64% center;
+  }
+
+  .panel {
+    padding: clamp(1.75rem, 3.2vw, 3rem);
+  }
+
+  .logo {
+    width: clamp(12rem, 21vw, 15rem);
+  }
+
+  .content {
+    padding: 2rem 0;
+  }
+
+  .heading h1 {
+    font-size: clamp(2.15rem, 4vw, 2.75rem);
+  }
+}
+
+@media (min-width: 1200px) {
+  .shell {
+    grid-template-columns: minmax(0, 64.5fr) minmax(25rem, 35.5fr);
+  }
+
+  .heroImage {
+    object-position: 60% center;
+  }
+
+  .panel {
+    padding-inline: clamp(2.75rem, 4vw, 5rem);
+  }
+
+  .logo {
+    width: clamp(13rem, 16vw, 16rem);
+  }
+}
+
+@media (min-width: 768px) and (max-height: 760px) {
+  .panel {
+    padding-block: 1.5rem;
+  }
+
+  .content {
+    padding-block: 1.25rem;
+  }
+
+  .heading {
+    margin-bottom: 1.4rem;
+  }
+
+  .form {
+    gap: 0.9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field input,
+  .primaryButton,
+  .secondaryButton,
+  .textButton {
+    transition: none;
+  }
+}
