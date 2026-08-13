@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "landing-media/**",
+    "susotech-tech-solutions-hub-main/**",
+    "supabase/.temp/**",
+    "tmp/**",
   ]),
 ]);
 
