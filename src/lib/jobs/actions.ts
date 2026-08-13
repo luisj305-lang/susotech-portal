@@ -271,16 +271,27 @@ export async function addProductionCode(input: { jobId: string; catalogId: strin
   return { success: true, message: "Código añadido.", data: null };
 }
 
-export async function setJobArchived(input: { jobId: string; archived: boolean; reason?: string }): Promise<Result> {
+const archiveReasonCodes = [
+  "duplicate_job",
+  "cancelled_by_client_or_office",
+  "incorrect_address_or_data",
+  "no_access_or_blocked_conditions",
+  "out_of_scope",
+] as const;
+
+export async function setJobArchived(input: { jobId: string; archived: boolean; reasonCode?: string; notes?: string }): Promise<Result> {
   await requireAdmin();
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");
-  const reason = cleanText(input.reason, "El motivo", 1000);
-  if (input.archived && !reason) return failure("Indica por qué se retirará el trabajo del dashboard.");
+  const notes = cleanText(input.notes, "Las observaciones", 2000);
+  if (input.archived && (!input.reasonCode || !archiveReasonCodes.includes(input.reasonCode as typeof archiveReasonCodes[number]))) {
+    return failure("Selecciona un motivo válido para archivar el trabajo.");
+  }
 
-  const { error } = await (await createClient()).rpc("set_job_archived", {
+  const { error } = await (await createClient()).rpc("set_job_archived_v2", {
     p_job_id: input.jobId,
     p_archived: input.archived,
-    p_reason: reason,
+    p_reason_code: input.reasonCode ?? null,
+    p_notes: notes,
   });
   if (error) return failure(input.archived ? "No se pudo archivar el trabajo." : "No se pudo restaurar el trabajo.");
   revalidatePath("/trabajos");
@@ -344,7 +355,7 @@ export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: n
   if (!validId(input.jobId) || !Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) return failure("El borrador no es válido.");
   const validation = validatePlacements(input.placements, input.pageCount);
   if (validation) return failure(validation);
-  const { data, error } = await (await createClient()).rpc("save_job_pdf_draft", {
+  const { data, error } = await (await createClient()).rpc("save_job_pdf_draft_v2", {
     p_job_id: input.jobId, p_expected_version: input.expectedVersion, p_placements: input.placements,
   });
   if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
@@ -382,4 +393,26 @@ export async function addPhotoComment(input: { jobId: string; storagePath?: stri
   }
   refresh(input.jobId);
   return { success: true, message: hasPhoto ? "Foto confirmada." : "Comentario guardado.", data: null };
+}
+
+export async function deleteJobPhoto(input: { jobId: string; photoId: string }): Promise<Result> {
+  await requireAdmin();
+  if (!validId(input.jobId) || !validId(input.photoId)) return failure("La fotografía no es válida.");
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("delete_job_photo_audited", {
+    p_photo_id: input.photoId,
+  });
+  const rows = (data ?? []) as JobDeletionCleanupRow[];
+  if (error || !rows.length || rows[0].job_id !== input.jobId) {
+    return failure("No se pudo retirar la fotografía de la evidencia.");
+  }
+  const cleanup = await cleanupJobDeletionQueue(supabase, rows);
+  refresh(input.jobId);
+  return {
+    success: true,
+    message: cleanup.pending
+      ? "Fotografía retirada. El archivo privado quedó en la cola de limpieza segura."
+      : "Fotografía eliminada de la evidencia.",
+    data: null,
+  };
 }

@@ -179,7 +179,7 @@ async function seedRelated(job, actorId) {
   await upload("project-files", deliveredPath, minimalPdf, "application/pdf", service, {
     generator: "susotech-portal", job_id: job.id, source_photo_ids: photoId,
   });
-  return { photoId, photoPath, deliveredPath };
+  return { photoId, photoPath, deliveredPath, documentId };
 }
 
 async function assertBlockedBoundaries(identity, job, fixture, assignmentType, label) {
@@ -221,24 +221,20 @@ async function assertBlockedBoundaries(identity, job, fixture, assignmentType, l
     p_production_date: null,
     p_notes: null,
   }));
-  await shiftDenied(`${label}: draft initialization RPC`, identity.client.rpc("initialize_job_pdf_draft", {
-    p_job_id: job.id, p_page_count: 1,
+  await shiftDenied(`${label}: draft initialization RPC`, identity.client.rpc("initialize_job_pdf_draft_v2", {
+    p_job_id: job.id, p_source_document_ids: [fixture.documentId], p_page_count: 1,
   }));
-  await shiftDenied(`${label}: draft save RPC`, identity.client.rpc("save_job_pdf_draft", {
+  await shiftDenied(`${label}: draft save RPC`, identity.client.rpc("save_job_pdf_draft_v2", {
     p_job_id: job.id, p_expected_version: 0, p_placements: [],
   }));
-  await shiftDenied(`${label}: delivered PDF RPC`, identity.client.rpc("confirm_delivered_job_pdf", {
+  await shiftDenied(`${label}: delivered PDF RPC`, identity.client.rpc("confirm_delivered_job_pdf_complete", {
     p_job_id: job.id,
     p_storage_path: fixture.deliveredPath,
     p_source_photo_ids: [fixture.photoId],
-    p_submit: true,
-  }));
-  await shiftDenied(`${label}: versioned delivered PDF RPC`, identity.client.rpc("confirm_delivered_job_pdf_versioned", {
-    p_job_id: job.id,
-    p_storage_path: fixture.deliveredPath,
-    p_source_photo_ids: [fixture.photoId],
+    p_source_document_ids: [fixture.documentId],
     p_submit: true,
     p_expected_draft_version: 0,
+    p_snapshot_hash: "0".repeat(64),
   }));
   const after = {
     job: await ok(`${label}: snapshot job after denied writes`, service.from("jobs")

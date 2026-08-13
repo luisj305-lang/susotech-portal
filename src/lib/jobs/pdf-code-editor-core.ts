@@ -2,10 +2,15 @@ export type PdfCodePlacement = {
   id: string;
   catalogId: string;
   page: number;
+  sourceDocumentId: string;
+  sourcePage: number;
+  quantity: number;
   x: number;
   y: number;
   width: number;
   height: number;
+  arrowTipX: number;
+  arrowTipY: number;
 };
 
 export type PdfCodeDraft = { version: number; sourcePageCount: number; placements: PdfCodePlacement[] };
@@ -30,9 +35,14 @@ export function validatePlacements(placements: PdfCodePlacement[], pageCount: nu
   for (const item of placements) {
     if (!uuidPattern.test(item.id) || !uuidPattern.test(item.catalogId) || ids.has(item.id)
       || !Number.isInteger(item.page) || item.page < 1 || item.page > pageCount
-      || ![item.x, item.y, item.width, item.height].every(Number.isFinite)
+      || !uuidPattern.test(item.sourceDocumentId)
+      || !Number.isInteger(item.sourcePage) || item.sourcePage < 1 || item.sourcePage > 500
+      || !Number.isFinite(item.quantity) || item.quantity <= 0
+      || Math.round(item.quantity * 100) !== item.quantity * 100
+      || ![item.x, item.y, item.width, item.height, item.arrowTipX, item.arrowTipY].every(Number.isFinite)
       || item.x < 0 || item.y < 0 || item.width < 0.04 || item.width > 0.35
-      || item.height < 0.025 || item.height > 0.2 || item.x + item.width > 1 || item.y + item.height > 1) {
+      || item.height < 0.025 || item.height > 0.2 || item.x + item.width > 1 || item.y + item.height > 1
+      || item.arrowTipX < 0 || item.arrowTipX > 1 || item.arrowTipY < 0 || item.arrowTipY > 1) {
       return "Hay un código fuera de los bordes permitidos.";
     }
     ids.add(item.id);
@@ -46,5 +56,17 @@ export function validatePlacements(placements: PdfCodePlacement[], pageCount: nu
 export function clampPlacement(item: PdfCodePlacement): PdfCodePlacement {
   const width = Math.min(0.35, Math.max(0.04, item.width));
   const height = Math.min(0.2, Math.max(0.025, item.height));
-  return { ...item, width, height, x: Math.min(1 - width, Math.max(0, item.x)), y: Math.min(1 - height, Math.max(0, item.y)) };
+  return {
+    ...item,
+    width,
+    height,
+    x: Math.min(1 - width, Math.max(0, item.x)),
+    y: Math.min(1 - height, Math.max(0, item.y)),
+    arrowTipX: Math.min(1, Math.max(0, item.arrowTipX)),
+    arrowTipY: Math.min(1, Math.max(0, item.arrowTipY)),
+  };
+}
+
+export function placementLabel(item: Pick<PdfCodePlacement, "quantity">, code: string) {
+  return `${code} × ${Number(item.quantity).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }

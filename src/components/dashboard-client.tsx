@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { CurrentProfile } from "@/lib/auth/session";
 import { LogoutButton } from "@/components/logout-button";
-import type { WeeklyProductionLine } from "@/lib/jobs/types";
+import type { WeeklyProductionLine, WorkerOperationsRow } from "@/lib/jobs/types";
+import { WorkerOperationsTable } from "@/components/worker-operations-table";
 
 const roleLabels = {
   admin: "Administrador",
@@ -9,7 +10,7 @@ const roleLabels = {
   tecnico: "Técnico",
 };
 
-export function DashboardClient({ profile, weeklyProduction = [] }: { profile: CurrentProfile; weeklyProduction?: WeeklyProductionLine[] }) {
+export function DashboardClient({ profile, weeklyProduction = [], workerOperations = [] }: { profile: CurrentProfile; weeklyProduction?: WeeklyProductionLine[]; workerOperations?: WorkerOperationsRow[] }) {
   const canCreateJobs =
     profile.role === "admin" || profile.role === "supervisor";
   const confirmed = weeklyProduction.filter((line) => line.billing_state === "confirmed").reduce((sum, line) => sum + Number(line.amount), 0);
@@ -101,6 +102,8 @@ export function DashboardClient({ profile, weeklyProduction = [] }: { profile: C
         <p>Pendiente: <strong>${pendingAmount.toFixed(2)}</strong></p>
         <p style={{ marginTop: "8px" }}>{weeklyProduction.length} registro(s) de producción</p>
       </section>}
+
+      {profile.role !== "tecnico" && <WorkerOperationsTable rows={workerOperations} />}
 
       <p style={{ marginBottom: "30px" }}>
         Consulta y administra los trabajos disponibles según tu rol.

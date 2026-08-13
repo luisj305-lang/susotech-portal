@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -208,36 +208,44 @@ async function main() {
     service.from("job_photos").select("id").eq("id", photoId).single(),
   );
   check(retainedPhoto.id === photoId, "evidence row remains after denied deletion");
-  await denied("supervisor cannot regenerate delivered PDF", supervisor.client.rpc("confirm_delivered_job_pdf", {
+  await denied("supervisor cannot regenerate delivered PDF", supervisor.client.rpc("confirm_delivered_job_pdf_complete", {
     p_job_id: jobId,
     p_storage_path: `${jobId}/delivered/${randomUUID()}.pdf`,
     p_source_photo_ids: [photoId],
+    p_source_document_ids: [],
     p_submit: false,
+    p_expected_draft_version: 0,
+    p_snapshot_hash: "0".repeat(64),
   }));
 
-  await denied("supervisor cannot prepare additional PDF", supervisor.client.rpc("prepare_job_document", {
+  const pdf = Buffer.alloc(64, 32);
+  pdf.write("%PDF-1.4\n");
+  const pdfHash = createHash("sha256").update(pdf).digest("hex");
+  await denied("supervisor cannot prepare additional PDF", supervisor.client.rpc("prepare_job_document_v2", {
     p_job_id: jobId,
     p_display_name: "supervisor.pdf",
     p_mime_type: "application/pdf",
     p_size_bytes: 64,
+    p_file_hash: pdfHash,
   }));
-  const prepared = await ok("admin prepares additional PDF", admin.client.rpc("prepare_job_document", {
+  const prepared = await ok("admin prepares additional PDF", admin.client.rpc("prepare_job_document_v2", {
     p_job_id: jobId,
     p_display_name: "additional.pdf",
     p_mime_type: "application/pdf",
     p_size_bytes: 64,
+    p_file_hash: pdfHash,
   }));
   check(prepared.length === 1 && prepared[0].storage_path.includes("/attachments/"), "additional path is isolated");
   const documentPath = prepared[0].storage_path;
-  const pdf = Buffer.alloc(64, 32);
-  pdf.write("%PDF-1.4\n");
   await ok("admin uploads additional PDF", admin.client.storage.from("project-files").upload(documentPath, pdf, {
     contentType: "application/pdf",
     upsert: false,
   }));
   objects["project-files"].push(documentPath);
-  await ok("admin confirms additional PDF", admin.client.rpc("confirm_job_document", {
+  await ok("admin confirms additional PDF", admin.client.rpc("confirm_job_document_verified", {
     p_document_id: prepared[0].document_id,
+    p_file_hash: pdfHash,
+    p_page_count: 1,
   }));
   const document = await ok(
     "admin reads confirmed metadata",
@@ -278,15 +286,17 @@ async function main() {
     "supervisor cannot write archive fields directly",
     supervisor.client.from("jobs").update({ archive_reason: "bypass" }).eq("id", jobId).select("id").single(),
   );
-  await denied("supervisor cannot archive through RPC", supervisor.client.rpc("set_job_archived", {
+  await denied("supervisor cannot archive through RPC", supervisor.client.rpc("set_job_archived_v2", {
     p_job_id: jobId,
     p_archived: true,
-    p_reason: "runtime",
+    p_reason_code: "duplicate_job",
+    p_notes: "runtime",
   }));
-  await ok("admin archives through narrow RPC", admin.client.rpc("set_job_archived", {
+  await ok("admin archives through narrow RPC", admin.client.rpc("set_job_archived_v2", {
     p_job_id: jobId,
     p_archived: true,
-    p_reason: "runtime",
+    p_reason_code: "duplicate_job",
+    p_notes: "runtime",
   }));
   const archiveEvents = await ok(
     "archive event is auditable",
@@ -296,10 +306,11 @@ async function main() {
     archiveEvents.some((event) => event.event_type === "archived" && event.actor_id === admin.id),
     "archive event records actor",
   );
-  await ok("admin restores through narrow RPC", admin.client.rpc("set_job_archived", {
+  await ok("admin restores through narrow RPC", admin.client.rpc("set_job_archived_v2", {
     p_job_id: jobId,
     p_archived: false,
-    p_reason: null,
+    p_reason_code: null,
+    p_notes: null,
   }));
 }
 

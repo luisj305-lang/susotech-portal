@@ -71,6 +71,7 @@ export async function prepareJobDocumentUpload(input: {
   fileName: string;
   mimeType: string;
   size: number;
+  fileHash: string;
 }): Promise<Result<{ documentId: string; path: string; token: string; signedUrl: string }>> {
   await requireAdmin();
   if (!validJobDocumentMetadata(input)) {
@@ -78,11 +79,15 @@ export async function prepareJobDocumentUpload(input: {
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("prepare_job_document", {
+  if (!/^[a-f0-9]{64}$/u.test(input.fileHash)) {
+    return { success: false, message: "No se pudo verificar el contenido del PDF." };
+  }
+  const { data, error } = await supabase.rpc("prepare_job_document_v2", {
     p_job_id: input.jobId,
     p_display_name: input.fileName.trim(),
     p_mime_type: input.mimeType,
     p_size_bytes: input.size,
+    p_file_hash: input.fileHash,
   });
   const prepared = data?.[0];
   if (error || !prepared) return { success: false, message: "No se pudo preparar el adjunto." };
@@ -105,16 +110,6 @@ export async function prepareJobDocumentUpload(input: {
       signedUrl: signed.data.signedUrl,
     },
   };
-}
-
-export async function confirmJobDocumentUpload(input: { documentId: string; jobId: string }): Promise<Result<null>> {
-  await requireAdmin();
-  const validId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-  if (!validId.test(input.documentId) || !validId.test(input.jobId)) return { success: false, message: "El adjunto no es válido." };
-  const { error } = await (await createClient()).rpc("confirm_job_document", { p_document_id: input.documentId });
-  if (error) return { success: false, message: "No se pudo confirmar el adjunto." };
-  revalidatePath(`/trabajos/${input.jobId}`);
-  return { success: true, message: "Adjunto añadido.", data: null };
 }
 
 export async function deleteJobDocument(input: { documentId: string; jobId: string }): Promise<Result<null>> {

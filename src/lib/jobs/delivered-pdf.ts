@@ -7,7 +7,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import sharp from "sharp";
 
 const RASTER_DPI = 180;
-const MAX_SOURCE_PAGES = 50;
+const MAX_SOURCE_PAGES = 100;
 const MAX_EVIDENCE_PHOTOS = 30;
 const MAX_ORIGINAL_BYTES = 25 * 1024 * 1024;
 const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
@@ -30,14 +30,23 @@ export type DeliveredPdfCodePlacement = {
   y: number;
   width: number;
   height: number;
+  quantity: number;
+  arrowTipX: number;
+  arrowTipY: number;
   code: string;
   color: string;
+};
+
+export type DeliveredPdfSource = {
+  id: string;
+  bytes: Uint8Array;
 };
 
 export type DeliveredPdfResult = {
   bytes: Uint8Array;
   pageCount: number;
   originalPageCount: number;
+  sourceDocumentIds: string[];
   sourcePhotoIds: string[];
 };
 
@@ -185,12 +194,12 @@ function drawCaption(page: PDFPage, font: PDFFont, photo: DeliveredPdfEvidence, 
 }
 
 async function composeUnlocked(
-  originalPdf: Uint8Array,
+  sourceDocuments: DeliveredPdfSource[],
   evidence: DeliveredPdfEvidence[],
   codes: DeliveredPdfCodePlacement[] = [],
 ): Promise<DeliveredPdfResult> {
-  if (!originalPdf.length || originalPdf.length > MAX_ORIGINAL_BYTES) {
-    throw new Error("El PDF original supera el límite de 25 MB.");
+  if (!sourceDocuments.length || sourceDocuments.some((source) => !source.bytes.length || source.bytes.length > MAX_ORIGINAL_BYTES)) {
+    throw new Error("Cada PDF fuente debe existir y no superar 25 MB.");
   }
   if (!evidence.length) throw new Error("Se requiere al menos una evidencia confirmada.");
   if (evidence.length > MAX_EVIDENCE_PHOTOS) throw new Error(`El máximo es ${MAX_EVIDENCE_PHOTOS} evidencias por entrega.`);
@@ -199,21 +208,19 @@ async function composeUnlocked(
   }
 
   const pdfium = await loadPdfium();
-  const source = openDocument(pdfium, originalPdf);
   const output = await PDFDocument.create();
   const codeFont = await output.embedFont(StandardFonts.HelveticaBold);
   let originalPageCount = 0;
-  try {
-    originalPageCount = pdfium.FPDF_GetPageCount(source.document);
-    if (originalPageCount < 1 || originalPageCount > MAX_SOURCE_PAGES) {
-      throw new Error(`El PDF original debe tener entre 1 y ${MAX_SOURCE_PAGES} páginas.`);
-    }
-    if (codes.some((item) => !Number.isInteger(item.page) || item.page < 1 || item.page > originalPageCount
-      || item.x < 0 || item.y < 0 || item.width <= 0 || item.height <= 0 || item.x + item.width > 1 || item.y + item.height > 1)) {
-      throw new Error("El borrador contiene códigos fuera de las páginas o bordes del PDF.");
-    }
-    for (let index = 0; index < originalPageCount; index += 1) {
-      const rendered = renderPage(pdfium, source.document, index);
+  for (const sourceDocument of sourceDocuments) {
+    const source = openDocument(pdfium, sourceDocument.bytes);
+    try {
+      const sourcePageCount = pdfium.FPDF_GetPageCount(source.document);
+      if (sourcePageCount < 1 || originalPageCount + sourcePageCount > MAX_SOURCE_PAGES) {
+        throw new Error(`El conjunto de PDFs debe tener entre 1 y ${MAX_SOURCE_PAGES} páginas.`);
+      }
+      for (let index = 0; index < sourcePageCount; index += 1) {
+        const combinedPage = originalPageCount + index + 1;
+        const rendered = renderPage(pdfium, source.document, index);
       const jpeg = await sharp(rendered.rgba, {
         raw: { width: rendered.width, height: rendered.height, channels: 4 },
       }).flatten({ background: "#ffffff" }).jpeg({
@@ -224,19 +231,47 @@ async function composeUnlocked(
       const image = await output.embedJpg(jpeg);
       const page = output.addPage([rendered.pointsWidth, rendered.pointsHeight]);
       page.drawImage(image, { x: 0, y: 0, width: rendered.pointsWidth, height: rendered.pointsHeight });
-      for (const placement of codes.filter((item) => item.page === index + 1)) {
+      for (const placement of codes.filter((item) => item.page === combinedPage)) {
         const hex = placement.color.replace("#", "");
         const color = rgb(parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255);
         const x = placement.x * rendered.pointsWidth;
         const width = placement.width * rendered.pointsWidth;
         const height = placement.height * rendered.pointsHeight;
         const y = rendered.pointsHeight - (placement.y * rendered.pointsHeight) - height;
+        const startX = (placement.x + placement.width / 2) * rendered.pointsWidth;
+        const startY = rendered.pointsHeight - ((placement.y + placement.height / 2) * rendered.pointsHeight);
+        const tipX = placement.arrowTipX * rendered.pointsWidth;
+        const tipY = rendered.pointsHeight - (placement.arrowTipY * rendered.pointsHeight);
+        page.drawLine({ start: { x: startX, y: startY }, end: { x: tipX, y: tipY }, thickness: 2.5, color });
+        const angle = Math.atan2(tipY - startY, tipX - startX);
+        const arrowLength = Math.max(8, Math.min(18, rendered.pointsWidth * 0.018));
+        for (const offset of [-Math.PI / 7, Math.PI / 7]) {
+          page.drawLine({
+            start: { x: tipX, y: tipY },
+            end: {
+              x: tipX - arrowLength * Math.cos(angle + offset),
+              y: tipY - arrowLength * Math.sin(angle + offset),
+            },
+            thickness: 2.5,
+            color,
+          });
+        }
         page.drawRectangle({ x, y, width, height, color, borderColor: rgb(1, 1, 1), borderWidth: 1, opacity: 0.92 });
-        page.drawText(asciiText(placement.code).slice(0, 24), { x: x + 3, y: y + Math.max(2, height * 0.25), size: Math.max(7, Math.min(18, height * 0.55)), font: codeFont, color: rgb(1, 1, 1) });
+        const placementText = `${asciiText(placement.code)} × ${placement.quantity}`.slice(0, 36);
+        page.drawText(placementText, { x: x + 3, y: y + Math.max(2, height * 0.25), size: Math.max(7, Math.min(18, height * 0.48)), font: codeFont, color: rgb(1, 1, 1) });
       }
     }
-  } finally {
-    closeDocument(pdfium, source);
+      originalPageCount += sourcePageCount;
+    } finally {
+      closeDocument(pdfium, source);
+    }
+  }
+
+  if (codes.some((item) => !Number.isInteger(item.page) || item.page < 1 || item.page > originalPageCount
+    || !Number.isFinite(item.quantity) || item.quantity <= 0
+    || item.x < 0 || item.y < 0 || item.width <= 0 || item.height <= 0 || item.x + item.width > 1 || item.y + item.height > 1
+    || item.arrowTipX < 0 || item.arrowTipX > 1 || item.arrowTipY < 0 || item.arrowTipY > 1)) {
+    throw new Error("El borrador contiene códigos fuera de las páginas o bordes del PDF.");
   }
 
   const font = await output.embedFont(StandardFonts.Helvetica);
@@ -288,6 +323,7 @@ async function composeUnlocked(
       bytes,
       pageCount,
       originalPageCount,
+      sourceDocumentIds: sourceDocuments.map((source) => source.id),
       sourcePhotoIds: evidence.map((photo) => photo.id).sort(),
     };
   } finally {
@@ -296,7 +332,7 @@ async function composeUnlocked(
 }
 
 export async function composeDeliveredPdf(
-  originalPdf: Uint8Array,
+  sourceDocuments: DeliveredPdfSource[],
   evidence: DeliveredPdfEvidence[],
   codes: DeliveredPdfCodePlacement[] = [],
 ) {
@@ -305,7 +341,33 @@ export async function composeDeliveredPdf(
   compositionTail = new Promise<void>((resolve) => { release = resolve; });
   await previous;
   try {
-    return await composeUnlocked(originalPdf, evidence, codes);
+    return await composeUnlocked(sourceDocuments, evidence, codes);
+  } finally {
+    release();
+  }
+}
+
+export async function inspectPdfDocument(bytes: Uint8Array) {
+  const previous = compositionTail;
+  let release!: () => void;
+  compositionTail = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    if (!bytes.length || bytes.length > MAX_ORIGINAL_BYTES) throw new Error("El PDF supera el límite de 25 MB.");
+    const pdfium = await loadPdfium();
+    const source = openDocument(pdfium, bytes);
+    try {
+      const pageCount = pdfium.FPDF_GetPageCount(source.document);
+      if (pageCount < 1 || pageCount > MAX_SOURCE_PAGES) throw new Error("El PDF tiene un número de páginas inválido.");
+      for (let index = 0; index < pageCount; index += 1) {
+        const page = pdfium.FPDF_LoadPage(source.document, index);
+        if (!page) throw new Error(`PDFium no pudo leer la página ${index + 1}.`);
+        pdfium.FPDF_ClosePage(page);
+      }
+      return { pageCount };
+    } finally {
+      closeDocument(pdfium, source);
+    }
   } finally {
     release();
   }

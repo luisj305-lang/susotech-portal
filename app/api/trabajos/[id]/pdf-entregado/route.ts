@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { composeDeliveredPdf } from "@/lib/jobs/delivered-pdf";
+import { ensureVerifiedDocumentManifest } from "@/lib/jobs/document-manifest";
 import { codeColor, validatePlacements, type PdfCodePlacement } from "@/lib/jobs/pdf-code-editor-core";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
@@ -12,7 +14,7 @@ export const maxDuration = 60;
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const MAX_INPUT_BYTES = 120 * 1024 * 1024;
-const MAX_ORIGINAL_BYTES = 25 * 1024 * 1024;
+const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 const MAX_PHOTOS = 30;
 
@@ -82,11 +84,20 @@ export async function POST(
   }
 
   const service = createServiceClient();
-  const [{ data: draft, error: draftError }, { data: catalog, error: catalogError }] = await Promise.all([
-    supabase.from("job_pdf_drafts").select("version,source_page_count,placements").eq("job_id", jobId).maybeSingle(),
-    service.from("production_code_catalog").select("id,code").eq("is_active", true),
+  let verifiedDocuments;
+  try {
+    verifiedDocuments = await ensureVerifiedDocumentManifest(service, jobId, job.project_pdf_url);
+  } catch (error) {
+    return json(error instanceof Error ? error.message : "No se pudieron verificar los PDFs fuente.", 409);
+  }
+  const [{ data: draft, error: draftError }, { data: catalog, error: catalogError }, { data: documents, error: documentsError }] = await Promise.all([
+    supabase.from("job_pdf_drafts").select("version,source_page_count,source_document_ids,placements").eq("job_id", jobId).maybeSingle(),
+    service.from("production_code_catalog").select("id,code,unit").eq("is_active", true),
+    supabase.from("job_documents").select("id,storage_path,file_hash,page_count,position,document_type")
+      .eq("job_id", jobId).eq("status", "active").is("deleted_at", null)
+      .eq("verification_status", "pdf_verified").order("position", { ascending: true }).order("created_at", { ascending: true }),
   ]);
-  if (draftError || !draft || catalogError) return draftError?.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+  if (draftError || !draft || catalogError || documentsError) return draftError?.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
     ? json(ACTIVE_SHIFT_REQUIRED_MESSAGE, 403)
     : json("Abre el editor y guarda el borrador antes de entregar.", 409);
   const placements = draft.placements as PdfCodePlacement[];
@@ -94,6 +105,16 @@ export async function POST(
   if (placementError) return json(placementError, 409);
   const catalogById = new Map((catalog ?? []).map((item) => [item.id, item.code]));
   if (placements.some((item) => !catalogById.has(item.catalogId))) return json("El borrador contiene un código no disponible.", 409);
+  const catalogUnits = new Map((catalog ?? []).map((item) => [item.id, item.unit]));
+  if (placements.some((item) => ["fixed", "event"].includes(catalogUnits.get(item.catalogId) ?? "") && !Number.isInteger(item.quantity))) {
+    return json("Los códigos de cantidad fija o evento requieren un entero mayor que cero.", 409);
+  }
+  const sourceDocuments = documents?.length ? documents : verifiedDocuments;
+  if (!sourceDocuments.length || !sourceDocuments.some((document) => document.document_type === "original")
+    || sourceDocuments.some((document) => !document.file_hash || !document.page_count)
+    || sourceDocuments.map((document) => document.id).join(",") !== (draft.source_document_ids ?? []).join(",")) {
+    return json("Los PDFs fuente cambiaron. Vuelve a abrir el editor antes de entregar.", 409);
+  }
 
   const { data: photos, error: photoError } = await supabase
     .from("job_photos")
@@ -123,9 +144,18 @@ export async function POST(
       (uploaders ?? []).map((uploader) => [uploader.id, uploader.full_name?.trim() || uploader.email]),
     );
 
-    const originalPdf = await downloadPrivateObject(service, "project-files", job.project_pdf_url);
-    if (originalPdf.length > MAX_ORIGINAL_BYTES) throw new Error("El PDF original supera el límite de 25 MB.");
-    let totalBytes = originalPdf.length;
+    const sourceBytes: { id: string; bytes: Uint8Array }[] = [];
+    let totalBytes = 0;
+    for (const document of sourceDocuments) {
+      const bytes = await downloadPrivateObject(service, "project-files", document.storage_path);
+      if (bytes.length > MAX_SOURCE_BYTES) throw new Error("Un PDF fuente supera el límite de 25 MB.");
+      if (createHash("sha256").update(bytes).digest("hex") !== document.file_hash) {
+        throw new Error("Un PDF fuente no coincide con su hash verificado.");
+      }
+      totalBytes += bytes.length;
+      if (totalBytes > MAX_INPUT_BYTES) throw new Error("Los documentos de entrada superan el límite de 120 MB.");
+      sourceBytes.push({ id: document.id, bytes });
+    }
     const photoBytes: Uint8Array[] = [];
     for (const photo of photos) {
       const bytes = await downloadPrivateObject(service, "job-evidence", photo.storage_path);
@@ -136,7 +166,7 @@ export async function POST(
     }
 
     const delivered = await composeDeliveredPdf(
-      originalPdf,
+      sourceBytes,
       photos.map((photo, index) => ({
         id: photo.id,
         bytes: photoBytes[index],
@@ -158,6 +188,8 @@ export async function POST(
           generator: "susotech-portal",
           job_id: jobId,
           source_photo_ids: delivered.sourcePhotoIds.join(","),
+          source_document_ids: delivered.sourceDocumentIds.join(","),
+          snapshot_hash: createHash("sha256").update(JSON.stringify(placements)).digest("hex"),
         },
       },
     );
@@ -165,13 +197,15 @@ export async function POST(
     uploaded = true;
 
     const { data: confirmation, error: confirmationError } = await supabase.rpc(
-      "confirm_delivered_job_pdf_versioned",
+      "confirm_delivered_job_pdf_complete",
       {
         p_job_id: jobId,
         p_storage_path: deliveredPath,
         p_source_photo_ids: delivered.sourcePhotoIds,
+        p_source_document_ids: delivered.sourceDocumentIds,
         p_submit: input.submit,
         p_expected_draft_version: draft.version,
+        p_snapshot_hash: createHash("sha256").update(JSON.stringify(placements)).digest("hex"),
       },
     );
 

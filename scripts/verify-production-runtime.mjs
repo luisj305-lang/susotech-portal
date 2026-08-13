@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -21,7 +21,7 @@ const options={auth:{persistSession:false,autoRefreshToken:false,detectSessionIn
 const service=createClient(url,serviceKey,options);
 const users=[]; const jobs=[]; const objects={"project-files":[],"job-evidence":[]}; let checks=0; let cleanupPassed=false;
 const runId=randomBytes(6).toString("hex"); const password=`${randomBytes(18).toString("base64url")}Aa1!`;
-function check(value,label,error){assert.ok(value,`${label}${error?` [${error.code??error.message}]`:""}`);checks++;}
+function check(value,label,error){assert.ok(value,`${label}${error?` [${error.code??"error"}: ${error.message??"unknown"}]`:""}`);checks++;}
 async function ok(label,promise){const result=await promise;check(!result.error,label,result.error);return result.data;}
 async function identity(label,role,technicianType="in_house"){
   const email=`production-${runId}-${label}@example.com`;
@@ -41,13 +41,23 @@ async function upload(bucket,path,bytes,contentType,client=service,metadata){
   await ok(`upload ${bucket}/${path}`,client.storage.from(bucket).upload(path,bytes,{contentType,upsert:false,metadata}));
   objects[bucket].push(path);
 }
-async function deliver(client,jobId,technicianId){
+async function deliver(client,adminClient,jobId,technicianId,catalogId){
+  const originalPath=`${jobId}/production-original.pdf`;
+  await upload("project-files",originalPath,minimalPdf,"application/pdf");
+  await ok("attach production original",adminClient.from("jobs").update({project_pdf_url:originalPath}).eq("id",jobId));
+  const originalHash=createHash("sha256").update(minimalPdf).digest("hex");
+  const original=await ok("register production original",service.rpc("ensure_job_original_document",{p_job_id:jobId,p_storage_path:originalPath,p_original_filename:"production-original.pdf",p_size_bytes:minimalPdf.length,p_file_hash:originalHash,p_page_count:1}));
+  const sourceDocumentId=original;
+  const initialized=await ok("initialize production draft",client.rpc("initialize_job_pdf_draft_v2",{p_job_id:jobId,p_source_document_ids:[sourceDocumentId],p_page_count:1}));
+  const placement={id:randomUUID(),catalogId,page:1,sourceDocumentId,sourcePage:1,quantity:100,x:0.1,y:0.1,width:0.2,height:0.08,arrowTipX:0.5,arrowTipY:0.5};
+  const draftVersion=await ok("save production draft",client.rpc("save_job_pdf_draft_v2",{p_job_id:jobId,p_expected_version:initialized[0].version,p_placements:[placement]}));
+  const snapshotHash=createHash("sha256").update(JSON.stringify([placement])).digest("hex");
   const photoId=randomUUID(); const photoPath=`${jobId}/${randomUUID()}.png`;
   await upload("job-evidence",photoPath,tinyPng,"image/png",client);
   await ok("confirm production evidence",client.from("job_photos").insert({id:photoId,job_id:jobId,storage_path:photoPath,photo_type:"evidence",uploaded_by:technicianId}));
   const deliveredPath=`${jobId}/delivered/${randomUUID()}.pdf`;
-  await upload("project-files",deliveredPath,minimalPdf,"application/pdf",service,{generator:"susotech-portal",job_id:jobId,source_photo_ids:photoId});
-  const submitted=await ok("submit production job atomically",client.rpc("confirm_delivered_job_pdf",{p_job_id:jobId,p_storage_path:deliveredPath,p_source_photo_ids:[photoId],p_submit:true}));
+  await upload("project-files",deliveredPath,minimalPdf,"application/pdf",service,{generator:"susotech-portal",job_id:jobId,source_photo_ids:photoId,source_document_ids:sourceDocumentId,snapshot_hash:snapshotHash});
+  const submitted=await ok("submit production job atomically",client.rpc("confirm_delivered_job_pdf_complete",{p_job_id:jobId,p_storage_path:deliveredPath,p_source_photo_ids:[photoId],p_source_document_ids:[sourceDocumentId],p_submit:true,p_expected_draft_version:draftVersion,p_snapshot_hash:snapshotHash}));
   check(submitted?.[0]?.delivered_status==="enviado_revision","atomic production delivery advances state");
 }
 async function cleanup(){const errors=[]; for(const bucket of Object.keys(objects)) if(objects[bucket].length&&(await service.storage.from(bucket).remove(objects[bucket])).error) errors.push(bucket); if(jobs.length&&(await service.from("jobs").delete().in("id",jobs)).error) errors.push("jobs"); if(users.length&&(await service.from("technician_shifts").delete().in("technician_id",users)).error) errors.push("shifts"); for(const id of [...users].reverse()) if((await service.auth.admin.deleteUser(id)).error) errors.push("users"); cleanupPassed=!errors.length; if(errors.length) throw new Error(`cleanup failed: ${[...new Set(errors)].join(",")}`);}
@@ -85,7 +95,8 @@ async function main(){
 
   const directSubmit=await inHouse.client.from("jobs").update({main_status:"enviado_revision"}).eq("id",jobA.id).select("id").single();
   check(Boolean(directSubmit.error),"direct in-house submission denied");
-  await deliver(inHouse.client,jobA.id,inHouse.id);
+  await deliver(inHouse.client,admin.client,jobA.id,inHouse.id,inAc.id);
+  await deliver(contractor.client,admin.client,jobB.id,contractor.id,conAc.id);
   await ok("approve in-house",supervisor.client.from("jobs").update({main_status:"aprobado"}).eq("id",jobA.id).select("id").single());
   const own=await ok("own weekly",inHouse.client.rpc("get_my_weekly_production",{p_reference_date:null}));
   check(own.length===1&&own[0].billing_state==="confirmed","own weekly confirmed and isolated");
@@ -96,12 +107,12 @@ async function main(){
   check(report.some((row)=>row.technician_id===inHouse.id&&row.billing_state==="confirmed"),"office sees confirmed line");
   check(report.some((row)=>row.technician_id===contractor.id&&row.billing_state==="pending"),"office sees pending line");
 
-  const denied=await supervisor.client.rpc("set_job_archived",{p_job_id:jobB.id,p_archived:true,p_reason:"runtime"});
+  const denied=await supervisor.client.rpc("set_job_archived_v2",{p_job_id:jobB.id,p_archived:true,p_reason_code:"duplicate_job",p_notes:"runtime"});
   check(Boolean(denied.error),"supervisor cannot archive");
-  await ok("admin archives",admin.client.rpc("set_job_archived",{p_job_id:jobB.id,p_archived:true,p_reason:"runtime"}));
+  await ok("admin archives",admin.client.rpc("set_job_archived_v2",{p_job_id:jobB.id,p_archived:true,p_reason_code:"duplicate_job",p_notes:"runtime"}));
   const hidden=await ok("archived hidden from technician",contractor.client.from("jobs").select("id").eq("id",jobB.id));
   check(hidden.length===0,"archived job inaccessible to technician");
-  await ok("admin restores",admin.client.rpc("set_job_archived",{p_job_id:jobB.id,p_archived:false,p_reason:null}));
+  await ok("admin restores",admin.client.rpc("set_job_archived_v2",{p_job_id:jobB.id,p_archived:false,p_reason_code:null,p_notes:null}));
   const visible=await ok("restored visible",contractor.client.from("jobs").select("id").eq("id",jobB.id)); check(visible.length===1,"restored job visible");
 }
 let failure;

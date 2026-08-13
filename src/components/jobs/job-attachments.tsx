@@ -4,7 +4,6 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { JobDocument } from "@/lib/jobs/types";
 import {
-  confirmJobDocumentUpload,
   createSignedDownloadUrl,
   deleteJobDocument,
   prepareJobDocumentUpload,
@@ -49,8 +48,11 @@ export function JobAttachments({
       const failures: string[] = [];
       for (const [index, file] of files.entries()) {
         setProgress(`Subiendo ${index + 1} de ${files.length}: ${file.name}`);
+        const fileHash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))]
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
         const prepared = await prepareJobDocumentUpload({
-          jobId, fileName: file.name, mimeType: file.type, size: file.size,
+          jobId, fileName: file.name, mimeType: file.type, size: file.size, fileHash,
         });
         if (!prepared.success) { failures.push(`${file.name}: ${prepared.message}`); continue; }
 
@@ -66,11 +68,11 @@ export function JobAttachments({
           continue;
         }
 
-        const confirmed = await confirmJobDocumentUpload({
-          documentId: prepared.data.documentId,
-          jobId,
+        const confirmationResponse = await fetch(`/api/trabajos/${jobId}/documentos/${prepared.data.documentId}/confirmar`, {
+          method: "POST",
         });
-        if (!confirmed.success) {
+        const confirmed = await confirmationResponse.json().catch(() => ({ success: false, message: "No se pudo confirmar el adjunto." }));
+        if (!confirmationResponse.ok || !confirmed.success) {
           await deleteJobDocument({ documentId: prepared.data.documentId, jobId });
           failures.push(`${file.name}: ${confirmed.message}`);
           continue;
@@ -99,7 +101,7 @@ export function JobAttachments({
     <h2 className="text-xl font-bold">Adjuntos PDF</h2>
     <p className="mt-1 text-sm text-white">Documentos adicionales; no reemplazan el PDF original ni el entregado.</p>
     {documents.length ? <ul className="mt-4 grid gap-3">{documents.map((document) => <li key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white p-3">
-      <div><p className="font-semibold">{document.display_name}</p><p className="text-sm">{(document.size_bytes / 1024 / 1024).toFixed(2)} MB</p></div>
+      <div><p className="font-semibold">{document.position}. {document.display_name}</p><p className="text-sm">{(document.size_bytes / 1024 / 1024).toFixed(2)} MB · {document.page_count ?? "?"} página(s)</p></div>
       <div className="flex gap-2"><button type="button" disabled={pending} onClick={() => open(document.storage_path)} className="min-h-11 rounded-lg border border-white px-4 font-semibold disabled:opacity-60">Ver PDF</button>{canManage && <button type="button" disabled={pending} onClick={() => remove(document)} className="min-h-11 rounded-lg border border-white px-4 font-semibold disabled:opacity-60">Eliminar</button>}</div>
     </li>)}</ul> : <p className="mt-4 text-sm">No hay adjuntos adicionales.</p>}
     {canManage && <div className="mt-5 grid gap-3 border-t border-white pt-4"><label className="grid gap-1 font-semibold">Añadir uno o más PDFs<input ref={input} type="file" accept="application/pdf,.pdf" multiple disabled={pending} className="min-h-12 rounded-lg border border-white p-3" /></label><div className="flex flex-wrap gap-2"><button type="button" disabled={pending} onClick={upload} className="min-h-12 w-fit rounded-lg border border-white px-5 font-bold disabled:opacity-60">{pending ? "Procesando…" : "Subir PDFs"}</button><button type="button" disabled={pending} onClick={() => startTransition(async () => { const result = await reconcileJobDocumentUploads({ jobId }); setMessage(result.message); if (result.success) router.refresh(); })} className="min-h-12 w-fit rounded-lg border border-white px-5 font-semibold disabled:opacity-60">Recuperar cargas interrumpidas</button></div></div>}

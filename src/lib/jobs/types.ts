@@ -18,6 +18,13 @@ export type AssigneeType = "technician" | "crew";
 
 export type JobCategory = "categoria_1" | "categoria_2" | "categoria_3";
 
+export type ArchiveReasonCode =
+  | "duplicate_job"
+  | "cancelled_by_client_or_office"
+  | "incorrect_address_or_data"
+  | "no_access_or_blocked_conditions"
+  | "out_of_scope";
+
 export interface Job {
   id: string;
   prism_number: string | null;
@@ -43,6 +50,8 @@ export interface Job {
   delivered_pdf_generated_at: string | null;
   delivered_pdf_generated_by: string | null;
   delivered_pdf_source_photo_ids: string[];
+  delivered_pdf_source_document_ids: string[];
+  current_delivery_id: string | null;
   assignment_date: string | null;
   deadline_date: string | null;
   submitted_at: string | null;
@@ -51,6 +60,8 @@ export interface Job {
   archived_at: string | null;
   archived_by: string | null;
   archive_reason: string | null;
+  archive_reason_code: ArchiveReasonCode | null;
+  archive_notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -114,6 +125,17 @@ export interface JobProductionCode {
   created_at: string;
 }
 
+export interface JobArchiveEvent {
+  id: string;
+  event_type: "archived" | "restored";
+  reason_code: ArchiveReasonCode | null;
+  notes: string | null;
+  actor_id: string | null;
+  actor_name: string | null;
+  occurred_at: string;
+  is_legacy: boolean;
+}
+
 export type ProductionUnit = "fixed" | "foot" | "hour" | "event";
 
 export interface ProductionCatalogOption {
@@ -157,7 +179,30 @@ export interface JobPhoto {
   uploaded_by: string;
   comment: string | null;
   created_at: string;
+  uploader_name?: string | null;
 }
+
+export type WorkerProductionBreakdown = {
+  code: string;
+  unit: ProductionUnit | null;
+  quantity: number;
+};
+
+export type WorkerOperationsRow = {
+  technician_id: string;
+  technician_name: string;
+  crew_names: string[];
+  is_shift_active: boolean;
+  shift_started_at: string | null;
+  shift_active_until: string | null;
+  weekly_production: number;
+  weekly_delivered_jobs: number;
+  weekly_fuel_amount: number;
+  production_breakdown: WorkerProductionBreakdown[];
+  server_now: string;
+  week_start_at: string;
+  week_end_exclusive_at: string;
+};
 
 export interface JobDocument {
   id: string;
@@ -166,16 +211,26 @@ export interface JobDocument {
   storage_path: string;
   mime_type: "application/pdf";
   size_bytes: number;
-  status: "active";
-  uploaded_by: string;
+  status: "pending" | "active";
+  uploaded_by: string | null;
   created_at: string;
   confirmed_at: string;
+  document_type: "original" | "additional";
+  original_filename: string;
+  file_hash: string | null;
+  position: number;
+  page_count: number | null;
+  verification_status: "pending" | "metadata_verified" | "pdf_verified" | "failed";
+  verified_at: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
 }
 
 export interface JobPdfDraft {
   job_id: string;
   version: number;
   source_page_count: number;
+  source_document_ids: string[];
   placements: import("./pdf-code-editor-core").PdfCodePlacement[];
   updated_at: string;
 }

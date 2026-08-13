@@ -73,7 +73,7 @@ try {
   const original = await readFile(originalPath);
   const originalHash = hash(original);
   const evidence = await readFile(evidencePath);
-  const delivered = await composeDeliveredPdf(original, [{
+  const delivered = await composeDeliveredPdf([{ id: "11111111-1111-4111-8111-111111111111", bytes: original }], [{
     id: "2ee76113-4e5f-4e6f-b520-2036fa73fd59",
     bytes: evidence,
     createdAt: "2026-08-10T00:00:00.000Z",

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -31,6 +31,8 @@ const jobs = [];
 const crews = [];
 const projectObjects = [];
 const evidenceObjects = [];
+const deliveryContexts = new Map();
+let adminClient;
 let checks = 0;
 let cleanupPassed = false;
 
@@ -108,6 +110,39 @@ async function prepareEvidence(client, jobId, technicianId) {
 }
 
 async function deliver(client, jobId, sourcePhotoIds, label) {
+  let context = deliveryContexts.get(jobId);
+  if (!context) {
+    const originalPath = `${jobId}/original-runtime.pdf`;
+    await ok("upload original delivery fixture", service.storage.from("project-files").upload(originalPath, minimalPdf, {
+      contentType: "application/pdf", upsert: false,
+    }));
+    projectObjects.push(originalPath);
+    await ok("attach original delivery fixture", adminClient.from("jobs").update({ project_pdf_url: originalPath }).eq("id", jobId));
+    const originalHash = createHash("sha256").update(minimalPdf).digest("hex");
+    const original = await ok("register original delivery fixture", service.rpc("ensure_job_original_document", {
+      p_job_id: jobId, p_storage_path: originalPath, p_original_filename: "original-runtime.pdf",
+      p_size_bytes: minimalPdf.length, p_file_hash: originalHash, p_page_count: 1,
+    }));
+    const catalog = await ok("read delivery catalog fixture", service.from("production_code_catalog").select("id").limit(1).single());
+    const sourceDocumentId = original;
+    const initialized = await ok("initialize delivery draft", client.rpc("initialize_job_pdf_draft_v2", {
+      p_job_id: jobId, p_source_document_ids: [sourceDocumentId], p_page_count: 1,
+    }));
+    const placement = {
+      id: randomUUID(), catalogId: catalog.id, page: 1, sourceDocumentId, sourcePage: 1,
+      quantity: 1, x: 0.1, y: 0.1, width: 0.2, height: 0.08,
+      arrowTipX: 0.5, arrowTipY: 0.5,
+    };
+    const draftVersion = await ok("save delivery draft", client.rpc("save_job_pdf_draft_v2", {
+      p_job_id: jobId, p_expected_version: initialized[0].version, p_placements: [placement],
+    }));
+    context = {
+      sourceDocumentId,
+      draftVersion,
+      snapshotHash: createHash("sha256").update(JSON.stringify([placement])).digest("hex"),
+    };
+    deliveryContexts.set(jobId, context);
+  }
   const path = `${jobId}/delivered/${randomUUID()}.pdf`;
   const sortedPhotoIds = [...sourcePhotoIds].sort();
   await ok(`upload ${label} delivered PDF`, service.storage.from("project-files").upload(path, minimalPdf, {
@@ -117,14 +152,19 @@ async function deliver(client, jobId, sourcePhotoIds, label) {
       generator: "susotech-portal",
       job_id: jobId,
       source_photo_ids: sortedPhotoIds.join(","),
+      source_document_ids: context.sourceDocumentId,
+      snapshot_hash: context.snapshotHash,
     },
   }));
   projectObjects.push(path);
-  const delivered = await ok(label, client.rpc("confirm_delivered_job_pdf", {
+  const delivered = await ok(label, client.rpc("confirm_delivered_job_pdf_complete", {
     p_job_id: jobId,
     p_storage_path: path,
     p_source_photo_ids: sourcePhotoIds,
+    p_source_document_ids: [context.sourceDocumentId],
     p_submit: true,
+    p_expected_draft_version: context.draftVersion,
+    p_snapshot_hash: context.snapshotHash,
   }));
   check(delivered?.[0]?.delivered_status === "enviado_revision", `${label} advances through atomic delivery`);
   return ok(`read ${label} state`, client.from("jobs")
@@ -168,6 +208,7 @@ async function cleanup() {
 
 async function main() {
   const admin = await identity("admin", "admin");
+  adminClient = admin.client;
   const supervisor = await identity("supervisor", "supervisor");
   const technician = await identity("technician", "tecnico");
   const other = await identity("other", "tecnico");

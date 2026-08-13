@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -111,6 +111,25 @@ try {
     job_ids: [jobId], new_assignee_type: "technician", new_assignee_id: technician.id,
   }));
   await upload("project-files", originalPath, minimalPdf, "application/pdf");
+  const originalHash = createHash("sha256").update(minimalPdf).digest("hex");
+  const originalDocument = await ok("register verified original", service.rpc("ensure_job_original_document", {
+    p_job_id: jobId, p_storage_path: originalPath, p_original_filename: "original.pdf",
+    p_size_bytes: minimalPdf.length, p_file_hash: originalHash, p_page_count: 1,
+  }));
+  const documentId = originalDocument;
+  const catalog = await ok("read production catalog", service.from("production_code_catalog").select("id").limit(1).single());
+  const initialized = await ok("initialize complete draft", technician.client.rpc("initialize_job_pdf_draft_v2", {
+    p_job_id: jobId, p_source_document_ids: [documentId], p_page_count: 1,
+  }));
+  const placement = {
+    id: randomUUID(), catalogId: catalog.id, page: 1, sourceDocumentId: documentId,
+    sourcePage: 1, quantity: 1, x: 0.1, y: 0.1, width: 0.2, height: 0.08,
+    arrowTipX: 0.5, arrowTipY: 0.5,
+  };
+  const draftVersion = await ok("save complete draft", technician.client.rpc("save_job_pdf_draft_v2", {
+    p_job_id: jobId, p_expected_version: initialized[0].version, p_placements: [placement],
+  }));
+  const snapshotHash = createHash("sha256").update(JSON.stringify([placement])).digest("hex");
 
   const photoOneId = randomUUID();
   const photoOnePath = `${jobId}/${randomUUID()}.png`;
@@ -125,32 +144,43 @@ try {
   }));
 
   const missingDeliveredPath = `${jobId}/delivered/${randomUUID()}.pdf`;
-  await denied("missing delivered object cannot be confirmed", technician.client.rpc("confirm_delivered_job_pdf", {
-    p_job_id: jobId, p_storage_path: missingDeliveredPath, p_source_photo_ids: [photoOneId], p_submit: true,
+  await denied("missing delivered object cannot be confirmed", technician.client.rpc("confirm_delivered_job_pdf_complete", {
+    p_job_id: jobId, p_storage_path: missingDeliveredPath, p_source_photo_ids: [photoOneId],
+    p_source_document_ids: [documentId], p_submit: true,
+    p_expected_draft_version: draftVersion, p_snapshot_hash: snapshotHash,
   }));
 
   const untrustedDeliveredPath = `${jobId}/delivered/${randomUUID()}.pdf`;
   await upload("project-files", untrustedDeliveredPath, minimalPdf, "application/pdf");
-  await denied("untrusted delivered object cannot be confirmed", technician.client.rpc("confirm_delivered_job_pdf", {
-    p_job_id: jobId, p_storage_path: untrustedDeliveredPath, p_source_photo_ids: [photoOneId], p_submit: true,
+  await denied("untrusted delivered object cannot be confirmed", technician.client.rpc("confirm_delivered_job_pdf_complete", {
+    p_job_id: jobId, p_storage_path: untrustedDeliveredPath, p_source_photo_ids: [photoOneId],
+    p_source_document_ids: [documentId], p_submit: true,
+    p_expected_draft_version: draftVersion, p_snapshot_hash: snapshotHash,
   }));
 
   const firstDeliveredPath = `${jobId}/delivered/${randomUUID()}.pdf`;
   await upload("project-files", firstDeliveredPath, minimalPdf, "application/pdf", service, {
     generator: "susotech-portal", job_id: jobId, source_photo_ids: photoOneId,
+    source_document_ids: documentId, snapshot_hash: snapshotHash,
   });
-  await denied("anonymous cannot confirm", anonymous.rpc("confirm_delivered_job_pdf", {
-    p_job_id: jobId, p_storage_path: firstDeliveredPath, p_source_photo_ids: [photoOneId], p_submit: true,
+  await denied("anonymous cannot confirm", anonymous.rpc("confirm_delivered_job_pdf_complete", {
+    p_job_id: jobId, p_storage_path: firstDeliveredPath, p_source_photo_ids: [photoOneId],
+    p_source_document_ids: [documentId], p_submit: true,
+    p_expected_draft_version: draftVersion, p_snapshot_hash: snapshotHash,
   }));
-  await denied("unassigned technician cannot confirm", outsider.client.rpc("confirm_delivered_job_pdf", {
-    p_job_id: jobId, p_storage_path: firstDeliveredPath, p_source_photo_ids: [photoOneId], p_submit: true,
+  await denied("unassigned technician cannot confirm", outsider.client.rpc("confirm_delivered_job_pdf_complete", {
+    p_job_id: jobId, p_storage_path: firstDeliveredPath, p_source_photo_ids: [photoOneId],
+    p_source_document_ids: [documentId], p_submit: true,
+    p_expected_draft_version: draftVersion, p_snapshot_hash: snapshotHash,
   }));
   await denied("technician cannot update delivered metadata directly", technician.client.from("jobs").update({
     delivered_pdf_path: firstDeliveredPath,
   }).eq("id", jobId));
 
-  const submitted = await ok("technician atomically delivers", technician.client.rpc("confirm_delivered_job_pdf", {
-    p_job_id: jobId, p_storage_path: firstDeliveredPath, p_source_photo_ids: [photoOneId], p_submit: true,
+  const submitted = await ok("technician atomically delivers", technician.client.rpc("confirm_delivered_job_pdf_complete", {
+    p_job_id: jobId, p_storage_path: firstDeliveredPath, p_source_photo_ids: [photoOneId],
+    p_source_document_ids: [documentId], p_submit: true,
+    p_expected_draft_version: draftVersion, p_snapshot_hash: snapshotHash,
   }));
   check(submitted?.[0]?.delivered_status === "enviado_revision", "submission advances existing state");
   const afterSubmit = await ok("read submitted pointer", technician.client.from("jobs")
@@ -177,19 +207,25 @@ try {
   const supervisorPath = `${jobId}/delivered/${randomUUID()}.pdf`;
   await upload("project-files", supervisorPath, minimalPdf, "application/pdf", service, {
     generator: "susotech-portal", job_id: jobId, source_photo_ids: [photoOneId, photoTwoId].sort().join(","),
+    source_document_ids: documentId, snapshot_hash: snapshotHash,
   });
-  await denied("stale photo snapshot cannot replace valid pointer", supervisor.client.rpc("confirm_delivered_job_pdf", {
-    p_job_id: jobId, p_storage_path: supervisorPath, p_source_photo_ids: [photoOneId], p_submit: false,
+  await denied("stale photo snapshot cannot replace valid pointer", supervisor.client.rpc("confirm_delivered_job_pdf_complete", {
+    p_job_id: jobId, p_storage_path: supervisorPath, p_source_photo_ids: [photoOneId],
+    p_source_document_ids: [documentId], p_submit: false,
+    p_expected_draft_version: draftVersion, p_snapshot_hash: snapshotHash,
   }));
   const stillFirst = await ok("read pointer after rejected stale confirmation", admin.client.from("jobs")
     .select("delivered_pdf_path").eq("id", jobId).single());
   check(stillFirst.delivered_pdf_path === firstDeliveredPath, "failed regeneration preserves last valid pointer");
 
-  await denied("supervisor cannot regenerate current PDF", supervisor.client.rpc("confirm_delivered_job_pdf", {
+  await denied("supervisor cannot regenerate current PDF", supervisor.client.rpc("confirm_delivered_job_pdf_complete", {
     p_job_id: jobId,
     p_storage_path: supervisorPath,
     p_source_photo_ids: [photoTwoId, photoOneId],
+    p_source_document_ids: [documentId],
     p_submit: false,
+    p_expected_draft_version: draftVersion,
+    p_snapshot_hash: snapshotHash,
   }));
   const afterSupervisor = await ok("read pointer after supervisor denial", admin.client.from("jobs")
     .select("delivered_pdf_path").eq("id", jobId).single());
@@ -198,12 +234,16 @@ try {
   const adminPath = `${jobId}/delivered/${randomUUID()}.pdf`;
   await upload("project-files", adminPath, minimalPdf, "application/pdf", service, {
     generator: "susotech-portal", job_id: jobId, source_photo_ids: [photoOneId, photoTwoId].sort().join(","),
+    source_document_ids: documentId, snapshot_hash: snapshotHash,
   });
-  const adminResult = await ok("admin regenerates current PDF", admin.client.rpc("confirm_delivered_job_pdf", {
+  const adminResult = await ok("admin regenerates current PDF", admin.client.rpc("confirm_delivered_job_pdf_complete", {
     p_job_id: jobId,
     p_storage_path: adminPath,
     p_source_photo_ids: [photoOneId, photoTwoId],
+    p_source_document_ids: [documentId],
     p_submit: false,
+    p_expected_draft_version: draftVersion,
+    p_snapshot_hash: snapshotHash,
   }));
   check(adminResult?.[0]?.previous_storage_path === firstDeliveredPath, "admin RPC returns cleanup candidate");
   const finalJob = await ok("read final pointer", admin.client.from("jobs")

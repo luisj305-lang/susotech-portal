@@ -65,6 +65,7 @@ async function cleanup() {
   const errors = [];
   if (jobIds.length && (await service.from("jobs").delete().in("id", jobIds)).error) errors.push("jobs");
   if (crewIds.length && (await service.from("crews").delete().in("id", crewIds)).error) errors.push("crews");
+  if (userIds.length && (await service.from("technician_shifts").delete().in("technician_id", userIds)).error) errors.push("shifts");
   for (const id of [...userIds].reverse()) if ((await service.auth.admin.deleteUser(id)).error) errors.push("users");
   cleanupPassed = errors.length === 0;
   if (!cleanupPassed) throw new Error(`Cleanup failed [${[...new Set(errors)].join(",")}]`);
@@ -78,6 +79,12 @@ async function main() {
   const removedOnly = await identity("removed-only", "tecnico");
   const alternative = await identity("alternative", "tecnico");
   const outsider = await identity("outsider", "tecnico");
+
+  for (const [label, technician] of [["lead", lead], ["new lead", newLead], ["removed member", removedOnly], ["alternative", alternative], ["outsider", outsider]]) {
+    await ok(`${label} starts shift`, technician.client.rpc("start_technician_shift", {
+      p_fuel_amount: "0", p_no_fuel_today: true, p_fuel_photo_path: null,
+    }));
+  }
 
   const adminDirectory = await ok("admin lists active technicians", admin.client.rpc("list_active_technicians_for_office"));
   check([lead.id, newLead.id, removedOnly.id, alternative.id].every((id) => adminDirectory.some((row) => row.id === id)), "admin directory includes active technicians");
