@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addPhotoComment } from "@/lib/jobs/actions";
-import { createPhotoUploadUrl } from "@/lib/storage/actions";
+import { createPhotoUploadUrl, discardUnconfirmedPhotoUpload } from "@/lib/storage/actions";
 import { supabase } from "@/lib/supabase/client";
 import { UploadFeedback } from "./upload-feedback";
 
@@ -24,6 +24,7 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
       const { error } = await supabase.storage.from("job-evidence").uploadToSignedUrl(prepared.data.path, prepared.data.token, file, { contentType: file.type });
       if (error) { setMessage("No se pudo subir la foto. Puedes reintentar."); return; }
       const confirmed = await addPhotoComment({ jobId, storagePath: prepared.data.path, photoType: String(data.get("photoType")) as "before" | "after" | "evidence", comment: String(data.get("photoComment") ?? "") });
+      if (!confirmed.success) await discardUnconfirmedPhotoUpload({ jobId, path: prepared.data.path });
       setMessage(confirmed.message); if (confirmed.success) { if (input.current) input.current.value = ""; setPendingFile(""); router.refresh(); }
     });
   }

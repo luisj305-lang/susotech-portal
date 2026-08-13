@@ -29,7 +29,8 @@ const password = `${randomBytes(18).toString("base64url")}Aa1!`;
 const users = [];
 const jobs = [];
 const crews = [];
-const objects = [];
+const projectObjects = [];
+const evidenceObjects = [];
 let checks = 0;
 let cleanupPassed = false;
 
@@ -62,6 +63,15 @@ async function identity(label, role, isActive = true) {
   return { id, client };
 }
 
+async function startShift(identity, label) {
+  const rows = await ok(`${label} starts work shift`, identity.client.rpc("start_technician_shift", {
+    p_no_fuel_today: true,
+    p_fuel_amount: 0,
+    p_fuel_photo_path: null,
+  }));
+  check(rows?.length === 1, `${label} shift created`);
+}
+
 async function createJob(client, title) {
   const row = await ok(`create job ${title.slice(0, 12)}`, client.from("jobs").insert({ title }).select("id, main_status, category").single());
   jobs.push(row.id);
@@ -76,8 +86,49 @@ async function assign(client, jobIds, assigneeId, assigneeType = "technician") {
 }
 
 async function status(client, jobId, value, extra = {}) {
+  if (value === "enviado_revision") throw new Error("Use deliver() for submitted jobs");
   return ok(`transition ${value}`, client.from("jobs").update({ main_status: value, ...extra }).eq("id", jobId)
     .select("main_status, incident, submitted_at, approved_at, paid_at").single());
+}
+
+const tinyPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXsAAAAASUVORK5CYII=", "base64");
+const minimalPdf = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
+
+async function prepareEvidence(client, jobId, technicianId) {
+  const id = randomUUID();
+  const path = `${jobId}/${randomUUID()}.png`;
+  await ok("upload delivery evidence", client.storage.from("job-evidence").upload(path, tinyPng, {
+    contentType: "image/png", upsert: false,
+  }));
+  evidenceObjects.push(path);
+  await ok("confirm delivery evidence", client.from("job_photos").insert({
+    id, job_id: jobId, storage_path: path, photo_type: "evidence", uploaded_by: technicianId,
+  }));
+  return id;
+}
+
+async function deliver(client, jobId, sourcePhotoIds, label) {
+  const path = `${jobId}/delivered/${randomUUID()}.pdf`;
+  const sortedPhotoIds = [...sourcePhotoIds].sort();
+  await ok(`upload ${label} delivered PDF`, service.storage.from("project-files").upload(path, minimalPdf, {
+    contentType: "application/pdf",
+    upsert: false,
+    metadata: {
+      generator: "susotech-portal",
+      job_id: jobId,
+      source_photo_ids: sortedPhotoIds.join(","),
+    },
+  }));
+  projectObjects.push(path);
+  const delivered = await ok(label, client.rpc("confirm_delivered_job_pdf", {
+    p_job_id: jobId,
+    p_storage_path: path,
+    p_source_photo_ids: sourcePhotoIds,
+    p_submit: true,
+  }));
+  check(delivered?.[0]?.delivered_status === "enviado_revision", `${label} advances through atomic delivery`);
+  return ok(`read ${label} state`, client.from("jobs")
+    .select("main_status, incident, submitted_at, approved_at, paid_at").eq("id", jobId).single());
 }
 
 async function importPdf(client, file) {
@@ -92,11 +143,11 @@ async function importPdf(client, file) {
   const path = `${id}/${file.name.replace(/[^a-zA-Z0-9._-]+/gu, "-")}`;
   const upload = await client.storage.from("project-files").upload(path, file.bytes, { contentType: file.type, upsert: false });
   if (upload.error) return { success: false, message: "upload" };
-  objects.push(path);
+  projectObjects.push(path);
   const inserted = await client.from("jobs").insert({ id, title, project_pdf_url: path }).select("id").single();
   if (inserted.error) {
     await client.storage.from("project-files").remove([path]);
-    objects.splice(objects.indexOf(path), 1);
+    projectObjects.splice(projectObjects.indexOf(path), 1);
     return { success: false, message: "insert" };
   }
   jobs.push(id);
@@ -105,9 +156,11 @@ async function importPdf(client, file) {
 
 async function cleanup() {
   const errors = [];
-  if (objects.length && (await service.storage.from("project-files").remove(objects)).error) errors.push("objects");
+  if (projectObjects.length && (await service.storage.from("project-files").remove(projectObjects)).error) errors.push("project-files");
+  if (evidenceObjects.length && (await service.storage.from("job-evidence").remove(evidenceObjects)).error) errors.push("job-evidence");
   if (jobs.length && (await service.from("jobs").delete().in("id", jobs)).error) errors.push("jobs");
   if (crews.length && (await service.from("crews").delete().in("id", crews)).error) errors.push("crews");
+  if (users.length && (await service.from("technician_shifts").delete().in("technician_id", users)).error) errors.push("shifts");
   for (const id of [...users].reverse()) if ((await service.auth.admin.deleteUser(id)).error) errors.push("users");
   cleanupPassed = errors.length === 0;
   if (!cleanupPassed) throw new Error(`Cleanup failed [${[...new Set(errors)].join(",")}]`);
@@ -120,6 +173,10 @@ async function main() {
   const other = await identity("other", "tecnico");
   const outsider = await identity("outsider", "tecnico");
   const inactive = await identity("inactive", "tecnico", false);
+
+  await startShift(technician, "technician");
+  await startShift(other, "other technician");
+  await startShift(outsider, "outsider technician");
 
   await denied("non-technician crew lead rejected", admin.client.from("crews").insert({
     name: `Invalid role ${runId}`, lead_technician_id: supervisor.id,
@@ -166,7 +223,10 @@ async function main() {
   check(assignedView.length === 1, "assigned job visible");
   await denied("foreign technician cannot see assigned job", other.client.from("jobs").select("id").eq("id", officeJob));
   await status(technician.client, officeJob, "en_progreso");
-  const submitted = await status(technician.client, officeJob, "enviado_revision");
+  const officePhotoId = await prepareEvidence(technician.client, officeJob, technician.id);
+  await denied("direct technician submission rejected", technician.client.from("jobs")
+    .update({ main_status: "enviado_revision" }).eq("id", officeJob).select("id"));
+  const submitted = await deliver(technician.client, officeJob, [officePhotoId], "technician atomically submits office job");
   check(Boolean(submitted.submitted_at), "submission timestamp recorded");
   await denied("technician cannot approve", technician.client.from("jobs").update({ main_status: "aprobado" }).eq("id", officeJob).select("id"));
   await denied("correction return without reason rejected", supervisor.client.from("jobs")
@@ -176,7 +236,7 @@ async function main() {
     .select("previous_status,new_status,changed_by,notes").eq("job_id", officeJob)
     .eq("previous_status", "enviado_revision").eq("new_status", "en_progreso").single());
   check(correction.changed_by === supervisor.id && correction.notes === "Corrección runtime requerida", "correction reason and actor audited");
-  await status(technician.client, officeJob, "enviado_revision");
+  await deliver(technician.client, officeJob, [officePhotoId], "technician atomically resubmits office job");
   const approved = await status(supervisor.client, officeJob, "aprobado");
   check(Boolean(approved.approved_at), "approval timestamp recorded");
   await status(supervisor.client, officeJob, "listo_pagar");
@@ -211,7 +271,8 @@ async function main() {
   const visibleCodes = await ok("technician reads assigned production codes", technician.client.from("job_production_codes")
     .select("code,quantity,added_by").eq("job_id", fieldJob));
   check(visibleCodes.length === 1 && visibleCodes[0].code === "AC01" && visibleCodes[0].added_by === technician.id, "authorized production code read succeeds");
-  await status(technician.client, fieldJob, "enviado_revision");
+  const fieldPhotoId = await prepareEvidence(technician.client, fieldJob, technician.id);
+  await deliver(technician.client, fieldJob, [fieldPhotoId], "technician atomically submits field job");
   const fieldHistory = await ok("read field history", technician.client.from("job_status_history")
     .select("previous_status,new_status,previous_incident,new_incident,changed_by").eq("job_id", fieldJob));
   check(fieldHistory.filter((row) => row.previous_status !== row.new_status).length === 2, "field status changes audited");
@@ -262,5 +323,5 @@ if (failure) {
   console.error(`[jobs-final] FAIL ${failure.message} cleanup=${cleanupPassed ? "passed" : "failed"}`);
   process.exitCode = 1;
 } else {
-  console.log(`[jobs-final] PASS checks=${checks} cleanup=passed users=${users.length} jobs=${jobs.length} crews=${crews.length} objects=${objects.length}`);
+  console.log(`[jobs-final] PASS checks=${checks} cleanup=passed users=${users.length} jobs=${jobs.length} crews=${crews.length} objects=${projectObjects.length + evidenceObjects.length}`);
 }

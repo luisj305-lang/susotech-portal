@@ -56,6 +56,15 @@ async function identity(label, role) {
   return { id, client };
 }
 
+async function startShift(identity, label) {
+  const data = await ok(`${label} starts active shift`, identity.client.rpc("start_technician_shift", {
+    p_no_fuel_today: true,
+    p_fuel_amount: 0,
+    p_fuel_photo_path: null,
+  }));
+  check(Boolean(data?.[0]?.shift_id), `${label} active shift created`);
+}
+
 async function cleanup() {
   const errors = [];
   for (const bucket of ["project-files", "job-evidence"]) {
@@ -63,6 +72,7 @@ async function cleanup() {
     if (paths.length && (await service.storage.from(bucket).remove(paths)).error) errors.push(bucket);
   }
   if (jobs.length && (await service.from("jobs").delete().in("id", jobs)).error) errors.push("jobs");
+  if (users.length && (await service.from("technician_shifts").delete().in("technician_id", users)).error) errors.push("shifts");
   for (const id of [...users].reverse()) if ((await service.auth.admin.deleteUser(id)).error) errors.push("users");
   cleanupPassed = errors.length === 0;
   if (!cleanupPassed) throw new Error(`Cleanup failed [${[...new Set(errors)].join(",")}]`);
@@ -72,6 +82,8 @@ async function main() {
   const supervisor = await identity("supervisor", "supervisor");
   const assigned = await identity("assigned", "tecnico");
   const foreign = await identity("foreign", "tecnico");
+  await startShift(assigned, "assigned technician");
+  await startShift(foreign, "foreign technician");
   const job = await ok("create evidence fixture", supervisor.client.from("jobs").insert({ title: `Actions ${runId}` }).select("id").single());
   jobs.push(job.id);
   const projectPath = `${job.id}/actions-${runId}.pdf`;
@@ -124,7 +136,7 @@ async function main() {
   const jobActions = readFileSync(new URL("../src/lib/jobs/actions.ts", import.meta.url), "utf8");
   assert.match(storageActions, /prepareBulkProjectUploadCore\(await createClient\(\), input\)/u);
   assert.match(storageActions, /confirmBulkProjectUploadCore\(await createClient\(\), input\)/u);
-  assert.match(storageActions, /authorizeDownload\(await createClient\(\), input\)/u);
+  assert.match(storageActions, /authorizeDownload\(await createClient\(\), \{ \.\.\.input, expiresIn \}\)/u);
   assert.match(storageActions, /preparePhotoUpload\(await createClient\(\), input\)/u);
   assert.match(jobActions, /confirmPhotoEvidence\(supabase, profile\.id/u);
   checks += 5;

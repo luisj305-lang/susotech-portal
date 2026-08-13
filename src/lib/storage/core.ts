@@ -9,24 +9,37 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const imageTypes = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const;
 const PDF_LIMIT = 25 * 1024 * 1024;
 const PHOTO_LIMIT = 10 * 1024 * 1024;
+const ACTIVE_SHIFT_REQUIRED_MESSAGE =
+  "Tu jornada de trabajo terminó. Inicia una nueva jornada para continuar.";
 
 function fail<T>(message: string): CoreResult<T> { return { success: false, message }; }
 
-async function readableJob(supabase: SupabaseClient, jobId: string) {
-  if (!uuidPattern.test(jobId)) return false;
-  const { data } = await supabase.from("jobs").select("id").eq("id", jobId).maybeSingle();
-  return Boolean(data);
+async function readableJob(supabase: SupabaseClient, jobId: string): Promise<CoreResult<true>> {
+  if (!uuidPattern.test(jobId)) return fail("Trabajo no disponible.");
+  const { data, error } = await supabase.from("jobs").select("id").eq("id", jobId).maybeSingle();
+  if (error) return fail(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+    : "Trabajo no disponible.");
+  return data
+    ? { success: true, message: "Trabajo disponible.", data: true }
+    : fail("Trabajo no disponible.");
 }
 
-async function editableEvidenceJob(supabase: SupabaseClient, jobId: string) {
-  if (!uuidPattern.test(jobId)) return false;
-  const { data } = await supabase.from("jobs").select("id").eq("id", jobId).eq("main_status", "en_progreso").maybeSingle();
-  return Boolean(data);
+async function editableEvidenceJob(supabase: SupabaseClient, jobId: string): Promise<CoreResult<true>> {
+  if (!uuidPattern.test(jobId)) return fail("Solo se puede agregar evidencia mientras el trabajo está en progreso.");
+  const { data, error } = await supabase.from("jobs").select("id").eq("id", jobId).eq("main_status", "en_progreso").maybeSingle();
+  if (error) return fail(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+    : "Solo se puede agregar evidencia mientras el trabajo está en progreso.");
+  return data
+    ? { success: true, message: "Trabajo editable.", data: true }
+    : fail("Solo se puede agregar evidencia mientras el trabajo está en progreso.");
 }
 
 export async function preparePhotoUpload(supabase: SupabaseClient, input: { jobId: string; mimeType: string; size: number }): Promise<CoreResult<{ path: string; token: string; signedUrl: string }>> {
   if (!(input.mimeType in imageTypes) || !Number.isFinite(input.size) || input.size <= 0 || input.size > PHOTO_LIMIT) return fail("La imagen no es válida o supera 10 MB.");
-  if (!(await editableEvidenceJob(supabase, input.jobId))) return fail("Solo se puede agregar evidencia mientras el trabajo está en progreso.");
+  const editable = await editableEvidenceJob(supabase, input.jobId);
+  if (!editable.success) return editable;
   const extension = imageTypes[input.mimeType as keyof typeof imageTypes];
   const path = `${input.jobId}/${randomUUID()}.${extension}`;
   const { data, error } = await supabase.storage.from("job-evidence").createSignedUploadUrl(path);
@@ -37,18 +50,22 @@ export async function preparePhotoUpload(supabase: SupabaseClient, input: { jobI
 export async function prepareProjectUpload(supabase: SupabaseClient, input: { jobId: string; fileName: string; mimeType: string; size: number }): Promise<CoreResult<{ path: string; token: string; signedUrl: string }>> {
   const fileName = safeStorageName(input.fileName);
   if (!uuidPattern.test(input.jobId) || input.mimeType !== "application/pdf" || !fileName.toLowerCase().endsWith(".pdf") || input.size <= 0 || input.size > PDF_LIMIT) return fail("El PDF no es válido o supera 25 MB.");
-  if (!(await readableJob(supabase, input.jobId))) return fail("Trabajo no disponible.");
+  const readable = await readableJob(supabase, input.jobId);
+  if (!readable.success) return readable;
   const path = `${input.jobId}/${fileName}`;
   const { data, error } = await supabase.storage.from("project-files").createSignedUploadUrl(path);
   if (error || !data) return fail("No se pudo preparar la carga del PDF.");
   return { success: true, message: "Carga preparada.", data: { path, token: data.token, signedUrl: data.signedUrl } };
 }
 
-export async function authorizeDownload(supabase: SupabaseClient, input: { bucket: Bucket; path: string }): Promise<CoreResult<{ signedUrl: string; expiresIn: number }>> {
+export async function authorizeDownload(supabase: SupabaseClient, input: { bucket: Bucket; path: string; expiresIn?: number }): Promise<CoreResult<{ signedUrl: string; expiresIn: number }>> {
   const jobId = input.path.split("/", 1)[0];
   if (!input.path.startsWith(`${jobId}/`) || !uuidPattern.test(jobId)) return fail("La ruta no es válida.");
-  if (!(await readableJob(supabase, jobId))) return fail("Archivo no disponible.");
-  const expiresIn = 60;
+  const readable = await readableJob(supabase, jobId);
+  if (!readable.success) return fail(readable.message === ACTIVE_SHIFT_REQUIRED_MESSAGE
+    ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+    : "Archivo no disponible.");
+  const expiresIn = Math.max(1, Math.min(60, Math.floor(input.expiresIn ?? 60)));
   const { data, error } = await supabase.storage.from(input.bucket).createSignedUrl(input.path, expiresIn);
   if (error || !data) return fail("No se pudo autorizar el archivo.");
   return { success: true, message: "Acceso temporal creado.", data: { signedUrl: data.signedUrl, expiresIn } };
@@ -66,6 +83,8 @@ export async function confirmPhotoEvidence(supabase: SupabaseClient, actorId: st
   const { data: existing } = await supabase.from("job_photos").select("id").eq("job_id", input.jobId).eq("storage_path", input.storagePath).maybeSingle();
   if (existing) return { success: true, message: "Foto confirmada.", data: null };
   const { error } = await supabase.from("job_photos").insert({ job_id: input.jobId, storage_path: input.storagePath, photo_type: input.photoType, uploaded_by: actorId, comment: input.comment || null });
-  if (error) return fail("No se pudo confirmar la foto.");
+  if (error) return fail(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+    : "No se pudo confirmar la foto.");
   return { success: true, message: "Foto confirmada.", data: null };
 }

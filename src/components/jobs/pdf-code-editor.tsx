@@ -41,7 +41,10 @@ function PdfPage({ jobId, page, selectedCatalogId, selectedId, placements, catal
     if (!visible) return;
     let active = true; let objectUrl = "";
     void fetch(`/api/trabajos/${jobId}/pdf-original-preview?page=${page}`, { method: "POST", cache: "no-store" }).then(async (response) => {
-      if (!response.ok) throw new Error("No se pudo cargar esta página.");
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "No se pudo cargar esta página.");
+      }
       objectUrl = URL.createObjectURL(await response.blob());
       if (!active) return URL.revokeObjectURL(objectUrl);
       setImageUrl(objectUrl);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -19,7 +19,7 @@ const serviceKey=process.env.SUPABASE_SERVICE_ROLE_KEY;
 if(!url||!anonKey||!serviceKey) throw new Error("Missing Supabase test environment");
 const options={auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}};
 const service=createClient(url,serviceKey,options);
-const users=[]; const jobs=[]; let checks=0; let cleanupPassed=false;
+const users=[]; const jobs=[]; const objects={"project-files":[],"job-evidence":[]}; let checks=0; let cleanupPassed=false;
 const runId=randomBytes(6).toString("hex"); const password=`${randomBytes(18).toString("base64url")}Aa1!`;
 function check(value,label,error){assert.ok(value,`${label}${error?` [${error.code??error.message}]`:""}`);checks++;}
 async function ok(label,promise){const result=await promise;check(!result.error,label,result.error);return result.data;}
@@ -31,12 +31,34 @@ async function identity(label,role,technicianType="in_house"){
   const client=createClient(url,anonKey,options); await ok(`sign in ${label}`,client.auth.signInWithPassword({email,password}));
   return {id,client};
 }
-async function cleanup(){const errors=[]; if(jobs.length&&(await service.from("jobs").delete().in("id",jobs)).error) errors.push("jobs"); for(const id of [...users].reverse()) if((await service.auth.admin.deleteUser(id)).error) errors.push("users"); cleanupPassed=!errors.length; if(errors.length) throw new Error(`cleanup failed: ${errors.join(",")}`);}
+async function startShift(identity,label){
+  const rows=await ok(`${label} starts work shift`,identity.client.rpc("start_technician_shift",{p_no_fuel_today:true,p_fuel_amount:0,p_fuel_photo_path:null}));
+  check(rows?.length===1,`${label} shift created`);
+}
+const tinyPng=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXsAAAAASUVORK5CYII=","base64");
+const minimalPdf=Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
+async function upload(bucket,path,bytes,contentType,client=service,metadata){
+  await ok(`upload ${bucket}/${path}`,client.storage.from(bucket).upload(path,bytes,{contentType,upsert:false,metadata}));
+  objects[bucket].push(path);
+}
+async function deliver(client,jobId,technicianId){
+  const photoId=randomUUID(); const photoPath=`${jobId}/${randomUUID()}.png`;
+  await upload("job-evidence",photoPath,tinyPng,"image/png",client);
+  await ok("confirm production evidence",client.from("job_photos").insert({id:photoId,job_id:jobId,storage_path:photoPath,photo_type:"evidence",uploaded_by:technicianId}));
+  const deliveredPath=`${jobId}/delivered/${randomUUID()}.pdf`;
+  await upload("project-files",deliveredPath,minimalPdf,"application/pdf",service,{generator:"susotech-portal",job_id:jobId,source_photo_ids:photoId});
+  const submitted=await ok("submit production job atomically",client.rpc("confirm_delivered_job_pdf",{p_job_id:jobId,p_storage_path:deliveredPath,p_source_photo_ids:[photoId],p_submit:true}));
+  check(submitted?.[0]?.delivered_status==="enviado_revision","atomic production delivery advances state");
+}
+async function cleanup(){const errors=[]; for(const bucket of Object.keys(objects)) if(objects[bucket].length&&(await service.storage.from(bucket).remove(objects[bucket])).error) errors.push(bucket); if(jobs.length&&(await service.from("jobs").delete().in("id",jobs)).error) errors.push("jobs"); if(users.length&&(await service.from("technician_shifts").delete().in("technician_id",users)).error) errors.push("shifts"); for(const id of [...users].reverse()) if((await service.auth.admin.deleteUser(id)).error) errors.push("users"); cleanupPassed=!errors.length; if(errors.length) throw new Error(`cleanup failed: ${[...new Set(errors)].join(",")}`);}
 async function main(){
   const admin=await identity("admin","admin");
   const supervisor=await identity("supervisor","supervisor");
   const inHouse=await identity("inhouse","tecnico","in_house");
   const contractor=await identity("contractor","tecnico","contractor");
+
+  await startShift(inHouse,"in-house technician");
+  await startShift(contractor,"contractor technician");
 
   const inCatalog=await ok("in-house catalog",inHouse.client.rpc("list_my_production_catalog"));
   const conCatalog=await ok("contractor catalog",contractor.client.rpc("list_my_production_catalog"));
@@ -61,7 +83,9 @@ async function main(){
   const snapshots=await ok("read snapshots",service.from("job_production_codes").select("job_id,technician_type_snapshot,unit_rate_snapshot,amount_snapshot,credited_technician_id").in("job_id",[jobA.id,jobB.id]).order("unit_rate_snapshot"));
   check(snapshots.length===2,"two snapshots created"); check(Number(snapshots[0].amount_snapshot)===65,"in-house amount snapshot"); check(Number(snapshots[1].amount_snapshot)===70,"contractor amount snapshot");
 
-  await ok("submit in-house",inHouse.client.from("jobs").update({main_status:"enviado_revision"}).eq("id",jobA.id).select("id").single());
+  const directSubmit=await inHouse.client.from("jobs").update({main_status:"enviado_revision"}).eq("id",jobA.id).select("id").single();
+  check(Boolean(directSubmit.error),"direct in-house submission denied");
+  await deliver(inHouse.client,jobA.id,inHouse.id);
   await ok("approve in-house",supervisor.client.from("jobs").update({main_status:"aprobado"}).eq("id",jobA.id).select("id").single());
   const own=await ok("own weekly",inHouse.client.rpc("get_my_weekly_production",{p_reference_date:null}));
   check(own.length===1&&own[0].billing_state==="confirmed","own weekly confirmed and isolated");
@@ -80,5 +104,12 @@ async function main(){
   await ok("admin restores",admin.client.rpc("set_job_archived",{p_job_id:jobB.id,p_archived:false,p_reason:null}));
   const visible=await ok("restored visible",contractor.client.from("jobs").select("id").eq("id",jobB.id)); check(visible.length===1,"restored job visible");
 }
-try{await main();}finally{await cleanup();}
-console.log(`PASS production/archive runtime checks=${checks} cleanup=${cleanupPassed?"passed":"failed"}`);
+let failure;
+try{await main();}catch(error){failure=error;}
+finally{try{await cleanup();}catch(error){failure??=error;}}
+if(failure){
+  console.error(`[production-runtime] FAIL ${failure.message} cleanup=${cleanupPassed?"passed":"failed"}`);
+  process.exitCode=1;
+}else{
+  console.log(`PASS production/archive runtime checks=${checks} cleanup=passed`);
+}

@@ -61,6 +61,15 @@ async function identity(label, role) {
   return { id, client };
 }
 
+async function startShift(identity, label) {
+  const data = await ok(`${label} starts active shift`, identity.client.rpc("start_technician_shift", {
+    p_no_fuel_today: true,
+    p_fuel_amount: 0,
+    p_fuel_photo_path: null,
+  }));
+  check(Boolean(data?.[0]?.shift_id), `${label} active shift created`);
+}
+
 async function upload(bucket, path, bytes, contentType, client = service, metadata) {
   await ok(`upload ${bucket}/${path}`, client.storage.from(bucket).upload(path, bytes, {
     contentType, upsert: false, metadata,
@@ -74,6 +83,7 @@ async function cleanup() {
     if (objects[bucket].length && (await service.storage.from(bucket).remove(objects[bucket])).error) errors.push(bucket);
   }
   if (jobId && (await service.from("jobs").delete().eq("id", jobId)).error) errors.push("job");
+  if (userIds.length && (await service.from("technician_shifts").delete().in("technician_id", userIds)).error) errors.push("shifts");
   for (const id of [...userIds].reverse()) if ((await service.auth.admin.deleteUser(id)).error) errors.push("user");
   cleanupPassed = errors.length === 0;
   if (!cleanupPassed) throw new Error(`cleanup failed: ${[...new Set(errors)].join(", ")}`);
@@ -87,6 +97,8 @@ try {
   const supervisor = await identity("supervisor", "supervisor");
   const technician = await identity("technician", "tecnico");
   const outsider = await identity("outsider", "tecnico");
+  await startShift(technician, "assigned technician");
+  await startShift(outsider, "unassigned technician");
   jobId = randomUUID();
   const originalPath = `${jobId}/original.pdf`;
   await ok("create in-progress job", admin.client.from("jobs").insert({
@@ -173,24 +185,27 @@ try {
     .select("delivered_pdf_path").eq("id", jobId).single());
   check(stillFirst.delivered_pdf_path === firstDeliveredPath, "failed regeneration preserves last valid pointer");
 
-  const supervisorResult = await ok("supervisor regenerates current PDF", supervisor.client.rpc("confirm_delivered_job_pdf", {
+  await denied("supervisor cannot regenerate current PDF", supervisor.client.rpc("confirm_delivered_job_pdf", {
     p_job_id: jobId,
     p_storage_path: supervisorPath,
     p_source_photo_ids: [photoTwoId, photoOneId],
     p_submit: false,
   }));
-  check(supervisorResult?.[0]?.previous_storage_path === firstDeliveredPath, "RPC returns cleanup candidate");
+  const afterSupervisor = await ok("read pointer after supervisor denial", admin.client.from("jobs")
+    .select("delivered_pdf_path").eq("id", jobId).single());
+  check(afterSupervisor.delivered_pdf_path === firstDeliveredPath, "supervisor denial preserves the valid pointer");
 
   const adminPath = `${jobId}/delivered/${randomUUID()}.pdf`;
   await upload("project-files", adminPath, minimalPdf, "application/pdf", service, {
     generator: "susotech-portal", job_id: jobId, source_photo_ids: [photoOneId, photoTwoId].sort().join(","),
   });
-  await ok("admin regenerates current PDF", admin.client.rpc("confirm_delivered_job_pdf", {
+  const adminResult = await ok("admin regenerates current PDF", admin.client.rpc("confirm_delivered_job_pdf", {
     p_job_id: jobId,
     p_storage_path: adminPath,
     p_source_photo_ids: [photoOneId, photoTwoId],
     p_submit: false,
   }));
+  check(adminResult?.[0]?.previous_storage_path === firstDeliveredPath, "admin RPC returns cleanup candidate");
   const finalJob = await ok("read final pointer", admin.client.from("jobs")
     .select("main_status, delivered_pdf_path, delivered_pdf_generated_by")
     .eq("id", jobId).single());

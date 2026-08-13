@@ -5,6 +5,7 @@ import { requireProfile } from "@/lib/auth/session";
 import { listOfficeJobs, listTechnicianJobs } from "@/lib/jobs/queries";
 import { deliveredPdfStatusClasses, jobStatusBadgeClasses } from "@/lib/jobs/status-presentation";
 import { getJobMapUrl } from "@/lib/jobs/maps";
+import { requireActiveShiftPage } from "@/lib/work-shifts/access";
 
 const statusLabels: Record<string, string> = { asignado: "Asignado", en_progreso: "En progreso", enviado_revision: "En revisión", aprobado: "Aprobado", listo_pagar: "Listo para pagar", pagado: "Pagado" };
 const deliveredLabels = { pending: "Pendiente", current: "Vigente", stale: "Desactualizado" } as const;
@@ -17,7 +18,10 @@ function relevantDate(job: { submitted_at: string | null; deadline_date: string 
 
 export default async function JobsPage({ searchParams }: { searchParams: SearchParams }) {
   const profile = await requireProfile();
-  if (profile.role === "tecnico") return <JobList jobs={await listTechnicianJobs()} />;
+  if (profile.role === "tecnico") {
+    await requireActiveShiftPage();
+    return <JobList jobs={await listTechnicianJobs()} />;
+  }
   const values = await searchParams;
   const first = (key: string) => { const value = values[key]; return Array.isArray(value) ? value[0] : value; };
   const filters = { q: first("q"), status: first("status"), category: first("category"), archived: first("archived") === "1" };

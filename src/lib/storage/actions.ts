@@ -8,15 +8,55 @@ import { authorizeDownload, preparePhotoUpload, prepareProjectUpload } from "./c
 import { confirmBulkProjectUploadCore, prepareBulkProjectUploadCore, type BulkPrepareInput } from "./bulk-import-core";
 import { cleanupJobDeletionQueue, type JobDeletionCleanupRow } from "@/lib/jobs/deletion-core";
 import { validJobDocumentMetadata } from "./job-document-core";
+import {
+  isActiveShiftRequiredError,
+  requireActiveShift,
+} from "@/lib/work-shifts/access";
+import { ACTIVE_SHIFT_REQUIRED_MESSAGE } from "@/lib/work-shifts/types";
 
 type Bucket = "project-files" | "job-evidence";
 type Result<T> = { success: true; message: string; data: T } | { success: false; message: string };
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+async function requireTechnicianShift(role: "admin" | "supervisor" | "tecnico") {
+  if (role !== "tecnico") return null;
+  try {
+    await requireActiveShift();
+    return null;
+  } catch (error) {
+    if (isActiveShiftRequiredError(error)) {
+      return { success: false as const, message: ACTIVE_SHIFT_REQUIRED_MESSAGE };
+    }
+    throw error;
+  }
+}
 
 export async function createPhotoUploadUrl(input: {
   jobId: string; mimeType: "image/jpeg" | "image/png" | "image/webp"; size: number;
 }): Promise<Result<{ path: string; token: string; signedUrl: string }>> {
-  await requireProfile();
+  const profile = await requireProfile();
+  const shiftFailure = await requireTechnicianShift(profile.role);
+  if (shiftFailure) return shiftFailure;
   return preparePhotoUpload(await createClient(), input);
+}
+
+export async function discardUnconfirmedPhotoUpload(input: {
+  jobId: string;
+  path: string;
+}): Promise<Result<null>> {
+  const profile = await requireProfile();
+  if (profile.role !== "tecnico"
+    || !uuidPattern.test(input.jobId)
+    || !input.path.startsWith(`${input.jobId}/`)
+    || input.path.slice(input.jobId.length + 1).includes("/")) {
+    return { success: false, message: "La foto no es válida." };
+  }
+
+  return {
+    success: true,
+    message: "Carga descartada de esta pantalla.",
+    data: null,
+  };
 }
 
 export async function createProjectUploadUrl(input: {
@@ -118,8 +158,22 @@ export async function reconcileJobDocumentUploads(input: { jobId: string }): Pro
 export async function createSignedDownloadUrl(input: {
   bucket: Bucket; path: string;
 }): Promise<Result<{ signedUrl: string; expiresIn: number }>> {
-  await requireProfile();
-  return authorizeDownload(await createClient(), input);
+  const profile = await requireProfile();
+  const shiftFailure = await requireTechnicianShift(profile.role);
+  if (shiftFailure) return shiftFailure;
+  let expiresIn = 60;
+  if (profile.role === "tecnico") {
+    const access = await requireActiveShift();
+    const remaining = Math.floor(
+      (new Date(access.shift!.active_until).getTime()
+        - new Date(access.shift!.server_now).getTime()) / 1000,
+    ) - 2;
+    if (remaining < 1) {
+      return { success: false, message: ACTIVE_SHIFT_REQUIRED_MESSAGE };
+    }
+    expiresIn = Math.min(expiresIn, remaining);
+  }
+  return authorizeDownload(await createClient(), { ...input, expiresIn });
 }
 
 export async function deleteJobPdf(input: {

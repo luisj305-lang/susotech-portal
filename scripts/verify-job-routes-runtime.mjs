@@ -72,6 +72,15 @@ async function identity(label, role) {
   return { id, client, cookie };
 }
 
+async function startShift(identity, label) {
+  const rows = await ok(`${label} starts work shift`, identity.client.rpc("start_technician_shift", {
+    p_no_fuel_today: true,
+    p_fuel_amount: 0,
+    p_fuel_photo_path: null,
+  }));
+  check(rows?.length === 1, `${label} shift created`);
+}
+
 async function freePort() {
   const socket = createServer();
   socket.listen(0, "127.0.0.1");
@@ -116,6 +125,7 @@ async function cleanup() {
   if (objects.length && (await service.storage.from("project-files").remove(objects)).error) errors.push("objects");
   if (jobs.length && (await service.from("jobs").delete().in("id", jobs)).error) errors.push("jobs");
   if (crews.length && (await service.from("crews").delete().in("id", crews)).error) errors.push("crews");
+  if (users.length && (await service.from("technician_shifts").delete().in("technician_id", users)).error) errors.push("shifts");
   for (const id of [...users].reverse()) if ((await service.auth.admin.deleteUser(id)).error) errors.push("users");
   cleanupPassed = errors.length === 0;
   if (!cleanupPassed) throw new Error(`Fixture cleanup failed [${[...new Set(errors)].join(",")}]`);
@@ -136,6 +146,8 @@ async function main() {
   const supervisor = await identity("supervisor", "supervisor");
   const technician = await identity("technician", "tecnico");
   const empty = await identity("empty", "tecnico");
+  await startShift(technician, "technician");
+  await startShift(empty, "empty technician");
   const directTitle = `Direct route ${runId}`;
   const crewTitle = `Crew route ${runId}`;
   const foreignTitle = `Foreign route ${runId}`;

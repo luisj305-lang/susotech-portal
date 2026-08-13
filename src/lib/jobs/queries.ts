@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { listActiveTechniciansCore } from "./crew-core";
 import { getDeliveredPdfStatus } from "./delivered-status";
+import { requireActiveShift } from "@/lib/work-shifts/access";
 import type { AssigneeOption, CrewOfficeDto, Job, JobAssignment, JobCategory, JobDocument, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyProductionLine } from "./types";
 
 const statuses: JobStatus[] = ["asignado", "en_progreso", "enviado_revision", "aprobado", "listo_pagar", "pagado"];
@@ -80,6 +81,7 @@ export async function listOfficeJobs(filters: { query?: string; status?: string;
 }
 
 export async function listTechnicianJobs() {
+  await requireActiveShift();
   const supabase = await createClient();
   const { data, error } = await supabase.from("jobs").select("*").is("archived_at", null).order("deadline_date", { ascending: true, nullsFirst: false });
   if (error) throw new Error("No se pudieron cargar tus trabajos.");
@@ -87,6 +89,7 @@ export async function listTechnicianJobs() {
 }
 
 export async function getTechnicianJob(jobId: string) {
+  await requireActiveShift();
   const supabase = await createClient();
   const [job, history, codes, photos, documents, draft, deliveryVersion, catalog] = await Promise.all([
     supabase.from("jobs").select("*").eq("id", jobId).maybeSingle(),

@@ -10,6 +10,11 @@ import { addCrewMemberCore, createCrewCore, removeCrewMemberCore, setCrewActiveC
 import { cleanupJobDeletionQueue, type JobDeletionCleanupRow } from "./deletion-core";
 import { validatePlacements, type PdfCodePlacement } from "./pdf-code-editor-core";
 import type { AssigneeType, IncidentType, JobCategory, JobStatus } from "./types";
+import {
+  isActiveShiftRequiredError,
+  requireActiveShift,
+} from "@/lib/work-shifts/access";
+import { ACTIVE_SHIFT_REQUIRED_MESSAGE } from "@/lib/work-shifts/types";
 
 type Result<T = null> =
   | { success: true; message: string; data: T }
@@ -40,6 +45,17 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 function failure(message: string): Result<never> {
   return { success: false, message };
+}
+
+async function requireTechnicianShift(role: "admin" | "supervisor" | "tecnico") {
+  if (role !== "tecnico") return null;
+  try {
+    await requireActiveShift();
+    return null;
+  } catch (error) {
+    if (isActiveShiftRequiredError(error)) return failure(ACTIVE_SHIFT_REQUIRED_MESSAGE);
+    throw error;
+  }
 }
 
 function cleanText(value: unknown, field: string, max = 5000): string | null {
@@ -195,37 +211,50 @@ export async function assignJobsInBulk(input: { jobIds: string[]; assigneeType: 
 
 export async function transitionJob(input: { jobId: string; newStatus: JobStatus; reason?: string | null }): Promise<Result> {
   const profile = await requireProfile();
+  const shiftFailure = await requireTechnicianShift(profile.role);
+  if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");
+  if (input.newStatus === "enviado_revision") {
+    return failure("Para enviar el trabajo, usa el editor de entrega.");
+  }
   const supabase = await createClient();
   const { data: job, error } = await supabase.from("jobs").select("main_status, incident").eq("id", input.jobId).single();
-  if (error || !job) return failure("Trabajo no disponible.");
+  if (error || !job) return failure(error?.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+    : "Trabajo no disponible.");
   const decision = canTransition({ currentStatus: job.main_status, currentIncident: job.incident, newStatus: input.newStatus, newIncident: job.incident, role: profile.role, reason: input.reason });
   if (!decision.allowed) return failure(decision.reason ?? "Transición no permitida.");
   const payload: Record<string, unknown> = { main_status: input.newStatus };
   if (input.reason?.trim()) payload.comments = input.reason.trim();
   const { error: updateError } = await supabase.from("jobs").update(payload).eq("id", input.jobId).select("id").single();
-  if (updateError) return failure("No se pudo cambiar el estado.");
+  if (updateError) return failure(updateError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE) ? ACTIVE_SHIFT_REQUIRED_MESSAGE : "No se pudo cambiar el estado.");
   refresh(input.jobId);
   return { success: true, message: "Estado actualizado.", data: null };
 }
 
 export async function setIncident(input: { jobId: string; incident: IncidentType | null; notes?: string | null }): Promise<Result> {
   const profile = await requireProfile();
+  const shiftFailure = await requireTechnicianShift(profile.role);
+  if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId) || (input.incident !== null && !INCIDENT_TYPES.includes(input.incident))) return failure("La incidencia no es válida.");
   const supabase = await createClient();
   const { data: job, error } = await supabase.from("jobs").select("main_status, incident").eq("id", input.jobId).single();
-  if (error || !job) return failure("Trabajo no disponible.");
+  if (error || !job) return failure(error?.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+    : "Trabajo no disponible.");
   const decision = canTransition({ currentStatus: job.main_status, currentIncident: job.incident, newStatus: job.main_status, newIncident: input.incident, role: profile.role });
   if (!decision.allowed) return failure(decision.reason ?? "Cambio no permitido.");
   const notes = cleanText(input.notes, "Las notas", 2000);
   const { error: updateError } = await supabase.from("jobs").update({ incident: input.incident, incident_notes: input.incident ? notes : null }).eq("id", input.jobId).select("id").single();
-  if (updateError) return failure("No se pudo guardar la incidencia.");
+  if (updateError) return failure(updateError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE) ? ACTIVE_SHIFT_REQUIRED_MESSAGE : "No se pudo guardar la incidencia.");
   refresh(input.jobId);
   return { success: true, message: "Incidencia actualizada.", data: null };
 }
 
 export async function addProductionCode(input: { jobId: string; catalogId: string; quantity: number; productionDate?: string | null; notes?: string | null }): Promise<Result> {
-  await requireProfile();
+  const profile = await requireProfile();
+  const shiftFailure = await requireTechnicianShift(profile.role);
+  if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId) || !validId(input.catalogId) || !Number.isFinite(input.quantity) || input.quantity <= 0) return failure("Código o cantidad no válidos.");
   const productionDate = input.productionDate?.trim() || null;
   if (productionDate && !/^\d{4}-\d{2}-\d{2}$/.test(productionDate)) return failure("La fecha de producción no es válida.");
@@ -237,7 +266,7 @@ export async function addProductionCode(input: { jobId: string; catalogId: strin
     p_production_date: productionDate,
     p_notes: cleanText(input.notes, "Las notas", 2000),
   });
-  if (error) return failure("No se pudo añadir el código.");
+  if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE) ? ACTIVE_SHIFT_REQUIRED_MESSAGE : "No se pudo añadir el código.");
   refresh(input.jobId);
   return { success: true, message: "Código añadido.", data: null };
 }
@@ -309,20 +338,28 @@ export async function retryPendingJobDeletionCleanup(): Promise<Result<{ pending
 }
 
 export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: number; pageCount: number; placements: PdfCodePlacement[] }): Promise<Result<{ version: number }>> {
-  await requireProfile();
+  const profile = await requireProfile();
+  const shiftFailure = await requireTechnicianShift(profile.role);
+  if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId) || !Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) return failure("El borrador no es válido.");
   const validation = validatePlacements(input.placements, input.pageCount);
   if (validation) return failure(validation);
   const { data, error } = await (await createClient()).rpc("save_job_pdf_draft", {
     p_job_id: input.jobId, p_expected_version: input.expectedVersion, p_placements: input.placements,
   });
-  if (error) return failure(error.message.includes("version conflict") ? "El borrador cambió en otro dispositivo. Recarga antes de guardar." : "No se pudo guardar el borrador.");
+  if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+    : error.message.includes("version conflict")
+      ? "El borrador cambió en otro dispositivo. Recarga antes de guardar."
+      : "No se pudo guardar el borrador.");
   revalidatePath(`/trabajos/${input.jobId}`);
   return { success: true, message: "Borrador guardado.", data: { version: Number(data) } };
 }
 
 export async function addPhotoComment(input: { jobId: string; storagePath?: string; photoType?: typeof photoTypes[number]; comment?: string }): Promise<Result> {
   const profile = await requireProfile();
+  const shiftFailure = await requireTechnicianShift(profile.role);
+  if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");
   const hasPhoto = Boolean(input.storagePath || input.photoType);
   const hasComment = input.comment !== undefined;
@@ -332,7 +369,7 @@ export async function addPhotoComment(input: { jobId: string; storagePath?: stri
     const comment = cleanText(input.comment, "El comentario", 5000);
     if (!comment) return failure("El comentario es obligatorio.");
     const { error } = await supabase.from("jobs").update({ comments: comment }).eq("id", input.jobId).select("id").single();
-    if (error) return failure("No se pudo guardar el comentario.");
+    if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE) ? ACTIVE_SHIFT_REQUIRED_MESSAGE : "No se pudo guardar el comentario.");
   } else {
     if (!input.storagePath?.startsWith(`${input.jobId}/`) || !input.photoType || !photoTypes.includes(input.photoType)) return failure("La foto no es válida.");
     let photoComment: string | null = null;
@@ -341,7 +378,7 @@ export async function addPhotoComment(input: { jobId: string; storagePath?: stri
       if (!photoComment) return failure("El comentario de la foto no es válido.");
     }
     const confirmed = await confirmPhotoEvidence(supabase, profile.id, { jobId: input.jobId, storagePath: input.storagePath, photoType: input.photoType, comment: photoComment });
-    if (!confirmed.success) return failure(confirmed.message);
+    if (!confirmed.success) return failure(confirmed.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE) ? ACTIVE_SHIFT_REQUIRED_MESSAGE : confirmed.message);
   }
   refresh(input.jobId);
   return { success: true, message: hasPhoto ? "Foto confirmada." : "Comentario guardado.", data: null };

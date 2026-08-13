@@ -4,6 +4,8 @@ import { composeDeliveredPdf } from "@/lib/jobs/delivered-pdf";
 import { codeColor, validatePlacements, type PdfCodePlacement } from "@/lib/jobs/pdf-code-editor-core";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkShiftAccessForActor } from "@/lib/work-shifts/access";
+import { ACTIVE_SHIFT_REQUIRED_MESSAGE } from "@/lib/work-shifts/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -54,22 +56,27 @@ export async function POST(
     .single();
   if (profileError || !profile?.is_active) return json("Acceso denegado.", 403);
 
+  const shiftAccess = await getWorkShiftAccessForActor({ id: profile.id, role: profile.role }, supabase);
+  if (!shiftAccess.active) return json(ACTIVE_SHIFT_REQUIRED_MESSAGE, 403);
+
   const { data: job, error: jobError } = await supabase
     .from("jobs")
     .select("id, main_status, project_pdf_url, delivered_pdf_path")
     .eq("id", jobId)
     .maybeSingle();
-  if (jobError || !job) return json("Trabajo no disponible.", 404);
+  if (jobError || !job) return jobError?.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? json(ACTIVE_SHIFT_REQUIRED_MESSAGE, 403)
+    : json("Trabajo no disponible.", 404);
 
   const isTechnician = profile.role === "tecnico";
-  const isOffice = profile.role === "admin" || profile.role === "supervisor";
+  const isAdmin = profile.role === "admin";
   if (isTechnician && (!input.submit || job.main_status !== "en_progreso")) {
     return json("Solo puedes entregar un trabajo en progreso.", 409);
   }
-  if (isOffice && (input.submit || !["en_progreso", "enviado_revision"].includes(job.main_status))) {
+  if (isAdmin && (input.submit || !["en_progreso", "enviado_revision"].includes(job.main_status))) {
     return json("El PDF solo puede regenerarse mientras el trabajo sea editable.", 409);
   }
-  if (!isTechnician && !isOffice) return json("Acceso denegado.", 403);
+  if (!isTechnician && !isAdmin) return json("Acceso denegado.", 403);
   if (!job.project_pdf_url?.startsWith(`${jobId}/`)) {
     return json("Este trabajo no tiene un PDF original válido.", 409);
   }
@@ -79,7 +86,9 @@ export async function POST(
     supabase.from("job_pdf_drafts").select("version,source_page_count,placements").eq("job_id", jobId).maybeSingle(),
     service.from("production_code_catalog").select("id,code").eq("is_active", true),
   ]);
-  if (draftError || !draft || catalogError) return json("Abre el editor y guarda el borrador antes de entregar.", 409);
+  if (draftError || !draft || catalogError) return draftError?.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? json(ACTIVE_SHIFT_REQUIRED_MESSAGE, 403)
+    : json("Abre el editor y guarda el borrador antes de entregar.", 409);
   const placements = draft.placements as PdfCodePlacement[];
   const placementError = validatePlacements(placements, draft.source_page_count);
   if (placementError) return json(placementError, 409);
@@ -92,7 +101,9 @@ export async function POST(
     .eq("job_id", jobId)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
-  if (photoError) return json("No se pudieron consultar las evidencias.", 500);
+  if (photoError) return photoError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? json(ACTIVE_SHIFT_REQUIRED_MESSAGE, 403)
+    : json("No se pudieron consultar las evidencias.", 500);
   if (!photos?.length) return json("Agregue al menos una evidencia antes de entregar.", 409);
   if (photos.length > MAX_PHOTOS) return json(`El máximo es ${MAX_PHOTOS} evidencias por entrega.`, 409);
   if (photos.some((photo) => !photo.storage_path.startsWith(`${jobId}/`))) {
@@ -169,13 +180,27 @@ export async function POST(
     if (confirmationError) {
       // A transport failure can be ambiguous: never delete an object that may
       // already be the committed pointer.
-      const { data: current } = await supabase
+      uploaded = false;
+      const { data: current, error: currentError } = await supabase
         .from("jobs")
         .select("delivered_pdf_path")
         .eq("id", jobId)
         .maybeSingle();
+      if (currentError) {
+        throw new Error(
+          confirmationError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+            || currentError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+          ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+          : "No se pudo verificar la confirmación del PDF entregado.",
+        );
+      }
       confirmed = current?.delivered_pdf_path === deliveredPath;
-      if (!confirmed) throw new Error("No se pudo confirmar el PDF entregado.");
+      if (!confirmed) {
+        if (confirmationError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)) {
+          throw new Error(ACTIVE_SHIFT_REQUIRED_MESSAGE);
+        }
+        throw new Error("No se pudo confirmar el PDF entregado.");
+      }
     }
 
     uploaded = false;
@@ -193,9 +218,7 @@ export async function POST(
   } catch (error) {
     if (uploaded) await service.storage.from("project-files").remove([deliveredPath]);
     console.error("Delivered PDF generation failed", error);
-    return json(
-      error instanceof Error ? error.message : "No se pudo generar el PDF entregado.",
-      500,
-    );
+    const message = error instanceof Error ? error.message : "No se pudo generar el PDF entregado.";
+    return json(message, message === ACTIVE_SHIFT_REQUIRED_MESSAGE ? 403 : 500);
   }
 }

@@ -89,6 +89,15 @@ async function createIdentity(label, role, isActive = true) {
   return { id, client };
 }
 
+async function startShift(identity, label) {
+  const data = await ok(`${label} starts active shift`, identity.client.rpc("start_technician_shift", {
+    p_no_fuel_today: true,
+    p_fuel_amount: 0,
+    p_fuel_photo_path: null,
+  }));
+  check(Boolean(data?.[0]?.shift_id), `${label} active shift created`);
+}
+
 async function cleanup() {
   const errors = [];
   for (const bucket of ["project-files", "job-evidence"]) {
@@ -106,6 +115,10 @@ async function cleanup() {
     const result = await service.from("crews").delete().in("id", crewIds);
     if (result.error) errors.push("crews");
   }
+  if (userIds.length) {
+    const result = await service.from("technician_shifts").delete().in("technician_id", userIds);
+    if (result.error) errors.push("shifts");
+  }
   for (const id of [...userIds].reverse()) {
     const result = await service.auth.admin.deleteUser(id);
     if (result.error) errors.push("identity");
@@ -121,6 +134,9 @@ async function main() {
   const crewTech = await createIdentity("crew", "tecnico");
   const other = await createIdentity("other", "tecnico");
   const inactive = await createIdentity("inactive", "tecnico", false);
+  await startShift(direct, "direct technician");
+  await startShift(crewTech, "crew technician");
+  await startShift(other, "unassigned technician");
 
   const tables = [
     "jobs", "crews", "crew_members", "job_assignments",
@@ -199,8 +215,14 @@ async function main() {
     .select("active").eq("job_id", directJob.id).single());
   check(assignmentCheck.active === true, "forbidden reassignment was not applied");
 
-  await ok("technician adds positive production code", direct.client.from("job_production_codes").insert({
-    job_id: directJob.id, code: "RLS-CODE", quantity: 1, added_by: direct.id,
+  const catalog = await ok("technician reads production catalog", direct.client.rpc("list_my_production_catalog"));
+  check(Boolean(catalog?.[0]?.id), "production catalog contains an activity");
+  await ok("technician adds positive production code", direct.client.rpc("add_job_production", {
+    p_job_id: directJob.id,
+    p_catalog_id: catalog[0].id,
+    p_quantity: 1,
+    p_production_date: null,
+    p_notes: "RLS fixture",
   }));
   await denied("zero production quantity is rejected", direct.client.from("job_production_codes").insert({
     job_id: directJob.id, code: "INVALID", quantity: 0, added_by: direct.id,
