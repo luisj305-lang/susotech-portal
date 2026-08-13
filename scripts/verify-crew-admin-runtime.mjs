@@ -5,10 +5,10 @@ import { createCrewCore, removeCrewMemberCore } from "../src/lib/jobs/crew-core.
 let checks = 0;
 const ok = (value, message) => { assert.ok(value, message); checks += 1; };
 
-const sql = await fs.readFile(new URL("../supabase/migrations/20260810_jobs_crew_directory.sql", import.meta.url), "utf8");
+const sql = await fs.readFile(new URL("../supabase/migrations/20260810003000_jobs_crew_directory.sql", import.meta.url), "utf8");
 const actions = await fs.readFile(new URL("../src/lib/jobs/actions.ts", import.meta.url), "utf8");
 const queries = await fs.readFile(new URL("../src/lib/jobs/queries.ts", import.meta.url), "utf8");
-const baseSql = await fs.readFile(new URL("../supabase/migrations/20260810_jobs_module.sql", import.meta.url), "utf8");
+const baseSql = await fs.readFile(new URL("../supabase/migrations/20260810001000_jobs_module.sql", import.meta.url), "utf8");
 const permissionSql = await fs.readFile(new URL("../supabase/migrations/202608100100_crew_admin_permissions.sql", import.meta.url), "utf8");
 
 for (const pattern of [
@@ -66,7 +66,7 @@ const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 if (url && key) {
   const response = await fetch(`${url}/rest/v1/rpc/list_active_technicians_for_office`, { method: "POST", headers: { apikey: key, "Content-Type": "application/json" }, body: "{}" });
   if (response.status === 404) {
-    console.log(`[crew-admin-runtime] EXPECTED_PRECHECK_FAIL migration=20260810_jobs_crew_directory.sql cleanup=passed checks=${checks}`);
+    console.log(`[crew-admin-runtime] EXPECTED_PRECHECK_FAIL migration=20260810003000_jobs_crew_directory.sql cleanup=passed checks=${checks}`);
   } else {
     const body = await response.text();
     ok(!body.includes("PGRST202"), "live RPC must exist in the PostgREST schema cache");

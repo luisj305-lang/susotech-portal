@@ -29,7 +29,7 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: Schema & RLS
 
-- [x] 1.1 Create migration `supabase/migrations/20260810_jobs_module.sql` with enums `job_status`, `incident_type`, `assignee_type`, `job_category`.
+- [x] 1.1 Create migration `supabase/migrations/20260810001000_jobs_module.sql` with enums `job_status`, `incident_type`, `assignee_type`, `job_category`.
 - [x] 1.2 Create tables `jobs`, `crews`, `crew_members`, `job_assignments`, `job_status_history`, `job_production_codes`, `job_photos`; add `category` column to `jobs`.
 - [x] 1.3 Add trigger to insert `job_status_history` on status/incident changes.
 - [x] 1.4 Create RLS policies: admin/supervisor full access; technician sees only assigned jobs.
@@ -69,7 +69,7 @@ Chain strategy: stacked-to-main
 |---|---|
 | Focused checks | `node scripts/verify-job-domain.mjs`, exit 0: 8 job actions, 4 storage actions and 2 atomic-assignment RPC contracts; `npm run lint` and `npm run build`, exit 0. |
 | Runtime harness | `node scripts/verify-job-assignment-rpc.mjs`, exit 0: 51 checks passed for individual assignment, reassignment to crew with the prior row retained inactive, two-job bulk assignment, assignment history and actor, technician denial, invalid-job batch rollback, and active-primary uniqueness; cleanup passed for 4 users, 3 jobs and 1 crew. `service_role` is confined to fixture setup/cleanup and is absent from the 8 job actions and 4 Storage actions. |
-| Rollback boundary | Revert `scripts/verify-job-assignment-rpc.mjs` and this task/evidence update independently. Reverting assignment behavior requires a deliberate inverse migration for `20260810_jobs_assignment_rpc.sql`; the harness does not alter deployed schema or persistent business data. |
+| Rollback boundary | Revert `scripts/verify-job-assignment-rpc.mjs` and this task/evidence update independently. Reverting assignment behavior requires a deliberate inverse migration for `20260810002000_jobs_assignment_rpc.sql`; the harness does not alter deployed schema or persistent business data. |
 
 ## Phase 3: Office UI
 
@@ -239,7 +239,7 @@ Chain strategy: stacked-to-main
 
 | Evidence | Result |
 |---|---|
-| Applied migration | The user applied `20260810_jobs_bulk_import.sql`; its preflight changed from an expected safe failure to a live PASS. The migration adds two nullable operational fields, one import-audit row per job, unique normalized order/hash identities, office-only RLS and one transactional confirmation RPC. |
+| Applied migration | The user applied `20260810004000_jobs_bulk_import.sql`; its preflight changed from an expected safe failure to a live PASS. The migration adds two nullable operational fields, one import-audit row per job, unique normalized order/hash identities, office-only RLS and one transactional confirmation RPC. |
 | Authenticated runtime | `node scripts/verify-bulk-import-runtime.mjs`, exit 0: 51 checks, cleanup passed (5 users, 2 jobs, 1 crew, 2 retained objects). It uses the real `6556114.pdf`, imports as admin and supervisor, confirms direct/crew assignment, detects duplicate hash and duplicate order, audits both actors and proves direct/crew/foreign technician visibility. |
 | Credential boundary | Product parsing, signed upload and RPC confirmation use the browser's authenticated Supabase client. `service_role` appears only in server-side fixture setup and `finally` cleanup; no credentials or fixture identities are printed. |
 | Failure isolation | Duplicate and error outcomes remove only the newly uploaded object; an exception after upload also triggers best-effort removal. Unique races roll back the proposed job and return the existing job identity. |
@@ -264,7 +264,7 @@ Chain strategy: stacked-to-main
 ## Phase 13: Direct-upload corrective architecture
 
 - [x] 13.1 Amend the existing delta specs/design to forbid PDF bytes in Server Actions and require 50–100 rows, signed direct upload, resumable items, hash+size identity and grouped assignment.
-- [x] 13.2 Add a new corrective migration `20260810_jobs_bulk_import_resume.sql`; do not edit the applied bulk migration.
+- [x] 13.2 Add a new corrective migration `20260810005000_jobs_bulk_import_resume.sql`; do not edit the applied bulk migration.
 - [x] 13.3 Replace `uploadProjectPdfs(FormData)` with metadata-only prepare/confirm Server Actions and verify Storage object existence, MIME, size and PDF header.
 - [x] 13.4 Persist/reuse batch items for interruption recovery and make confirmation idempotent by item, hash and size.
 - [x] 13.5 Keep per-row assignees and bulk apply, then group confirmed job IDs by assignee and call `assignJobsInBulk` in chunks of at most 100.
@@ -287,10 +287,10 @@ Chain strategy: stacked-to-main
 |---|---|
 | RED → GREEN | `node scripts/verify-bulk-import-resume.mjs` first failed with `ERR_MODULE_NOT_FOUND` for the absent corrective core. After implementation it exits 0 with 19 checks covering metadata rejection, signed preparation, batch/item reuse, Storage MIME/size/header verification, idempotent confirmation contracts and absence of assignment writes. `node scripts/verify-job-domain.mjs` also passes with five metadata-only Storage actions. |
 | Metadata-only boundary | `src/lib/storage/actions.ts` exposes only `prepareBulkProjectUpload(input)` and `confirmBulkProjectUpload({ itemId })`; the legacy multipart action and byte-reading import core were removed. Browser PDF bytes are not accepted by either Server Action. |
-| Corrective schema | New unapplied migration `20260810_jobs_bulk_import_resume.sql` adds audited file size, hash+size uniqueness, office-owned batches/items and idempotent prepare/confirm RPCs. It does not assign jobs and no applied migration was edited. |
+| Corrective schema | New unapplied migration `20260810005000_jobs_bulk_import_resume.sql` adds audited file size, hash+size uniqueness, office-owned batches/items and idempotent prepare/confirm RPCs. It does not assign jobs and no applied migration was edited. |
 | Quality checks | `npm run lint`, `npx tsc --noEmit` and `npm run build`, exit 0. Next.js 16 compiled all routes. |
 | Runtime boundary | Live Supabase execution is intentionally N/A until the user applies the new migration. The focused core harness executes authenticated-client call shapes and Storage validation with deterministic mocks; no deployment or migration application occurred. |
-| Rollback boundary | Remove `20260810_jobs_bulk_import_resume.sql`, `bulk-import-core.ts` and `verify-bulk-import-resume.mjs`; restore the prior `uploadProjectPdfs` action and `importProjectPdfs` core plus these three checkboxes. UI work and all applied migrations remain untouched. |
+| Rollback boundary | Remove `20260810005000_jobs_bulk_import_resume.sql`, `bulk-import-core.ts` and `verify-bulk-import-resume.mjs`; restore the prior `uploadProjectPdfs` action and `importProjectPdfs` core plus these three checkboxes. UI work and all applied migrations remain untouched. |
 
 ### Work Unit 13B Evidence — Direct upload orchestration and grouped assignment
 
@@ -310,7 +310,7 @@ Chain strategy: stacked-to-main
 | Product hardening | The unapplied prepare RPC locks its batch row before counting/inserting, serializing concurrent prepares at the 100-item cap. Confirmation also takes a transaction-scoped advisory lock per real order identifier so concurrent files with different hashes cannot create duplicate orders. The browser model marks later hash+size matches as local duplicates, excludes them from upload/assignment, provides `Iniciar lote nuevo`, and permits correcting an assignee after an assignment-only failure. |
 | Legacy removal | Deleted dead `src/lib/jobs/import-core.ts`. Product code has no legacy byte core, multipart action, client import RPC or direct signed-upload authorization. The action, route and final harnesses were migrated away from removed import contracts. |
 | Prepared live harness | `verify-bulk-import-runtime.mjs` now uses prepare core → signed browser-equivalent upload → confirm core → assignment RPC. Its applied-state path covers the exact 4,005,680-byte PDF and audit size, interruption/reprepare, repeated confirmation, hash/item reuse, same-name/different-content with distinct hash+size, metadata failure, role denial, technician/crew assignment and full import audit. Existing parser/model harnesses exercise 120 rows, an explicit 50-file simulated batch and the 100-row cap/chunking. |
-| Expected preflight | With the corrective migration intentionally unapplied, `node scripts/verify-bulk-import-runtime.mjs` exits 0 with `[bulk-import-runtime] EXPECTED_PRECHECK_FAIL migration=20260810_jobs_bulk_import_resume.sql cleanup=passed checks=0`. No fixtures are created. Tasks 13.6 and 13.7 remain unchecked until the live applied-state path runs. |
+| Expected preflight | With the corrective migration intentionally unapplied, `node scripts/verify-bulk-import-runtime.mjs` exits 0 with `[bulk-import-runtime] EXPECTED_PRECHECK_FAIL migration=20260810005000_jobs_bulk_import_resume.sql cleanup=passed checks=0`. No fixtures are created. Tasks 13.6 and 13.7 remain unchecked until the live applied-state path runs. |
 | Non-migration regression | Domain PASS; resume PASS 49 (`simulated=50`); bulk UI PASS 25; parser PASS 19/120 rows; RLS PASS 77; assignment RPC PASS 51; final PASS 113; action runtime PASS 39; routes PASS 47 with server/cleanup; lint, TypeScript and build PASS. Corrective migration SHA-256: `eb8f72c040363ae90c6e2a87454d8de64217a8b1cacf71bc649ddb74e6df7da3`; applied bulk migration remains `2bdd4f74c10006a5a635fd7eac4945a7abc81c31e02d3a5f0e7a4acf861c8e7c`. |
 | Rollback boundary | Restore `import-core.ts` only together with the pre-13A legacy architecture, revert the 13C model/UI and batch-lock additions, and restore prior harness fixtures/assertions. Do not revert metadata-only actions, applied migrations or unrelated work. |
 
@@ -318,7 +318,7 @@ Chain strategy: stacked-to-main
 
 | Evidence | Result |
 |---|---|
-| Live direct upload | After the user applied `20260810_jobs_bulk_import_resume.sql`, `node scripts/verify-bulk-import-runtime.mjs` passed 57 checks with cleanup passed. It uploaded the exact 4,005,680-byte reference PDF through a signed Storage URL, rejected confirmation before upload, resumed the same item, confirmed idempotently, and kept same-name/different-content files distinct by hash+size. |
+| Live direct upload | After the user applied `20260810005000_jobs_bulk_import_resume.sql`, `node scripts/verify-bulk-import-runtime.mjs` passed 57 checks with cleanup passed. It uploaded the exact 4,005,680-byte reference PDF through a signed Storage URL, rejected confirmation before upload, resumed the same item, confirmed idempotently, and kept same-name/different-content files distinct by hash+size. |
 | Permissions and audit | The live path proved admin/supervisor import, technician denial, direct and crew visibility, private import audit, original name/hash/exact size/importer/date, and assignment actor audit. Fixtures were removed: users 5, jobs 2, crews 1, batches 4, objects 4. |
 | Scale and recovery | Metadata/model harnesses pass with 50 simulated files, 120 parser rows, three concurrent browser uploads, 100-row batches and 100-ID grouped assignment chunks. Partial upload/assignment failure and retry paths remain isolated and idempotent. |
 | Full regression | Resume 49; bulk UI 25; parser 19/120; domain contracts; RLS 77; assignment RPC 51; final 113; actions runtime 39; routes runtime 47; lint, `tsc --noEmit`, production build and `git diff --check` pass. Storage Server Actions contain no `FormData`, `File`, `Blob`, `ArrayBuffer` or `Uint8Array`, and `next.config.ts` has no `bodySizeLimit` override. |
@@ -330,7 +330,7 @@ Chain strategy: stacked-to-main
 - [x] 14.1 Extend the existing `crew-management` spec with administrative list/empty, create/edit/deactivate, membership, eligibility and assignment scenarios.
 - [x] 14.2 Extend `design.md` with `/equipos`, granular atomic mutations, limited directory RPC, rollout, rollback and threat matrix.
 - [x] 14.3 **14A RED:** create `scripts/verify-crew-admin-runtime.mjs`; prove admin/supervisor receive only active technicians shaped exactly `{id,label}`, while technician/inactive/anonymous and forced crew Server Actions are denied.
-- [x] 14.4 Add new `supabase/migrations/20260810_jobs_crew_directory.sql` with authorized `security definer` RPC, fixed columns, empty `search_path`, public revoke/authenticated grant; do not edit applied migrations or relax `profiles` RLS.
+- [x] 14.4 Add new `supabase/migrations/20260810003000_jobs_crew_directory.sql` with authorized `security definer` RPC, fixed columns, empty `search_path`, public revoke/authenticated grant; do not edit applied migrations or relax `profiles` RLS.
 - [x] 14.5 Extend `src/lib/jobs/types.ts`, `queries.ts` and `actions.ts` with serializable crew DTOs, RPC composition and validated granular create/edit/activate/member actions; reject removing the lead and revalidate affected routes.
 - [x] 14.6 Turn deterministic 14A core/action/query contracts GREEN for validation, atomic failure and role guards; run a live preflight that exits safely as migration-pending without claiming authenticated runtime compliance, and record hash/rollback.
 - [x] 14.7 **14B RED:** create UI/route harnesses for direct `/equipos` access by admin/supervisor versus technician/inactive/anonymous, forced actions, keyboard operation, list/empty/error states and no protected-data leak.
@@ -349,17 +349,17 @@ Chain strategy: stacked-to-main
 | Evidence | Result |
 |---|---|
 | Threat RED → GREEN | First focused run failed with `ERR_MODULE_NOT_FOUND` for absent `src/lib/jobs/crew-core.ts`. `node --experimental-strip-types scripts/verify-crew-admin-runtime.mjs` now exits 0 with 19 deterministic checks for the exact two-column directory, active-technician filter, office denial boundary, action guards, validation, single mutation and atomic lead membership. |
-| Safe live preflight | The same command calls the live anonymous RPC endpoint and exits 0 with `[crew-admin-runtime] EXPECTED_PRECHECK_FAIL migration=20260810_jobs_crew_directory.sql cleanup=passed checks=19`. It creates no fixtures and does not claim authenticated runtime compliance before SQL application. |
+| Safe live preflight | The same command calls the live anonymous RPC endpoint and exits 0 with `[crew-admin-runtime] EXPECTED_PRECHECK_FAIL migration=20260810003000_jobs_crew_directory.sql cleanup=passed checks=19`. It creates no fixtures and does not claim authenticated runtime compliance before SQL application. |
 | Domain and quality | `node scripts/verify-job-domain.mjs`, `npm run lint`, `npx tsc --noEmit`, `npm run build` and `git diff --check` exit 0. Next.js 16 compiles every existing route. |
 | Security boundary | Product uses the authenticated server client only. The new definer RPC checks active office staff, returns only `{id,label}`, fixes `search_path`, revokes public execution and grants authenticated execution; no product `service_role` or relaxed profile policy was added. |
-| Rollback boundary | Before SQL application, remove `20260810_jobs_crew_directory.sql`, `crew-core.ts`, the focused harness and the crew additions in types/queries/actions/tasks. After application, use an additive inverse migration before reverting product callers. |
+| Rollback boundary | Before SQL application, remove `20260810003000_jobs_crew_directory.sql`, `crew-core.ts`, the focused harness and the crew additions in types/queries/actions/tasks. After application, use an additive inverse migration before reverting product callers. |
 
 ### Work Unit 14B Evidence — Protected crew management UI
 
 | Evidence | Result |
 |---|---|
 | Threat RED → GREEN | `node --experimental-strip-types scripts/verify-crew-ui.mjs` first failed with `ERR_MODULE_NOT_FOUND` for absent `crew-manager-model.ts`. It now passes 37 deterministic/model/route checks: admin/supervisor guard, technician/inactive/anonymous denial contracts, guard-before-query, serializable DTOs, five forced-action guards, native keyboard controls, confirmation, scoped pending/feedback, list/empty/error/loading states, office-only links, lead-removal prevention and active-only assignment projection. |
-| Safe route preflight | The focused harness starts the compiled Next server, requests anonymous `/equipos`, accepts the Next 16 streamed `NEXT_REDIRECT` signal to `/login`, proves no protected heading leaks, stops the server, and then reports `[crew-ui] EXPECTED_PRECHECK_FAIL migration=20260810_jobs_crew_directory.sql anon_guard=covered cleanup=passed checks=37`. No fixtures are created and no admin/member live behavior is claimed. |
+| Safe route preflight | The focused harness starts the compiled Next server, requests anonymous `/equipos`, accepts the Next 16 streamed `NEXT_REDIRECT` signal to `/login`, proves no protected heading leaks, stops the server, and then reports `[crew-ui] EXPECTED_PRECHECK_FAIL migration=20260810003000_jobs_crew_directory.sql anon_guard=covered cleanup=passed checks=37`. No fixtures are created and no admin/member live behavior is claimed. |
 | UI boundary | `app/equipos/page.tsx` calls `requireSupervisor()` before the management query. `CrewManager` is the sole client interaction boundary and uses native forms/buttons/selects, explicit confirmations, recoverable action feedback and no optimistic membership state. Technicians return from `/trabajos` before office links render. |
 | Quality | `node scripts/verify-job-domain.mjs`, `npm run lint`, `npx tsc --noEmit`, `npm run build` and `git diff --check` pass; build includes dynamic `/equipos`. Task 12.4 and live task 14.12 remain open. |
 | Rollback boundary | Remove `app/equipos`, `crew-manager.tsx`, `crew-manager-model.ts`, the 14B harness and only the two `/equipos` links/query composition additions. Preserve 14A schema/actions and every prior jobs artifact. |

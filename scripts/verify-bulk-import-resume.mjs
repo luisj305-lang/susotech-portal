@@ -51,7 +51,7 @@ assert.equal((await confirmBulkProjectUploadCore(client, { itemId: "i1" })).succ
 const actions = await readFile(new URL("../src/lib/storage/actions.ts", import.meta.url), "utf8");
 assert.doesNotMatch(actions, /uploadProjectPdfs|FormData|File|Blob|ArrayBuffer|Uint8Array/u);
 assert.match(actions, /prepareBulkProjectUploadCore/u); assert.match(actions, /confirmBulkProjectUploadCore/u);
-const sql = await readFile(new URL("../supabase/migrations/20260810_jobs_bulk_import_resume.sql", import.meta.url), "utf8");
+const sql = await readFile(new URL("../supabase/migrations/20260810005000_jobs_bulk_import_resume.sql", import.meta.url), "utf8");
 assert.match(sql, /job_import_batches/u); assert.match(sql, /job_import_items/u);
 assert.match(sql, /unique \(batch_id, source_file_hash, source_file_size\)/u);
 assert.match(sql, /job_imports_hash_size_idx/u); assert.doesNotMatch(sql, /job_assignments/u);

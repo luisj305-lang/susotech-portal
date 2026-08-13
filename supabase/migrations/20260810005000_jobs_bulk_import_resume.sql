@@ -1,4 +1,4 @@
--- Corrective resumable, metadata-only PDF import. Apply after 20260810_jobs_bulk_import.sql.
+-- Corrective resumable, metadata-only PDF import. Apply after 20260810004000_jobs_bulk_import.sql.
 
 alter table public.job_imports add column if not exists source_file_size bigint;
 update public.job_imports set source_file_size = 0 where source_file_size is null;

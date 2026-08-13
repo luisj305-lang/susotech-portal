@@ -222,13 +222,13 @@ Técnico
 
 | File | Action | Description |
 |---|---|---|
-| `supabase/migrations/20260810_jobs_module.sql` | Create | Tablas, enums, triggers, RLS. |
+| `supabase/migrations/20260810001000_jobs_module.sql` | Create | Tablas, enums, triggers, RLS. |
 | `src/lib/jobs/types.ts` | Create | Tipos `Job`, `Crew`, `JobAssignment`, enums. |
 | `src/lib/jobs/actions.ts` | Create | Server actions para CRUD, transiciones, códigos, fotos. |
 | `src/lib/jobs/state.ts` | Create | Máquina de estados y validación de transiciones. |
 | `src/lib/storage/actions.ts` | Create | Server actions para subida/bajada de archivos a Storage. |
-| `supabase/migrations/20260810_jobs_bulk_import_resume.sql` | Create | Batch/items reanudables, tamaño auditado e idempotencia correctiva. |
-| `supabase/migrations/20260810_jobs_crew_directory.sql` | Create | RPC de directorio mínimo para admin/supervisor sin relajar RLS de perfiles. |
+| `supabase/migrations/20260810005000_jobs_bulk_import_resume.sql` | Create | Batch/items reanudables, tamaño auditado e idempotencia correctiva. |
+| `supabase/migrations/20260810003000_jobs_crew_directory.sql` | Create | RPC de directorio mínimo para admin/supervisor sin relajar RLS de perfiles. |
 | `app/trabajos/page.tsx` | Create | Listado adaptativo por rol. |
 | `app/trabajos/[id]/page.tsx` | Create | Detalle del trabajo. |
 | `app/trabajos/nuevo/page.tsx` | Create | Formulario de creación (admin/supervisor). |
@@ -336,7 +336,7 @@ El contrato SQL adicional será `list_active_technicians_for_office() returns ta
 
 ### Incremento de administración de crews
 
-Requiere la migración correctiva nueva `20260810_jobs_crew_directory.sql`; no se modifica ninguna migración aplicada. La política general de `profiles` permanece intacta: el RPC solo entrega `id,label` a oficina activa y no utiliza ni expone `service_role`. Se aplica primero la migración, se ejecutan sus pruebas negativas/positivas y luego se despliega la ruta. Rollback: revocar y eliminar únicamente la función nueva; la UI debe tratar su ausencia/error como fallo de carga sin mutar crews.
+Requiere la migración correctiva nueva `20260810003000_jobs_crew_directory.sql`; no se modifica ninguna migración aplicada. La política general de `profiles` permanece intacta: el RPC solo entrega `id,label` a oficina activa y no utiliza ni expone `service_role`. Se aplica primero la migración, se ejecutan sus pruebas negativas/positivas y luego se despliega la ruta. Rollback: revocar y eliminar únicamente la función nueva; la UI debe tratar su ausencia/error como fallo de carga sin mutar crews.
 
 `app/equipos/page.tsx` será Server Component y ejecutará `requireSupervisor()` antes de `listCrewsForOffice()`. La consulta leerá IDs autorizados de `crews`/`crew_members`, obtendrá el directorio limitado por RPC y compondrá el DTO sin depender del SELECT global de perfiles. Pasará datos serializables a `CrewManager`; únicamente este componente será cliente para selección, diálogos y estados pending/success/error. Dashboard y `/trabajos` mostrarán el enlace a quienes ya cumplen `canCreateJobs`.
 

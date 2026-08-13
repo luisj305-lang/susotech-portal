@@ -74,7 +74,7 @@ for (const action of ["createPhotoUploadUrl", "createProjectUploadUrl", "createS
 assert.doesNotMatch(storageSource, /uploadProjectPdfs|FormData|File|Blob|ArrayBuffer|Uint8Array/u);
 assert.ok(actionsSource.startsWith('"use server";') && storageSource.startsWith('"use server";'));
 assert.ok(!actionsSource.includes("service_role") && !storageSource.includes("service_role"));
-const rpcSource = readFileSync(new URL("../supabase/migrations/20260810_jobs_assignment_rpc.sql", import.meta.url), "utf8");
+const rpcSource = readFileSync(new URL("../supabase/migrations/20260810002000_jobs_assignment_rpc.sql", import.meta.url), "utf8");
 assert.match(rpcSource, /assign_jobs_atomic/u);
 assert.match(rpcSource, /update public\.job_assignments[\s\S]*insert into public\.job_assignments/u);
 
@@ -95,7 +95,7 @@ const bulkUiContracts = [
   ["../app/trabajos/importar/page.tsx", [/await requireSupervisor\(\)/u, /listAssigneeOptions/u, /<BulkImport/u]],
   ["../src/components/jobs/bulk-import.tsx", [/^"use client";/u, /onDrop=/u, /multiple/u, /extractPdfPreview/u, /uploadToSignedUrl/u, /prepareBulkProjectUpload/u, /confirmBulkProjectUpload/u, /assignJobsInBulk/u, /retryOnly/u, /selectUploadTargets/u, /Asignación masiva/u]],
   ["../src/components/jobs/bulk-import-model.ts", [/pending.*processing.*imported.*duplicate.*error/u, /pageSize = 50/u, /filterImportRows/u]],
-  ["../supabase/migrations/20260810_jobs_bulk_import.sql", [/create table public\.job_imports/u, /confirm_job_import/u, /source_file_hash/u, /imported_by/u]],
+  ["../supabase/migrations/20260810004000_jobs_bulk_import.sql", [/create table public\.job_imports/u, /confirm_job_import/u, /source_file_hash/u, /imported_by/u]],
 ];
 let bulkContractCount = 0;
 for (const [path, patterns] of bulkUiContracts) {
@@ -108,7 +108,7 @@ const technicianUiContracts = [
   ["../app/trabajos/page.tsx", [/profile\.role === "tecnico"/u, /listTechnicianJobs/u, /<JobList/u]],
   ["../app/trabajos/[id]/page.tsx", [/profile\.role === "tecnico"/u, /getTechnicianJob/u, /<TechnicianActions/u, /<CodeInput/u, /<PhotoUpload/u]],
   ["../src/components/jobs/job-list.tsx", [/min-h-40/u, /jobs\.map/u, /No tienes trabajos asignados/u]],
-  ["../src/components/jobs/technician-actions.tsx", [/^"use client";/u, /transitionJob/u, /setIncident/u, /pdf-entregado/u, /Entregar trabajo/u, /min-h-14/u]],
+  ["../src/components/jobs/technician-actions.tsx", [/^"use client";/u, /transitionJob/u, /setIncident/u, /\/trabajos\/\$\{jobId\}\/entregar/u, /Entregar trabajo/u, /min-h-14/u]],
   ["../src/components/jobs/job-documents.tsx", [/^"use client";/u, /createSignedDownloadUrl/u, /Ver PDF original/u, /Ver PDF entregado/u]],
   ["../src/components/jobs/photo-upload.tsx", [/^"use client";/u, /createPhotoUploadUrl/u, /uploadToSignedUrl/u, /addPhotoComment/u, /capture="environment"/u]],
   ["../src/components/jobs/code-input.tsx", [/^"use client";/u, /addProductionCode/u, /min="0\.01"/u, /disabled=\{!enabled\}/u]],

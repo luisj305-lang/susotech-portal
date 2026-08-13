@@ -183,7 +183,7 @@ if (failure) {
   console.error(`[bulk-import-runtime] FAIL ${failure.message} cleanup=${cleanupPassed ? "passed" : "failed"}`);
   process.exitCode = 1;
 } else if (migrationPending) {
-  console.log("[bulk-import-runtime] EXPECTED_PRECHECK_FAIL migration=20260810_jobs_bulk_import_resume.sql cleanup=passed checks=0");
+  console.log("[bulk-import-runtime] EXPECTED_PRECHECK_FAIL migration=20260810005000_jobs_bulk_import_resume.sql cleanup=passed checks=0");
 } else {
   console.log(`[bulk-import-runtime] PASS checks=${checks} cleanup=passed users=${users.length} jobs=${jobs.length} crews=${crews.length} batches=${batches.length} objects=${objects.length}`);
 }

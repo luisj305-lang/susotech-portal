@@ -40,7 +40,7 @@ const [page, manager, loading, error, dashboard, jobs, queries, migration, sessi
   read("../app/equipos/page.tsx"), read("../src/components/jobs/crew-manager.tsx"),
   read("../app/equipos/loading.tsx"), read("../app/equipos/error.tsx"),
   read("../src/components/dashboard-client.tsx"), read("../app/trabajos/page.tsx"),
-  read("../src/lib/jobs/queries.ts"), read("../supabase/migrations/20260810_jobs_crew_directory.sql"),
+  read("../src/lib/jobs/queries.ts"), read("../supabase/migrations/20260810003000_jobs_crew_directory.sql"),
   read("../src/lib/auth/session.ts"), read("../src/lib/jobs/actions.ts"),
   read("../app/usuarios/page.tsx"), read("../src/components/users-manager.tsx"),
   read("../src/components/jobs/assignee-select.tsx"),
