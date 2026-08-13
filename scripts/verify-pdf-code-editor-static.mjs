@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 const read=(p)=>readFileSync(new URL(p,import.meta.url),"utf8");
 const sql=read("../supabase/migrations/20260813030000_complete_pdf_delivery_workflow.sql");
+const contract=read("../supabase/migrations/20260813032000_retire_legacy_job_mutations.sql");
 const primitives=read("../supabase/migrations/20260813012000_job_delivery_audit_primitives.sql");
 const editor=read("../src/components/jobs/pdf-code-editor.tsx");
 const route=read("../app/api/trabajos/[id]/pdf-entregado/route.ts");
@@ -24,5 +25,7 @@ assert.match(preview,/export async function POST/u); assert.match(editor,/method
 assert.match(route,/p_expected_draft_version/u); assert.match(compositor,/page\.drawRectangle/u); assert.match(compositor,/page\.drawText/u); assert.match(compositor,/page\.drawLine/u);
 assert.match(editor,/Cantidad seleccionada/u); assert.match(editor,/arrowTipX/u); assert.match(sql,/p_source_document_ids/u);
 assert.match(sql,/follow-up contract migration revokes them/u);
+assert.match(contract,/revoke execute on function public\.save_job_pdf_draft\(uuid, integer, jsonb\) from authenticated/u);
+assert.match(contract,/revoke execute on function public\.confirm_delivered_job_pdf_versioned/u);
 assert.doesNotMatch(editor+preview+compositor,/pdfjs|pdf\.js/iu);
 console.log("PASS visual PDF code editor static checks");

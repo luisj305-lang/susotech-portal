@@ -14,6 +14,7 @@ const archiveUi = read('src/components/jobs/office-job-actions.tsx');
 const archiveHistory = read('src/components/jobs/archive-history.tsx');
 const jobPage = read('app/trabajos/[id]/page.tsx');
 const operationsSql = read('supabase/migrations/20260813031000_worker_operations_archive_and_evidence.sql');
+const contractSql = read('supabase/migrations/20260813032000_retire_legacy_job_mutations.sql');
 
 assert.equal(getJobMapUrl({ address: '6238 Sleepy Hollow Dr', location: 'Miami, FL' }), 'https://www.google.com/maps/search/?api=1&query=6238%20Sleepy%20Hollow%20Dr%2C%20Miami%2C%20FL');
 assert.equal(getJobMapUrl({ address: 'A', location: null, projectMapUrl: ' https://maps.example/job ' }), 'https://maps.example/job');
@@ -34,6 +35,7 @@ assert.match(operations, /"Producción"/u);
 assert.match(operationsSql, /America\/New_York/u);
 assert.match(operationsSql, /week_end_exclusive_at/u);
 assert.match(operationsSql, /follow-up contract migration removes access/u);
+assert.match(contractSql, /revoke execute on function public\.set_job_archived\(uuid, boolean, text\) from authenticated/u);
 assert.match(archiveUi, /Trabajo duplicado/u);
 assert.match(archiveUi, /Cancelado por el cliente o la oficina/u);
 assert.match(operationsSql, /list_job_archive_events_for_office/u);

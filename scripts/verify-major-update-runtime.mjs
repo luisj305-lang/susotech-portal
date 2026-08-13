@@ -77,6 +77,12 @@ try {
   await upload("project-files", originalPath, original, "application/pdf");
   assert.ifError((await service.from("jobs").insert({ id: ids.job, title: `Runtime major update ${runId}`, main_status: "en_progreso", project_pdf_url: originalPath })).error);
   assert.ifError((await admin.rpc("assign_jobs_atomic", { job_ids: [ids.job], new_assignee_type: "technician", new_assignee_id: ids.tech })).error);
+  assert.equal((await admin.rpc("prepare_job_document", {
+    p_job_id: ids.job, p_display_name: "legacy.pdf", p_mime_type: "application/pdf", p_size_bytes: original.length,
+  })).error?.code, "42501", "legacy document preparation is revoked");
+  assert.equal((await admin.rpc("set_job_archived", {
+    p_job_id: ids.job, p_archived: true, p_reason: "legacy",
+  })).error?.code, "42501", "legacy free-text archival is revoked");
   const originalHash = createHash("sha256").update(original).digest("hex");
   const originalDocument = await service.rpc("ensure_job_original_document", {
     p_job_id: ids.job, p_storage_path: originalPath, p_original_filename: "original.pdf",
@@ -116,6 +122,13 @@ try {
   };
   const saved = await tech.rpc("save_job_pdf_draft_v2", { p_job_id: ids.job, p_expected_version: initialized.data[0].version, p_placements: [placement] });
   assert.ifError(saved.error);
+  assert.equal((await tech.rpc("save_job_pdf_draft", {
+    p_job_id: ids.job, p_expected_version: saved.data, p_placements: [placement],
+  })).error?.code, "42501", "legacy draft save is revoked");
+  assert.equal((await tech.rpc("confirm_delivered_job_pdf", {
+    p_job_id: ids.job, p_storage_path: `${ids.job}/delivered/${randomUUID()}.pdf`,
+    p_source_photo_ids: [], p_submit: true,
+  })).error?.code, "42501", "legacy delivery confirmation is revoked");
 
   const evidence = new TextEncoder().encode("runtime-evidence");
   const evidencePath = `${ids.job}/${randomUUID()}.jpg`;
