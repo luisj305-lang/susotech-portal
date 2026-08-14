@@ -1,6 +1,7 @@
 import type { DeliveredPdfStatus, JobStatus } from "./types";
 
 export const jobStatusBadgeClasses: Record<JobStatus, string> = {
+  sin_asignar: "border border-zinc-400 bg-zinc-900 text-zinc-100",
   asignado: "border border-sky-400 bg-sky-950 text-sky-100",
   en_progreso: "border border-amber-400 bg-amber-950 text-amber-100",
   enviado_revision: "border border-violet-400 bg-violet-950 text-violet-100",

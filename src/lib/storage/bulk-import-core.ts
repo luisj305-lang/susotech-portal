@@ -81,7 +81,10 @@ export async function prepareBulkProjectUploadCore(
   return { success: true, message: "Carga preparada.", data: { ...prepared, token: signed.data.token, signedUrl: signed.data.signedUrl } };
 }
 
-export async function confirmBulkProjectUploadCore(supabase: SupabaseClient, input: { itemId: string }): Promise<Result<{ status: string; jobId: string }>> {
+export async function confirmBulkProjectUploadCore(supabase: SupabaseClient, input: { itemId: string; assigneeType?: "technician"; assigneeId?: string }): Promise<Result<{ status: string; jobId: string }>> {
+  if (input.assigneeType !== undefined && input.assigneeType !== "technician") {
+    return fail("Solo se permiten responsables individuales.");
+  }
   const { data: item, error } = await supabase.from("job_import_items").select("batch_id,item_id,proposed_job_id,storage_path,item_status,confirmed_job_id,source_file_name,source_file_hash,source_file_size,source_mime_type,declared_pdf_header").eq("item_id", input.itemId).single();
   if (error || !item) return fail("Item de importación no disponible.");
   if (item.confirmed_job_id) return { success: true, message: "Importación ya confirmada.", data: { status: item.item_status, jobId: item.confirmed_job_id } };
@@ -94,7 +97,11 @@ export async function confirmBulkProjectUploadCore(supabase: SupabaseClient, inp
   const response = await fetch(signed.data.signedUrl, { headers: { Range: "bytes=0-4" }, cache: "no-store" });
   const contentRange = response.headers.get("content-range") ?? "";
   if (response.status !== 206 || !/^bytes 0-4\/\d+$/u.test(contentRange) || (await response.text()) !== item.declared_pdf_header) return fail("La cabecera real del objeto no es PDF.");
-  const confirmed = await supabase.rpc("confirm_job_import_item", { p_item_id: item.item_id });
+  const confirmed = await supabase.rpc("confirm_job_import_item", {
+    p_item_id: item.item_id,
+    p_assignee_type: input.assigneeType ?? null,
+    p_assignee_id: input.assigneeId ?? null,
+  });
   const row = Array.isArray(confirmed.data) ? confirmed.data[0] : null;
   if (confirmed.error || !row?.confirmed_job_id) return fail("No se pudo confirmar el trabajo.");
   if (row.result_status === "duplicate") await supabase.storage.from("project-files").remove([item.storage_path]);

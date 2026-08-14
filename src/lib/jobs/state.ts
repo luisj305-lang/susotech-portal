@@ -2,6 +2,7 @@ import type { UserRole } from "@/lib/auth/session";
 import type { JobStatus, IncidentType } from "./types";
 
 export const JOB_STATUS_ORDER: JobStatus[] = [
+  "sin_asignar",
   "asignado",
   "en_progreso",
   "enviado_revision",

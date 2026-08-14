@@ -3,7 +3,7 @@ import { jobStatusBadgeClasses } from "@/lib/jobs/status-presentation";
 import type { Job } from "@/lib/jobs/types";
 import { getJobMapUrl } from "@/lib/jobs/maps";
 
-const statuses: Record<string, string> = { asignado: "Asignado", en_progreso: "En progreso", enviado_revision: "En revisión", aprobado: "Aprobado", listo_pagar: "Listo para pagar", pagado: "Pagado" };
+const statuses: Record<string, string> = { sin_asignar: "Sin asignar", asignado: "Asignado", en_progreso: "En progreso", enviado_revision: "En revisión", aprobado: "Aprobado", listo_pagar: "Listo para pagar", pagado: "Pagado" };
 const incidents: Record<string, string> = { need_splicing: "Requiere empalme", no_access: "Sin acceso", need_cr: "Requiere CR", permit_pending: "Permiso pendiente", returned: "Devuelto", incomplete: "Incompleto" };
 
 export function JobList({ jobs }: { jobs: Job[] }) {

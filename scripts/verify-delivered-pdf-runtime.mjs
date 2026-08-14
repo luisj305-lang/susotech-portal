@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -29,11 +30,12 @@ const password = `${randomBytes(18).toString("base64url")}Aa1!`;
 const userIds = [];
 const objects = { "project-files": [], "job-evidence": [] };
 let jobId;
+const extraJobIds = [];
 let checks = 0;
 let cleanupPassed = false;
 
 function check(condition, label, error) {
-  if (!condition) throw new Error(`${label} [${error?.code ?? error?.message ?? "assertion"}]`);
+  if (!condition) throw new Error(`${label} [${error ? `${error.code ?? "error"}: ${error.message ?? "unknown"}` : "assertion"}]`);
   checks += 1;
 }
 
@@ -61,6 +63,10 @@ async function identity(label, role) {
   return { id, client };
 }
 
+function postgres(sql) {
+  return execFileSync("docker", ["exec", "supabase_db_susotech-portal", "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-Atc", sql], { encoding: "utf8" }).trim();
+}
+
 async function startShift(identity, label) {
   const data = await ok(`${label} starts active shift`, identity.client.rpc("start_technician_shift", {
     p_no_fuel_today: true,
@@ -82,6 +88,7 @@ async function cleanup() {
   for (const bucket of Object.keys(objects)) {
     if (objects[bucket].length && (await service.storage.from(bucket).remove(objects[bucket])).error) errors.push(bucket);
   }
+  if (extraJobIds.length && (await service.from("jobs").delete().in("id", extraJobIds)).error) errors.push("extra jobs");
   if (jobId && (await service.from("jobs").delete().eq("id", jobId)).error) errors.push("job");
   if (userIds.length && (await service.from("technician_shifts").delete().in("technician_id", userIds)).error) errors.push("shifts");
   for (const id of [...userIds].reverse()) if ((await service.auth.admin.deleteUser(id)).error) errors.push("user");
@@ -97,6 +104,19 @@ try {
   const supervisor = await identity("supervisor", "supervisor");
   const technician = await identity("technician", "tecnico");
   const outsider = await identity("outsider", "tecnico");
+  const helper = await identity("helper", "tecnico");
+  await ok("configure helper specialty", admin.client.rpc("set_worker_specialty", {
+    p_profile_id: helper.id,
+    p_worker_specialty: "ayudante",
+  }));
+  const inhouseCategory = await ok("read active Inhouse category", admin.client.from("price_categories")
+    .select("id").eq("slug", "inhouse").eq("active", true).single());
+  await ok("assign technician Inhouse category", admin.client.rpc("set_technician_price_category", {
+    p_technician_id: technician.id, p_price_category_id: inhouseCategory.id,
+  }));
+  await ok("assign helper Inhouse category for immutable legacy fixture", admin.client.rpc("set_technician_price_category", {
+    p_technician_id: helper.id, p_price_category_id: inhouseCategory.id,
+  }));
   await startShift(technician, "assigned technician");
   await startShift(outsider, "unassigned technician");
   jobId = randomUUID();
@@ -104,12 +124,13 @@ try {
   await ok("create in-progress job", admin.client.from("jobs").insert({
     id: jobId,
     title: `Delivered runtime ${runId}`,
-    main_status: "en_progreso",
     project_pdf_url: originalPath,
   }));
   await ok("assign technician", admin.client.rpc("assign_jobs_atomic", {
     job_ids: [jobId], new_assignee_type: "technician", new_assignee_id: technician.id,
   }));
+  await ok("start assigned job", technician.client.from("jobs")
+    .update({ main_status: "en_progreso" }).eq("id", jobId).select("id").single());
   await upload("project-files", originalPath, minimalPdf, "application/pdf");
   const originalHash = createHash("sha256").update(minimalPdf).digest("hex");
   const originalDocument = await ok("register verified original", service.rpc("ensure_job_original_document", {
@@ -117,8 +138,10 @@ try {
     p_size_bytes: minimalPdf.length, p_file_hash: originalHash, p_page_count: 1,
   }));
   const documentId = originalDocument;
-  const catalog = await ok("read production catalog", service.from("production_code_catalog").select("id").limit(1).single());
-  const initialized = await ok("initialize complete draft", technician.client.rpc("initialize_job_pdf_draft_v2", {
+  const technicianCatalog = await ok("read applicable production catalog", technician.client.rpc("list_my_production_catalog"));
+  const catalog = technicianCatalog.find((item) => item.unit_rate !== null);
+  check(Boolean(catalog?.id), "applicable production catalog contains a rated item");
+  const initialized = await ok("initialize complete draft", technician.client.rpc("initialize_job_pdf_draft_v3", {
     p_job_id: jobId, p_source_document_ids: [documentId], p_page_count: 1,
   }));
   const placement = {
@@ -126,8 +149,13 @@ try {
     sourcePage: 1, quantity: 1, x: 0.1, y: 0.1, width: 0.2, height: 0.08,
     arrowTipX: 0.5, arrowTipY: 0.5,
   };
-  const draftVersion = await ok("save complete draft", technician.client.rpc("save_job_pdf_draft_v2", {
-    p_job_id: jobId, p_expected_version: initialized[0].version, p_placements: [placement],
+  const textNotes = [{
+    page: 1, sourceDocumentId: documentId, sourcePage: 1,
+    text: "Instalación — José\nSeñal número 2", x: 0.1, y: 0.2,
+    width: 0.4, height: 0.2, fontSizeRatio: 0.02,
+  }];
+  const draftVersion = await ok("save complete draft", technician.client.rpc("save_job_pdf_draft_v3", {
+    p_job_id: jobId, p_expected_version: initialized[0].version, p_placements: [placement], p_text_notes: textNotes,
   }));
   const snapshotHash = createHash("sha256").update(JSON.stringify([placement])).digest("hex");
 
@@ -177,12 +205,157 @@ try {
     delivered_pdf_path: firstDeliveredPath,
   }).eq("id", jobId));
 
-  const submitted = await ok("technician atomically delivers", technician.client.rpc("confirm_delivered_job_pdf_complete", {
+  const allocationIdempotencyKey = randomUUID();
+  const submitted = await ok("technician atomically delivers with allocations and notes", technician.client.rpc("confirm_delivered_job_pdf_with_allocations_v3", {
     p_job_id: jobId, p_storage_path: firstDeliveredPath, p_source_photo_ids: [photoOneId],
     p_source_document_ids: [documentId], p_submit: true,
     p_expected_draft_version: draftVersion, p_snapshot_hash: snapshotHash,
+    p_text_note_snapshot: textNotes,
+    p_allocations: [
+      { participantId: technician.id, percentageBasisPoints: 3333 },
+      { participantId: helper.id, percentageBasisPoints: 6667 },
+    ],
+    p_allocation_idempotency_key: allocationIdempotencyKey,
   }));
   check(submitted?.[0]?.delivered_status === "enviado_revision", "submission advances existing state");
+  const allocationVersionId = submitted?.[0]?.allocation_version_id;
+  check(Boolean(allocationVersionId), "submission creates allocation version atomically");
+  const version = await ok("read allocation source snapshot", admin.client.from("job_delivery_allocation_versions")
+    .select("source_amount_cents, version, idempotency_key").eq("id", allocationVersionId).single());
+  const allocations = await ok("read exact allocation cents", admin.client.from("job_delivery_financial_allocations")
+    .select("participant_id, percentage_basis_points, allocated_cents, allocation_order")
+    .eq("allocation_version_id", allocationVersionId).order("allocation_order"));
+  check(version.version === 1 && version.idempotency_key === allocationIdempotencyKey, "allocation v1 and idempotency persisted");
+  check(allocations.length === 2
+    && allocations.reduce((sum, row) => sum + Number(row.percentage_basis_points), 0) === 10000
+    && allocations.reduce((sum, row) => sum + Number(row.allocated_cents), 0) === Number(version.source_amount_cents),
+  "Hamilton allocation preserves exact basis points and cents");
+  const initialAnnotations = await ok("read immutable text annotations", technician.client.from("job_pdf_text_annotations")
+    .select("id,text").eq("delivery_id", submitted[0].delivery_id));
+  check(initialAnnotations.length === textNotes.length && initialAnnotations[0].text === textNotes[0].text,
+    "delivery preserves exact multiline accented text snapshot");
+  const retried = await ok("same delivery allocation and notes retry is idempotent", technician.client.rpc("confirm_delivered_job_pdf_with_allocations_v3", {
+    p_job_id: jobId, p_storage_path: firstDeliveredPath, p_source_photo_ids: [photoOneId],
+    p_source_document_ids: [documentId], p_submit: true,
+    p_expected_draft_version: draftVersion, p_snapshot_hash: snapshotHash,
+    p_text_note_snapshot: textNotes,
+    p_allocations: [
+      { participantId: technician.id, percentageBasisPoints: 3333 },
+      { participantId: helper.id, percentageBasisPoints: 6667 },
+    ],
+    p_allocation_idempotency_key: allocationIdempotencyKey,
+  }));
+  check(retried?.[0]?.allocation_version_id === allocationVersionId, "idempotent retry reuses allocation version");
+  const retriedAnnotations = await ok("read annotations after idempotent retry", technician.client.from("job_pdf_text_annotations")
+    .select("id").eq("delivery_id", submitted[0].delivery_id));
+  check(retriedAnnotations.length === textNotes.length, "idempotent retry never duplicates text annotations");
+  const helperOwn = await ok("helper reads own allocation only", helper.client.rpc("list_my_financial_allocations", { p_job_id: jobId }));
+  check(helperOwn.length === 1 && helperOwn[0].percentage_basis_points === 6667, "helper receives own read-only financial history");
+  const helperJob = await ok("allocation grants helper job read", helper.client.from("jobs").select("id").eq("id", jobId).single());
+  check(helperJob.id === jobId, "helper participant can read allocated job");
+  const helperMutation = await helper.client.from("jobs")
+    .update({ title: "forbidden helper update" }).eq("id", jobId).select("id");
+  check(Boolean(helperMutation.error) || helperMutation.data?.length === 0,
+    "helper allocation never grants mutation", helperMutation.error);
+
+  postgres(`delete from public.job_delivery_allocation_versions where id = '${allocationVersionId}'::uuid`);
+  checks += 1;
+  const backfilled = await ok("backfill one unambiguous current delivery", service
+    .rpc("backfill_unambiguous_delivery_allocations"));
+  check(backfilled === 1, "unambiguous delivery receives allocation v1");
+  const backfillRetry = await ok("backfill retry is idempotent", service
+    .rpc("backfill_unambiguous_delivery_allocations"));
+  check(backfillRetry === 0, "backfill retry inserts nothing");
+  const backfilledVersion = await ok("read backfilled allocation", admin.client
+    .from("job_delivery_allocation_versions")
+    .select("id, version, source_amount_cents, request_payload")
+    .eq("delivery_id", submitted[0].delivery_id).single());
+  const backfilledLines = await ok("read backfilled participant", admin.client
+    .from("job_delivery_financial_allocations")
+    .select("participant_id, percentage_basis_points, allocated_cents")
+    .eq("allocation_version_id", backfilledVersion.id));
+  check(backfilledVersion.version === 1 && backfilledLines.length === 1
+    && backfilledLines[0].participant_id === technician.id
+    && backfilledLines[0].percentage_basis_points === 10000
+    && Number(backfilledLines[0].allocated_cents) === Number(backfilledVersion.source_amount_cents),
+  "backfill snapshots exact 100-percent participant and cents");
+
+  const ambiguousJobId = randomUUID();
+  const ambiguousDeliveryId = randomUUID();
+  extraJobIds.push(ambiguousJobId);
+  await ok("create no-line manual-review job", service.from("jobs").insert({
+    id: ambiguousJobId,
+    title: `No-line allocation review ${runId}`,
+  }));
+  await ok("create no-line current submitted delivery", service.from("job_deliveries").insert({
+    id: ambiguousDeliveryId,
+    job_id: ambiguousJobId,
+    storage_path: `${ambiguousJobId}/delivered/${randomUUID()}.pdf`,
+    delivery_kind: "legacy",
+    delivered_by: technician.id,
+    submitted: true,
+  }));
+  postgres(`select set_config('request.jwt.claims', '{"sub":"${technician.id}","role":"authenticated"}', true); select set_config('app.job_pdf_deletion', '${technician.id}', true); update public.jobs set current_delivery_id = '${ambiguousDeliveryId}'::uuid where id = '${ambiguousJobId}'::uuid`);
+  checks += 1;
+  const excludedBackfill = await ok("rerun backfill with no-line delivery", service
+    .rpc("backfill_unambiguous_delivery_allocations"));
+  check(excludedBackfill === 0, "no-line delivery remains manual review");
+  const excludedVersions = await ok("verify no-line delivery has no allocation", admin.client
+    .from("job_delivery_allocation_versions").select("id").eq("delivery_id", ambiguousDeliveryId));
+  check(excludedVersions.length === 0, "ambiguous no-line delivery is untouched");
+
+  const replacementKey = randomUUID();
+  const replacementId = await ok("replace current allocation with v2", technician.client
+    .rpc("replace_delivery_financial_allocation", {
+      p_delivery_id: submitted[0].delivery_id,
+      p_expected_version: 1,
+      p_allocations: [
+        { participantId: technician.id, percentageBasisPoints: 5000 },
+        { participantId: helper.id, percentageBasisPoints: 5000 },
+      ],
+      p_idempotency_key: replacementKey,
+      p_reason: "Runtime replacement",
+    }));
+  const replacementRetry = await ok("replacement retry is idempotent", technician.client
+    .rpc("replace_delivery_financial_allocation", {
+      p_delivery_id: submitted[0].delivery_id,
+      p_expected_version: 1,
+      p_allocations: [
+        { participantId: technician.id, percentageBasisPoints: 5000 },
+        { participantId: helper.id, percentageBasisPoints: 5000 },
+      ],
+      p_idempotency_key: replacementKey,
+      p_reason: "Runtime replacement",
+    }));
+  check(replacementRetry === replacementId, "replacement retry does not duplicate version");
+  await denied("stale expected allocation version is rejected", technician.client
+    .rpc("replace_delivery_financial_allocation", {
+      p_delivery_id: submitted[0].delivery_id,
+      p_expected_version: 1,
+      p_allocations: [{ participantId: technician.id, percentageBasisPoints: 10000 }],
+      p_idempotency_key: randomUUID(),
+      p_reason: "Stale runtime replacement",
+    }));
+  const versionHistory = await ok("read replacement version history", admin.client
+    .from("job_delivery_allocation_versions")
+    .select("id, version, source_amount_cents, superseded_at, voided_at")
+    .eq("delivery_id", submitted[0].delivery_id).order("version"));
+  const replacementLines = await ok("read replacement cents", admin.client
+    .from("job_delivery_financial_allocations").select("allocated_cents, percentage_basis_points")
+    .eq("allocation_version_id", replacementId));
+  check(versionHistory.length === 2 && versionHistory[0].version === 1
+    && Boolean(versionHistory[0].superseded_at) && versionHistory[1].version === 2
+    && !versionHistory[1].superseded_at && !versionHistory[1].voided_at,
+  "v1 superseded and exactly one v2 remains current");
+  check(replacementLines.reduce((sum, row) => sum + Number(row.allocated_cents), 0)
+    === Number(versionHistory[1].source_amount_cents)
+    && replacementLines.reduce((sum, row) => sum + Number(row.percentage_basis_points), 0) === 10000,
+  "replacement preserves exact cents and basis points");
+  const productionBefore = await service.from("job_delivery_production_lines")
+    .select("id", { count: "exact", head: true }).eq("delivery_id", submitted[0].delivery_id);
+  check(!productionBefore.error && Number(productionBefore.count) > 0,
+    "count immutable production lines", productionBefore.error);
+  const productionLineCount = Number(productionBefore.count);
   const afterSubmit = await ok("read submitted pointer", technician.client.from("jobs")
     .select("main_status, delivered_pdf_path, delivered_pdf_source_photo_ids")
     .eq("id", jobId).single());
@@ -230,6 +403,11 @@ try {
   const afterSupervisor = await ok("read pointer after supervisor denial", admin.client.from("jobs")
     .select("delivered_pdf_path").eq("id", jobId).single());
   check(afterSupervisor.delivered_pdf_path === firstDeliveredPath, "supervisor denial preserves the valid pointer");
+  const reportDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+  const currentFinancialReport = await ok("current allocation appears in office report", admin.client
+    .rpc("get_financial_allocation_report", { p_start_date: reportDate, p_end_date: reportDate }));
+  check(currentFinancialReport.filter((row) => row.job_id === jobId).length === 2,
+    "current v2 report contains each participant once");
 
   const adminPath = `${jobId}/delivered/${randomUUID()}.pdf`;
   await upload("project-files", adminPath, minimalPdf, "application/pdf", service, {
@@ -251,6 +429,64 @@ try {
     .eq("id", jobId).single());
   check(finalJob.main_status === "enviado_revision", "office regeneration does not invent a state");
   check(finalJob.delivered_pdf_path === adminPath && finalJob.delivered_pdf_generated_by === admin.id, "admin regeneration persisted");
+
+  await ok("office rejects submitted delivery", admin.client.from("jobs")
+    .update({ main_status: "en_progreso", comments: "Runtime rejection" }).eq("id", jobId).select("id").single());
+  const rejectedVersions = await ok("read allocation history after rejection", admin.client
+    .from("job_delivery_allocation_versions")
+    .select("id, version, superseded_at, voided_at")
+    .eq("delivery_id", submitted[0].delivery_id).order("version"));
+  check(rejectedVersions.length === 2 && Boolean(rejectedVersions[0].superseded_at)
+    && Boolean(rejectedVersions[1].voided_at),
+  "rejection voids current v2 while preserving immutable v1/v2 history");
+  const reportAfterRejection = await ok("read report after rejection", admin.client
+    .rpc("get_financial_allocation_report", { p_start_date: reportDate, p_end_date: reportDate }));
+  check(reportAfterRejection.every((row) => row.job_id !== jobId),
+    "voided delivery leaves current financial reports");
+  const productionAfter = await service.from("job_delivery_production_lines")
+    .select("id", { count: "exact", head: true }).eq("delivery_id", submitted[0].delivery_id);
+  check(!productionAfter.error && Number(productionAfter.count) === productionLineCount,
+    "replace and rejection never duplicate operational production lines", productionAfter.error);
+  const technicianHistory = await ok("technician retains immutable allocation history", technician.client
+    .rpc("list_my_financial_allocations", { p_job_id: jobId }));
+  check(technicianHistory.length === 2
+    && technicianHistory.some((row) => row.state === "superseded")
+    && technicianHistory.some((row) => row.state === "voided"),
+  "participant can read superseded and voided history");
+  const helperDeliveryId = randomUUID();
+  const sourceLine = await ok("read production lineage for helper exclusion fixture", service
+    .from("job_delivery_production_lines")
+    .select("source_annotation_id,code,quantity,unit_snapshot,unit_rate_snapshot,amount_snapshot")
+    .eq("delivery_id", submitted[0].delivery_id).limit(1).single());
+  await ok("create helper-delivered legacy current candidate", service.from("job_deliveries").insert({
+    id: helperDeliveryId,
+    job_id: jobId,
+    storage_path: `${jobId}/delivered/${randomUUID()}.pdf`,
+    delivery_kind: "legacy",
+    delivered_by: helper.id,
+    submitted: true,
+    source_annotation_ids: [sourceLine.source_annotation_id],
+  }));
+  await ok("create helper-credited immutable line", service.from("job_delivery_production_lines").insert({
+    delivery_id: helperDeliveryId,
+    job_id: jobId,
+    source_annotation_id: sourceLine.source_annotation_id,
+    credited_technician_id: helper.id,
+    code: sourceLine.code,
+    quantity: sourceLine.quantity,
+    unit_snapshot: sourceLine.unit_snapshot,
+    unit_rate_snapshot: sourceLine.unit_rate_snapshot,
+    amount_snapshot: sourceLine.amount_snapshot,
+    credited_at: new Date().toISOString(),
+  }));
+  postgres(`select set_config('request.jwt.claims', '{"sub":"${technician.id}","role":"authenticated"}', true); select set_config('app.job_pdf_deletion', '${technician.id}', true); update public.jobs set current_delivery_id = '${helperDeliveryId}'::uuid where id = '${jobId}'::uuid`);
+  checks += 1;
+  const helperBackfill = await ok("run backfill against helper-delivered legacy candidate", service
+    .rpc("backfill_unambiguous_delivery_allocations"));
+  check(helperBackfill === 0, "helper-delivered legacy work remains manual review");
+  const helperVersions = await ok("verify helper-delivered candidate has no allocation", admin.client
+    .from("job_delivery_allocation_versions").select("id").eq("delivery_id", helperDeliveryId));
+  check(helperVersions.length === 0, "helper can participate but is never inferred as primary deliverer");
 } finally {
   await cleanup();
 }

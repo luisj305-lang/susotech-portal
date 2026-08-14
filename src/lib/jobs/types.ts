@@ -1,4 +1,5 @@
 export type JobStatus =
+  | "sin_asignar"
   | "asignado"
   | "en_progreso"
   | "enviado_revision"
@@ -121,6 +122,9 @@ export interface JobProductionCode {
   unit_snapshot: ProductionUnit | null;
   unit_rate_snapshot: number | null;
   amount_snapshot: number | null;
+  price_category_id?: string | null;
+  price_category_name_snapshot?: string | null;
+  description_snapshot?: string | null;
   production_date: string | null;
   created_at: string;
 }
@@ -143,7 +147,9 @@ export interface ProductionCatalogOption {
   code: string;
   description: string;
   unit: ProductionUnit;
-  unit_rate: number;
+  unit_rate: number | null;
+  price_category_id: string | null;
+  price_category_name: string | null;
 }
 
 export interface WeeklyProductionLine {
@@ -168,6 +174,32 @@ export interface ProductionReportLine {
   quantity: number;
   unit_rate: number;
   amount: number;
+  billing_state: "pending" | "confirmed";
+}
+
+export interface WeeklyFinancialAllocation {
+  week_start: string;
+  week_end: string;
+  allocation_date: string;
+  job_id: string;
+  delivery_id: string;
+  prism_number: string | null;
+  percentage_basis_points: number;
+  allocated_cents: number;
+  billing_state: "pending" | "confirmed";
+}
+
+export interface FinancialAllocationReportLine {
+  allocation_date: string;
+  job_id: string;
+  delivery_id: string;
+  prism_number: string | null;
+  participant_id: string;
+  participant_name: string;
+  worker_specialty: string;
+  percentage_basis_points: number;
+  allocated_cents: number;
+  source_amount_cents: number;
   billing_state: "pending" | "confirmed";
 }
 
@@ -198,6 +230,7 @@ export type WorkerOperationsRow = {
   weekly_production: number;
   weekly_delivered_jobs: number;
   weekly_fuel_amount: number;
+  weekly_allocated_cents?: number;
   production_breakdown: WorkerProductionBreakdown[];
   server_now: string;
   week_start_at: string;
@@ -232,6 +265,7 @@ export interface JobPdfDraft {
   source_page_count: number;
   source_document_ids: string[];
   placements: import("./pdf-code-editor-core").PdfCodePlacement[];
+  text_notes: import("./pdf-text-note-core").PdfTextNote[];
   updated_at: string;
 }
 

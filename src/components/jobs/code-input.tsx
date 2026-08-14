@@ -36,12 +36,12 @@ export function CodeInput({ jobId, enabled, catalog }: { jobId: string; enabled:
           {catalog.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.description}</option>)}
         </select>
       </label>
-      {selected && <p className="text-sm">Tarifa aplicable: ${Number(selected.unit_rate).toFixed(3)} por {rateUnits[selected.unit]}</p>}
+      {selected && <p className="text-sm">{selected.unit_rate == null ? "Sin tarifa configurada" : `Tarifa aplicable: $${Number(selected.unit_rate).toFixed(3)} por ${rateUnits[selected.unit]}`}</p>}
       <label className="grid gap-1 font-semibold">{selected ? unitLabels[selected.unit] : "Cantidad"}
         <input name="quantity" type="number" min="0.01" step="0.01" defaultValue="1" required disabled={!enabled} className="min-h-12 rounded-xl border p-3" />
       </label>
       <label className="grid gap-1 font-semibold">Notas<input name="notes" disabled={!enabled} className="min-h-12 rounded-xl border p-3" /></label>
-      <button disabled={pending || !enabled || !catalog.length} className="min-h-14 rounded-xl bg-black px-5 text-lg font-bold text-white disabled:opacity-50">{pending ? "Guardando…" : "Añadir código"}</button>
+      <button disabled={pending || !enabled || !catalog.length || selected?.unit_rate == null} className="min-h-14 rounded-xl bg-black px-5 text-lg font-bold text-white disabled:opacity-50">{pending ? "Guardando…" : "Añadir código"}</button>
     </form>
     {!enabled && <p className="mt-3 text-sm text-white">Inicia el trabajo antes de registrar producción.</p>}
     {!catalog.length && <p className="mt-3 text-sm text-white">No hay códigos disponibles para tu tipo de técnico.</p>}

@@ -37,6 +37,16 @@ export type DeliveredPdfCodePlacement = {
   color: string;
 };
 
+export type DeliveredPdfTextNote = {
+  page: number;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSizeRatio: number;
+};
+
 export type DeliveredPdfSource = {
   id: string;
   bytes: Uint8Array;
@@ -146,6 +156,12 @@ function asciiText(value: string) {
     .trim();
 }
 
+function assertWinAnsiText(value: string, font: PDFFont) {
+  try { font.encodeText(value); }
+  catch { throw new Error("Una nota contiene caracteres que Helvetica no puede representar."); }
+  return value;
+}
+
 function wrapText(value: string, font: PDFFont, size: number, maxWidth: number, maxLines: number) {
   const words = asciiText(value).split(" ").filter(Boolean);
   const lines: string[] = [];
@@ -197,6 +213,7 @@ async function composeUnlocked(
   sourceDocuments: DeliveredPdfSource[],
   evidence: DeliveredPdfEvidence[],
   codes: DeliveredPdfCodePlacement[] = [],
+  textNotes: DeliveredPdfTextNote[] = [],
 ): Promise<DeliveredPdfResult> {
   if (!sourceDocuments.length || sourceDocuments.some((source) => !source.bytes.length || source.bytes.length > MAX_ORIGINAL_BYTES)) {
     throw new Error("Cada PDF fuente debe existir y no superar 25 MB.");
@@ -210,6 +227,7 @@ async function composeUnlocked(
   const pdfium = await loadPdfium();
   const output = await PDFDocument.create();
   const codeFont = await output.embedFont(StandardFonts.HelveticaBold);
+  const noteFont = await output.embedFont(StandardFonts.Helvetica);
   let originalPageCount = 0;
   for (const sourceDocument of sourceDocuments) {
     const source = openDocument(pdfium, sourceDocument.bytes);
@@ -231,6 +249,21 @@ async function composeUnlocked(
       const image = await output.embedJpg(jpeg);
       const page = output.addPage([rendered.pointsWidth, rendered.pointsHeight]);
       page.drawImage(image, { x: 0, y: 0, width: rendered.pointsWidth, height: rendered.pointsHeight });
+      for (const note of textNotes.filter((item) => item.page === combinedPage)) {
+        const x = note.x * rendered.pointsWidth;
+        const width = note.width * rendered.pointsWidth;
+        const height = note.height * rendered.pointsHeight;
+        const y = rendered.pointsHeight - (note.y * rendered.pointsHeight) - height;
+        const size = note.fontSizeRatio * rendered.pointsWidth;
+        const lineHeight = size * 1.2;
+        const lines = note.text.split("\n").map((line) => assertWinAnsiText(line, noteFont));
+        if (lines.length * lineHeight > height || lines.some((line) => noteFont.widthOfTextAtSize(line, size) > width)) {
+          throw new Error("Una nota de texto no cabe dentro de su cuadro.");
+        }
+        lines.forEach((line, lineIndex) => {
+          if (line) page.drawText(line, { x, y: y + height - size - lineIndex * lineHeight, size, font: noteFont, color: rgb(0.05, 0.05, 0.05) });
+        });
+      }
       for (const placement of codes.filter((item) => item.page === combinedPage)) {
         const hex = placement.color.replace("#", "");
         const color = rgb(parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255);
@@ -272,6 +305,12 @@ async function composeUnlocked(
     || item.x < 0 || item.y < 0 || item.width <= 0 || item.height <= 0 || item.x + item.width > 1 || item.y + item.height > 1
     || item.arrowTipX < 0 || item.arrowTipX > 1 || item.arrowTipY < 0 || item.arrowTipY > 1)) {
     throw new Error("El borrador contiene códigos fuera de las páginas o bordes del PDF.");
+  }
+  if (textNotes.some((item) => !Number.isInteger(item.page) || item.page < 1 || item.page > originalPageCount
+    || !item.text || item.x < 0 || item.y < 0 || item.width < 0.08 || item.width > 0.8
+    || item.height < 0.04 || item.height > 0.6 || item.x + item.width > 1 || item.y + item.height > 1
+    || item.fontSizeRatio < 0.012 || item.fontSizeRatio > 0.05)) {
+    throw new Error("El borrador contiene notas fuera de las páginas o bordes del PDF.");
   }
 
   const font = await output.embedFont(StandardFonts.Helvetica);
@@ -335,13 +374,14 @@ export async function composeDeliveredPdf(
   sourceDocuments: DeliveredPdfSource[],
   evidence: DeliveredPdfEvidence[],
   codes: DeliveredPdfCodePlacement[] = [],
+  textNotes: DeliveredPdfTextNote[] = [],
 ) {
   const previous = compositionTail;
   let release!: () => void;
   compositionTail = new Promise<void>((resolve) => { release = resolve; });
   await previous;
   try {
-    return await composeUnlocked(sourceDocuments, evidence, codes);
+    return await composeUnlocked(sourceDocuments, evidence, codes, textNotes);
   } finally {
     release();
   }

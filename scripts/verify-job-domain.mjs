@@ -36,7 +36,7 @@ for (const [label, expected, values] of transitionCases) {
 }
 
 assert.deepEqual(JOB_STATUS_ORDER, [
-  "asignado", "en_progreso", "enviado_revision", "aprobado", "listo_pagar", "pagado",
+  "sin_asignar", "asignado", "en_progreso", "enviado_revision", "aprobado", "listo_pagar", "pagado",
 ]);
 assert.deepEqual(INCIDENT_TYPES, [
   "need_splicing", "no_access", "need_cr", "permit_pending", "returned", "incomplete",
@@ -64,7 +64,7 @@ assert.match(sessionSource, /profile\.role === "admin" \? profile : requireRole\
 assert.match(sessionSource, /redirect\("\/acceso-denegado"\)/u);
 
 const actionsSource = readFileSync(new URL("../src/lib/jobs/actions.ts", import.meta.url), "utf8");
-for (const action of ["createJob", "updateJob", "assignJob", "transitionJob", "setIncident", "addProductionCode", "addPhotoComment", "assignJobsInBulk"]) {
+for (const action of ["createJob", "updateJob", "assignJob", "unassignJob", "transitionJob", "setIncident", "addProductionCode", "addPhotoComment", "assignJobsInBulk"]) {
   assert.match(actionsSource, new RegExp(`export async function ${action}\\b`, "u"));
 }
 const storageSource = readFileSync(new URL("../src/lib/storage/actions.ts", import.meta.url), "utf8");
@@ -120,4 +120,4 @@ for (const [path, patterns] of technicianUiContracts) {
   assert.ok(!source.includes("service_role"), `${path} exposes privileged credentials`);
 }
 
-console.log(`[jobs-domain] PASS transitions=${transitionCases.length} state=7 types=10 guards=4 actions=8 storage=5 rpc=2 office=14 bulk_ui=${bulkContractCount} technician_ui=${technicianContractCount}`);
+console.log(`[jobs-domain] PASS transitions=${transitionCases.length} state=8 types=10 guards=4 actions=9 storage=5 rpc=2 office=14 bulk_ui=${bulkContractCount} technician_ui=${technicianContractCount}`);

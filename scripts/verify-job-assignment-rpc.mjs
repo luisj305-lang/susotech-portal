@@ -32,7 +32,6 @@ const runId = randomBytes(8).toString("hex");
 const password = `${randomBytes(18).toString("base64url")}Aa1!`;
 const userIds = [];
 const jobIds = [];
-const crewIds = [];
 let checks = 0;
 let cleanupPassed = false;
 
@@ -82,10 +81,6 @@ async function cleanup() {
     const result = await service.from("jobs").delete().in("id", jobIds);
     if (result.error) errors.push("jobs");
   }
-  if (crewIds.length) {
-    const result = await service.from("crews").delete().in("id", crewIds);
-    if (result.error) errors.push("crews");
-  }
   for (const id of [...userIds].reverse()) {
     const result = await service.auth.admin.deleteUser(id);
     if (result.error) errors.push("identity");
@@ -104,22 +99,17 @@ async function main() {
   const admin = await createIdentity("admin", "admin");
   const supervisor = await createIdentity("supervisor", "supervisor");
   const technician = await createIdentity("technician", "tecnico");
-  const crewLead = await createIdentity("crew-lead", "tecnico");
+  const secondTechnician = await createIdentity("second-technician", "tecnico");
 
   const createdJobs = await ok("office creates three jobs", admin.client.from("jobs").insert([
     { title: `RPC individual ${runId}` },
     { title: `RPC bulk A ${runId}` },
     { title: `RPC bulk B ${runId}` },
-  ]).select("id"));
+  ]).select("id,main_status"));
   check(createdJobs.length === 3, "three jobs created");
+  check(createdJobs.every((job) => job.main_status === "sin_asignar"), "new jobs begin truly unassigned");
   jobIds.push(...createdJobs.map(({ id }) => id));
   const [individualJob, bulkJobA, bulkJobB] = jobIds;
-
-  const crew = await ok("office creates crew", admin.client.from("crews").insert({
-    name: `RPC crew ${runId}`,
-    lead_technician_id: crewLead.id,
-  }).select("id").single());
-  crewIds.push(crew.id);
 
   const individualResult = await ok("supervisor assigns one job", supervisor.client.rpc("assign_jobs_atomic", {
     job_ids: [individualJob],
@@ -133,24 +123,26 @@ async function main() {
   const initialRows = await assignmentRows(admin.client, [individualJob]);
   check(initialRows.length === 1 && initialRows[0].active && initialRows[0].is_primary,
     "individual assignment is active primary");
+  const assignedStatus = await ok("read assigned job status", admin.client.from("jobs").select("main_status").eq("id", individualJob).single());
+  check(assignedStatus.main_status === "asignado", "assignment atomically advances unassigned job");
   const initialHistory = await ok("read individual history", admin.client.from("job_status_history")
     .select("changed_by, notes").eq("job_id", individualJob));
   check(initialHistory.length === 1 && initialHistory[0].changed_by === supervisor.id
     && initialHistory[0].notes === "Assignment updated", "individual assignment history records actor");
 
-  const reassigned = await ok("admin reassigns job to crew", admin.client.rpc("assign_jobs_atomic", {
+  const reassigned = await ok("admin reassigns job to another technician", admin.client.rpc("assign_jobs_atomic", {
     job_ids: [individualJob],
-    new_assignee_type: "crew",
-    new_assignee_id: crew.id,
+    new_assignee_type: "technician",
+    new_assignee_id: secondTechnician.id,
   }));
-  check(reassigned.length === 1 && reassigned[0].crew_id === crew.id && reassigned[0].assigned_by === admin.id,
-    "crew reassignment returns the new row and actor");
+  check(reassigned.length === 1 && reassigned[0].technician_id === secondTechnician.id && reassigned[0].assigned_by === admin.id,
+    "individual reassignment returns the new row and actor");
   const reassignmentRows = await assignmentRows(admin.client, [individualJob]);
   check(reassignmentRows.length === 2, "reassignment preserves both rows");
   check(!reassignmentRows[0].active && !reassignmentRows[0].is_primary,
     "previous primary assignment is inactive");
-  check(reassignmentRows[1].active && reassignmentRows[1].is_primary && reassignmentRows[1].crew_id === crew.id,
-    "new crew assignment is active primary");
+  check(reassignmentRows[1].active && reassignmentRows[1].is_primary && reassignmentRows[1].technician_id === secondTechnician.id,
+    "new individual assignment is active primary");
   check(reassignmentRows.filter((row) => row.active && row.is_primary).length === 1,
     "reassignment leaves exactly one active primary");
   const reassignmentHistory = await ok("read reassignment history", admin.client.from("job_status_history")
@@ -176,8 +168,8 @@ async function main() {
 
   await rejected("technician cannot invoke assignment RPC", technician.client.rpc("assign_jobs_atomic", {
     job_ids: [bulkJobA],
-    new_assignee_type: "crew",
-    new_assignee_id: crew.id,
+    new_assignee_type: "technician",
+    new_assignee_id: secondTechnician.id,
   }));
   const afterDenial = await assignmentRows(admin.client, [bulkJobA]);
   check(afterDenial.length === 1 && afterDenial[0].technician_id === technician.id
@@ -185,23 +177,43 @@ async function main() {
 
   await rejected("invalid job makes batch fail", supervisor.client.rpc("assign_jobs_atomic", {
     job_ids: [bulkJobA, randomUUID()],
-    new_assignee_type: "crew",
-    new_assignee_id: crew.id,
+    new_assignee_type: "technician",
+    new_assignee_id: secondTechnician.id,
   }));
   const afterInvalidBatch = await assignmentRows(admin.client, [bulkJobA]);
   check(afterInvalidBatch.length === 1 && afterInvalidBatch[0].technician_id === technician.id
     && afterInvalidBatch[0].active && afterInvalidBatch[0].is_primary,
   "invalid batch rolls back without changing the valid job");
 
+  await rejected("retired crew assignment is rejected explicitly", admin.client.rpc("assign_jobs_atomic", {
+    job_ids: [bulkJobB],
+    new_assignee_type: "crew",
+    new_assignee_id: randomUUID(),
+  }));
   await rejected("unique active primary constraint rejects duplicate", admin.client.from("job_assignments").insert({
     job_id: bulkJobB,
-    assignee_type: "crew",
-    crew_id: crew.id,
+    assignee_type: "technician",
+    technician_id: secondTechnician.id,
     assigned_by: admin.id,
   }));
   const afterDuplicate = await assignmentRows(admin.client, [bulkJobB]);
   check(afterDuplicate.length === 1 && afterDuplicate[0].active && afterDuplicate[0].is_primary,
     "duplicate primary rejection preserves coherent assignment");
+
+  const unassigned = await ok("supervisor removes assignment", supervisor.client.rpc("assign_jobs_atomic", {
+    job_ids: [individualJob], new_assignee_type: null, new_assignee_id: null,
+  }));
+  check(unassigned.length === 0, "unassignment returns no replacement assignment rows");
+  const afterUnassignRows = await assignmentRows(admin.client, [individualJob]);
+  check(afterUnassignRows.length === 2 && afterUnassignRows.every((row) => !row.active && !row.is_primary),
+    "unassignment preserves audit rows and deactivates every primary");
+  const afterUnassignJob = await ok("read unassigned job status", admin.client.from("jobs")
+    .select("main_status").eq("id", individualJob).single());
+  check(afterUnassignJob.main_status === "sin_asignar", "unassignment atomically restores unassigned status");
+  const afterUnassignHistory = await ok("read unassignment history", admin.client.from("job_status_history")
+    .select("changed_by,notes").eq("job_id", individualJob).order("created_at", { ascending: false }).limit(1).single());
+  check(afterUnassignHistory.changed_by === supervisor.id && afterUnassignHistory.notes === "Assignment removed",
+    "unassignment history records actor and operation");
 
   assert.equal(jobIds.length, 3);
 }
@@ -223,5 +235,5 @@ if (failure) {
   console.error(`[jobs-assignment-rpc] FAIL ${failure.message}`);
   process.exitCode = 1;
 } else {
-  console.log(`[jobs-assignment-rpc] PASS checks=${checks} cleanup=${cleanupPassed ? "passed" : "failed"} users=${userIds.length} jobs=${jobIds.length} crews=${crewIds.length}`);
+  console.log(`[jobs-assignment-rpc] PASS checks=${checks} cleanup=${cleanupPassed ? "passed" : "failed"} users=${userIds.length} jobs=${jobIds.length}`);
 }

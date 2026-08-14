@@ -19,7 +19,7 @@ assert.match(editor,/setTimeout\(\(\) => void save/u); assert.match(editor,/type
 assert.match(editor,/IntersectionObserver/u); assert.match(editor,/rootMargin: "700px 0px"/u); assert.match(editor,/fixed inset-x-0 bottom-0/u);
 assert.match(editor,/Cancelar \/ Volver/u); assert.match(technicianActions,/router\.push\(`\/trabajos\/\$\{jobId\}\/entregar`\)/u);
 assert.doesNotMatch(editor+technicianActions,/CustomEvent|job-pdf-draft-save-request/u);
-assert.doesNotMatch(detail,/PdfCodeEditor/u); assert.match(deliveryPage,/profile\.role !== "tecnico"/u); assert.match(deliveryPage,/main_status !== "en_progreso"/u);
+assert.doesNotMatch(detail,/PdfCodeEditor/u); assert.match(deliveryPage,/isOperationalFieldWorker\(profile\)/u); assert.match(deliveryPage,/main_status !== "en_progreso"/u);
 assert.match(preview,/renderOriginalPdfPreview/u); assert.match(preview,/cache-control/u);
 assert.match(preview,/export async function POST/u); assert.match(editor,/method: "POST"/u);
 assert.match(route,/p_expected_draft_version/u); assert.match(compositor,/page\.drawRectangle/u); assert.match(compositor,/page\.drawText/u); assert.match(compositor,/page\.drawLine/u);

@@ -9,17 +9,8 @@ const statuses: JobStatus[] = ["asignado", "en_progreso", "enviado_revision", "a
 const categories: JobCategory[] = ["categoria_1", "categoria_2", "categoria_3"];
 
 export async function listAssigneeOptions(): Promise<AssigneeOption[]> {
-  const { technicians, crews } = await listCrewManagementData();
-  return [
-    ...technicians.map((profile) => ({ type: "technician" as const, ...profile })),
-    ...crews.filter((crew) => crew.is_active).map((crew) => ({
-      type: "crew" as const,
-      id: crew.id,
-      label: crew.name,
-      leadLabel: crew.lead_label,
-      members: crew.members,
-    })),
-  ];
+  return (await listActiveTechniciansCore(await createClient()))
+    .map((profile) => ({ type: "technician" as const, ...profile }));
 }
 
 export async function listCrewManagementData(): Promise<{ crews: CrewOfficeDto[]; technicians: Awaited<ReturnType<typeof listActiveTechniciansCore>> }> {
@@ -49,7 +40,7 @@ export async function listOfficeJobs(filters: { query?: string; status?: string;
   request = filters.archived ? request.not("archived_at", "is", null) : request.is("archived_at", null);
   if (statuses.includes(filters.status as JobStatus)) request = request.eq("main_status", filters.status);
   if (categories.includes(filters.category as JobCategory)) request = request.eq("category", filters.category);
-  const [jobsResult, assignmentsResult, photosResult, documentsResult, draftsResult, deliveryVersionsResult, options] = await Promise.all([
+  const [jobsResult, assignmentsResult, photosResult, documentsResult, draftsResult, deliveryVersionsResult, options, crewsResult] = await Promise.all([
     request,
     supabase.from("job_assignments").select("job_id, assignee_type, technician_id, crew_id").eq("active", true).eq("is_primary", true),
     supabase.from("job_photos").select("id, job_id").is("deleted_at", null),
@@ -57,9 +48,13 @@ export async function listOfficeJobs(filters: { query?: string; status?: string;
     supabase.from("job_pdf_drafts").select("job_id,version"),
     supabase.from("job_pdf_delivery_versions").select("job_id,draft_version"),
     listAssigneeOptions(),
+    supabase.from("crews").select("id,name"),
   ]);
-  if (jobsResult.error || assignmentsResult.error || photosResult.error || documentsResult.error || draftsResult.error || deliveryVersionsResult.error) throw new Error("No se pudieron cargar los trabajos.");
-  const labels = new Map(options.map((option) => [`${option.type}:${option.id}`, option.label]));
+  if (jobsResult.error || assignmentsResult.error || photosResult.error || documentsResult.error || draftsResult.error || deliveryVersionsResult.error || crewsResult.error) throw new Error("No se pudieron cargar los trabajos.");
+  const labels = new Map<string, string>([
+    ...options.map((option) => [`technician:${option.id}`, option.label] as const),
+    ...(crewsResult.data ?? []).map((crew) => [`crew:${crew.id}`, crew.name] as const),
+  ]);
   const assignments = new Map((assignmentsResult.data ?? []).map((item) => [item.job_id, item]));
   const photoIds = new Map<string, string[]>();
   const documentIds = new Map<string, string[]>();
@@ -115,18 +110,42 @@ export async function getMyWeeklyProduction() {
   return (data ?? []) as WeeklyProductionLine[];
 }
 
+export async function getMyWeeklyFinancialAllocations() {
+  const { data, error } = await (await createClient()).rpc("get_my_weekly_financial_allocations", { p_reference_date: null });
+  if (error) throw new Error("No se pudo cargar tu distribución financiera semanal.");
+  return (data ?? []) as import("./types").WeeklyFinancialAllocation[];
+}
+
 export async function getWorkerOperationsDashboard(referenceAt?: string | null) {
-  const { data, error } = await (await createClient()).rpc("get_worker_operations_dashboard", {
-    p_reference_at: referenceAt ?? null,
-  });
-  if (error) throw new Error("No se pudo cargar la operación semanal de trabajadores.");
-  return (data ?? []) as WorkerOperationsRow[];
+  const supabase = await createClient();
+  const [operations, financial] = await Promise.all([
+    supabase.rpc("get_worker_operations_dashboard", { p_reference_at: referenceAt ?? null }),
+    supabase.rpc("get_worker_weekly_financial_dashboard", { p_reference_at: referenceAt ?? null }),
+  ]);
+  if (operations.error || financial.error) throw new Error("No se pudo cargar la operación semanal de trabajadores.");
+  const amounts = new Map<string, number>(
+    ((financial.data ?? []) as Array<{ participant_id: string; allocated_cents: number }>).map((row) => [
+      row.participant_id,
+      Number(row.allocated_cents),
+    ]),
+  );
+  return ((operations.data ?? []) as WorkerOperationsRow[]).map((row) => ({
+    ...row, weekly_allocated_cents: amounts.get(row.technician_id) ?? 0,
+  }));
 }
 
 export async function getProductionReport(startDate: string, endDate: string) {
   const { data, error } = await (await createClient()).rpc("get_production_report", { p_start_date: startDate, p_end_date: endDate });
   if (error) throw new Error("No se pudo cargar el reporte de producción.");
   return (data ?? []) as ProductionReportLine[];
+}
+
+export async function getFinancialAllocationReport(startDate: string, endDate: string) {
+  const { data, error } = await (await createClient()).rpc("get_financial_allocation_report", {
+    p_start_date: startDate, p_end_date: endDate,
+  });
+  if (error) throw new Error("No se pudo cargar la distribución financiera.");
+  return (data ?? []) as import("./types").FinancialAllocationReportLine[];
 }
 
 export async function getOfficeJob(jobId: string) {
@@ -148,16 +167,8 @@ export async function getOfficeJob(jobId: string) {
     if (result.error) throw new Error("No se pudieron cargar los datos relacionados.");
   }
   if (!jobResult.data) return null;
-  const options: AssigneeOption[] = [
-    ...crewData.technicians.map((profile) => ({ type: "technician" as const, ...profile })),
-    ...crewData.crews.filter((crew) => crew.is_active).map((crew) => ({
-      type: "crew" as const,
-      id: crew.id,
-      label: crew.name,
-      leadLabel: crew.lead_label,
-      members: crew.members,
-    })),
-  ];
+  const options: AssigneeOption[] = crewData.technicians
+    .map((profile) => ({ type: "technician" as const, ...profile }));
   const technicianLabels = new Map(crewData.technicians.map((technician) => [technician.id, technician.label]));
   return {
     job: jobResult.data as Job,

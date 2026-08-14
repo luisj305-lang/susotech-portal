@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { assignJob, setJobArchived, transitionJob } from "@/lib/jobs/actions";
+import { assignJob, setJobArchived, transitionJob, unassignJob } from "@/lib/jobs/actions";
 import type { AssigneeOption, JobAssignment, JobStatus } from "@/lib/jobs/types";
 import { AssigneeSelect } from "./assignee-select";
 
@@ -17,14 +17,16 @@ export function OfficeJobActions({ jobId, status, assignment, options, canArchiv
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
   const next = nextOfficeStatus[status];
-  const current = assignment ? `${assignment.assignee_type}:${assignment.technician_id ?? assignment.crew_id}` : "";
+  const current = assignment?.assignee_type === "technician" ? `technician:${assignment.technician_id}` : "";
   const run = (operation: () => Promise<{ success: boolean; message: string }>) => startTransition(async () => { const result = await operation(); setMessage(result.message); if (result.success) router.refresh(); });
 
   return <section className="grid gap-4 rounded-2xl border border-white bg-black p-5 shadow-sm">
     <h2 className="text-lg font-semibold">Asignación y estado</h2>
-    <form action={(data) => { const [assigneeType, assigneeId] = String(data.get("assignee")).split(":"); void run(() => assignJob({ jobId, assigneeType: assigneeType as "technician" | "crew", assigneeId })); }} className="flex flex-col gap-3 sm:flex-row">
+    {assignment?.assignee_type === "crew" && <p className="rounded-lg border border-white p-3 text-sm">Este trabajo conserva una asignación histórica por crew. Selecciona un responsable individual para reemplazarla.</p>}
+    <form action={(data) => { const [, assigneeId] = String(data.get("assignee")).split(":"); void run(() => assignJob({ jobId, assigneeType: "technician", assigneeId })); }} className="flex flex-col gap-3 sm:flex-row">
       <label className="grid flex-1 gap-1 text-sm font-medium">Asignar a<AssigneeSelect name="assignee" options={options} defaultValue={current} required /></label>
       <button disabled={pending || !options.length} className="self-end rounded-lg border border-white px-5 py-3 font-semibold disabled:opacity-60">Guardar asignación</button>
+      {assignment && status === "asignado" && <button type="button" disabled={pending} onClick={() => run(() => unassignJob({ jobId }))} className="self-end rounded-lg border border-white px-5 py-3 font-semibold disabled:opacity-60">Quitar asignación</button>}
     </form>
     {next && <button type="button" disabled={pending} onClick={() => run(() => transitionJob({ jobId, newStatus: next.status }))} className="w-fit rounded-lg bg-black px-5 py-3 font-semibold text-white disabled:opacity-60">{next.label}</button>}
     {status === "enviado_revision" && <form action={(data) => void run(() => transitionJob({ jobId, newStatus: "en_progreso", reason: String(data.get("reason") ?? "") }))} className="flex flex-col gap-3 sm:flex-row"><label className="grid flex-1 gap-1 text-sm font-medium">Motivo de devolución<input name="reason" required className="rounded-lg border p-3" /></label><button disabled={pending} className="self-end rounded-lg border px-5 py-3 font-semibold">Devolver a corrección</button></form>}

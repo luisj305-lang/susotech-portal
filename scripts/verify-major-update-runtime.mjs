@@ -13,7 +13,7 @@ const options = { auth: { persistSession: false, autoRefreshToken: false } };
 const service = createClient(url, serviceKey, options);
 const password = "Valid-local-password-123!";
 const runId = randomUUID();
-const ids = { admin: randomUUID(), supervisor: randomUUID(), tech: randomUUID(), job: randomUUID(), crew: randomUUID(), photo: randomUUID() };
+const ids = { admin: randomUUID(), supervisor: randomUUID(), tech: randomUUID(), job: randomUUID(), photo: randomUUID() };
 const paths = [];
 
 async function createActor(id, role) {
@@ -60,8 +60,6 @@ async function cleanup() {
   await service.from("job_documents").delete().eq("job_id", ids.job);
   await service.from("jobs").delete().eq("id", ids.job);
   await service.from("job_deliveries").delete().eq("job_id", ids.job);
-  await service.from("crew_members").delete().eq("crew_id", ids.crew);
-  await service.from("crews").delete().eq("id", ids.crew);
   await service.from("job_deletion_cleanup_queue").delete().eq("job_id", ids.job);
   for (const id of [ids.tech, ids.supervisor, ids.admin]) await service.auth.admin.deleteUser(id);
 }
@@ -70,7 +68,12 @@ try {
   const [admin, supervisor, tech] = await Promise.all([
     createActor(ids.admin, "admin"), createActor(ids.supervisor, "supervisor"), createActor(ids.tech, "tecnico"),
   ]);
-  assert.ifError((await service.from("crews").insert({ id: ids.crew, name: `Runtime crew ${runId}`, lead_technician_id: ids.tech })).error);
+  const inhouse = await admin.from("price_categories").select("id").eq("slug", "inhouse").single();
+  assert.ifError(inhouse.error);
+  assert.ifError((await admin.rpc("set_technician_price_category", {
+    p_technician_id: ids.tech,
+    p_price_category_id: inhouse.data.id,
+  })).error);
 
   const original = await makePdf("ORIGINAL SOURCE");
   const originalPath = `${ids.job}/original.pdf`;
@@ -184,7 +187,7 @@ try {
   assert.equal(Number(technicianRow.weekly_production), 20);
   assert.equal(Number(technicianRow.weekly_delivered_jobs), 1);
   assert.equal(Number(technicianRow.weekly_fuel_amount), 0);
-  assert.ok(technicianRow.crew_names.includes(`Runtime crew ${runId}`));
+  assert.deepEqual(technicianRow.crew_names, [], "new runtime work remains crew-free");
   const spring = await supervisor.rpc("get_worker_operations_dashboard", { p_reference_at: "2026-03-08T12:00:00Z" });
   const fall = await supervisor.rpc("get_worker_operations_dashboard", { p_reference_at: "2026-11-01T12:00:00Z" });
   assert.ifError(spring.error); assert.ifError(fall.error);

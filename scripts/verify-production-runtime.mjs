@@ -67,14 +67,35 @@ async function main(){
   const inHouse=await identity("inhouse","tecnico","in_house");
   const contractor=await identity("contractor","tecnico","contractor");
 
+  const categories=await ok("read active price categories",admin.client.from("price_categories")
+    .select("id,slug").eq("active",true).in("slug",["inhouse","subcontractor"]));
+  const inhouseCategory=categories.find((row)=>row.slug==="inhouse");
+  const subcontractorCategory=categories.find((row)=>row.slug==="subcontractor");
+  check(Boolean(inhouseCategory?.id&&subcontractorCategory?.id),"required price categories exist");
+  await ok("assign Inhouse price category",admin.client.rpc("set_technician_price_category",{
+    p_technician_id:inHouse.id,p_price_category_id:inhouseCategory.id,
+  }));
+  await ok("assign Subcontractor price category",admin.client.rpc("set_technician_price_category",{
+    p_technician_id:contractor.id,p_price_category_id:subcontractorCategory.id,
+  }));
+
   await startShift(inHouse,"in-house technician");
   await startShift(contractor,"contractor technician");
 
   const inCatalog=await ok("in-house catalog",inHouse.client.rpc("list_my_production_catalog"));
   const conCatalog=await ok("contractor catalog",contractor.client.rpc("list_my_production_catalog"));
-  check(inCatalog.length===59,"in-house sees 59 activities"); check(conCatalog.length===59,"contractor sees 59 activities");
+  const activeItems=await ok("read active catalog items",admin.client.from("production_code_catalog").select("id").eq("is_active",true));
+  check(inCatalog.length===activeItems.length,"in-house sees the complete active catalog");
+  check(conCatalog.length===activeItems.length,"contractor sees the complete active catalog");
   const inAc=inCatalog.find((row)=>row.code==="AC01"); const conAc=conCatalog.find((row)=>row.code==="AC01");
   check(Number(inAc.unit_rate)===0.65,"AC01 in-house rate is lower"); check(Number(conAc.unit_rate)===0.7,"AC01 contractor rate is higher");
+  for(const invalidNumeric of ["NaN","Infinity","-Infinity"]){
+    const invalidRate=await admin.client.rpc("set_production_catalog_rate",{
+      p_catalog_item_id:inAc.id,p_price_category_id:inhouseCategory.id,
+      p_unit_price:invalidNumeric,p_effective_from:"2099-01-01",p_active:true,
+    });
+    check(Boolean(invalidRate.error),`catalog rate rejects ${invalidNumeric}`);
+  }
 
   const jobA=await ok("create in-house job",supervisor.client.from("jobs").insert({title:`In-house ${runId}`}).select("id").single()); jobs.push(jobA.id);
   const jobB=await ok("create contractor job",supervisor.client.from("jobs").insert({title:`Contractor ${runId}`}).select("id").single()); jobs.push(jobB.id);
@@ -88,6 +109,12 @@ async function main(){
   const oldDate="2000-01-01";
   const backdate=await inHouse.client.rpc("add_job_production",{p_job_id:jobA.id,p_catalog_id:inAc.id,p_quantity:100,p_production_date:oldDate,p_notes:null});
   check(Boolean(backdate.error),"technician backdate denied");
+  for(const invalidNumeric of ["NaN","Infinity","-Infinity"]){
+    const invalidQuantity=await inHouse.client.rpc("add_job_production",{
+      p_job_id:jobA.id,p_catalog_id:inAc.id,p_quantity:invalidNumeric,p_production_date:null,p_notes:null,
+    });
+    check(Boolean(invalidQuantity.error),`production quantity rejects ${invalidNumeric}`);
+  }
   await ok("add in-house production",inHouse.client.rpc("add_job_production",{p_job_id:jobA.id,p_catalog_id:inAc.id,p_quantity:100,p_production_date:null,p_notes:"runtime"}));
   await ok("add contractor production",contractor.client.rpc("add_job_production",{p_job_id:jobB.id,p_catalog_id:conAc.id,p_quantity:100,p_production_date:null,p_notes:"runtime"}));
   const snapshots=await ok("read snapshots",service.from("job_production_codes").select("job_id,technician_type_snapshot,unit_rate_snapshot,amount_snapshot,credited_technician_id").in("job_id",[jobA.id,jobB.id]).order("unit_rate_snapshot"));

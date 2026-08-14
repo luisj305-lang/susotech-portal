@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 // Server-only integration harness. Never import this file from application code.
@@ -32,7 +32,6 @@ const runId = randomBytes(8).toString("hex");
 const password = `${randomBytes(18).toString("base64url")}Aa1!`;
 const userIds = [];
 const jobIds = [];
-const crewIds = [];
 const objects = [];
 let passed = 0;
 let cleanupPassed = false;
@@ -111,10 +110,6 @@ async function cleanup() {
     const result = await service.from("jobs").delete().in("id", jobIds);
     if (result.error) errors.push("jobs");
   }
-  if (crewIds.length) {
-    const result = await service.from("crews").delete().in("id", crewIds);
-    if (result.error) errors.push("crews");
-  }
   if (userIds.length) {
     const result = await service.from("technician_shifts").delete().in("technician_id", userIds);
     if (result.error) errors.push("shifts");
@@ -131,11 +126,11 @@ async function main() {
   const admin = await createIdentity("admin", "admin");
   const supervisor = await createIdentity("supervisor", "supervisor");
   const direct = await createIdentity("direct", "tecnico");
-  const crewTech = await createIdentity("crew", "tecnico");
+  const second = await createIdentity("second", "tecnico");
   const other = await createIdentity("other", "tecnico");
   const inactive = await createIdentity("inactive", "tecnico", false);
   await startShift(direct, "direct technician");
-  await startShift(crewTech, "crew technician");
+  await startShift(second, "second technician");
   await startShift(other, "unassigned technician");
 
   const tables = [
@@ -149,40 +144,27 @@ async function main() {
   const directJob = await ok("admin creates direct job", admin.client.from("jobs").insert({
     title: `RLS direct ${runId}`,
   }).select("id, category, main_status").single());
-  check(directJob.category === "categoria_1" && directJob.main_status === "asignado", "job defaults are enforced");
+  check(directJob.category === "categoria_1" && directJob.main_status === "sin_asignar", "unassigned job defaults are enforced");
   jobIds.push(directJob.id);
 
-  const crewJob = await ok("supervisor creates crew job", supervisor.client.from("jobs").insert({
-    title: `RLS crew ${runId}`,
+  const secondJob = await ok("supervisor creates second direct job", supervisor.client.from("jobs").insert({
+    title: `RLS second ${runId}`,
   }).select("id").single());
-  jobIds.push(crewJob.id);
+  jobIds.push(secondJob.id);
   const unassignedJob = await ok("admin creates unassigned job", admin.client.from("jobs").insert({
     title: `RLS unassigned ${runId}`,
   }).select("id").single());
   jobIds.push(unassignedJob.id);
 
-  const crew = await ok("admin creates active crew", admin.client.from("crews").insert({
-    name: `RLS crew ${runId}`,
-    lead_technician_id: crewTech.id,
-  }).select("id, is_active").single());
-  check(crew.is_active === true, "crew defaults active");
-  crewIds.push(crew.id);
-
-  await ok("supervisor assigns direct technician", supervisor.client.from("job_assignments").insert({
-    job_id: directJob.id,
-    assignee_type: "technician",
-    technician_id: direct.id,
-    assigned_by: supervisor.id,
+  await ok("supervisor assigns direct technician atomically", supervisor.client.rpc("assign_jobs_atomic", {
+    job_ids: [directJob.id], new_assignee_type: "technician", new_assignee_id: direct.id,
   }));
-  await ok("supervisor assigns crew", supervisor.client.from("job_assignments").insert({
-    job_id: crewJob.id,
-    assignee_type: "crew",
-    crew_id: crew.id,
-    assigned_by: supervisor.id,
+  await ok("supervisor assigns second technician atomically", supervisor.client.rpc("assign_jobs_atomic", {
+    job_ids: [secondJob.id], new_assignee_type: "technician", new_assignee_id: second.id,
   }));
-  const membership = await ok("crew lead membership exists", supervisor.client.from("crew_members")
-    .select("technician_id").eq("crew_id", crew.id).eq("technician_id", crewTech.id));
-  check(membership.length === 1, "crew lead is a member");
+  await denied("retired crew assignment is rejected", supervisor.client.rpc("assign_jobs_atomic", {
+    job_ids: [secondJob.id], new_assignee_type: "crew", new_assignee_id: randomUUID(),
+  }));
 
   await ok("supervisor updates office field", supervisor.client.from("jobs")
     .update({ description: "runtime verified" }).eq("id", unassignedJob.id).select("id").single());
@@ -191,8 +173,8 @@ async function main() {
 
   const directRows = await ok("direct technician reads assigned job", direct.client.from("jobs").select("id").eq("id", directJob.id));
   check(directRows.length === 1, "direct assignment is visible");
-  const crewRows = await ok("crew technician reads crew job", crewTech.client.from("jobs").select("id").eq("id", crewJob.id));
-  check(crewRows.length === 1, "crew assignment is visible");
+  const secondRows = await ok("second technician reads direct job", second.client.from("jobs").select("id").eq("id", secondJob.id));
+  check(secondRows.length === 1, "second direct assignment is visible");
   await denied("unassigned technician cannot read job", other.client.from("jobs").select("id").eq("id", directJob.id));
   await denied("inactive technician cannot read jobs", inactive.client.from("jobs").select("id").in("id", jobIds));
   await denied("anonymous client cannot read jobs", anonymous.from("jobs").select("id").in("id", jobIds));
@@ -215,11 +197,29 @@ async function main() {
     .select("active").eq("job_id", directJob.id).single());
   check(assignmentCheck.active === true, "forbidden reassignment was not applied");
 
-  const catalog = await ok("technician reads production catalog", direct.client.rpc("list_my_production_catalog"));
-  check(Boolean(catalog?.[0]?.id), "production catalog contains an activity");
+  const uncategorizedCatalog = await ok("uncategorized technician reads production catalog", direct.client.rpc("list_my_production_catalog"));
+  check(Boolean(uncategorizedCatalog?.[0]?.id) && uncategorizedCatalog.every((item) => item.unit_rate === null),
+    "uncategorized technician sees catalog without an arbitrary rate");
+  await denied("technician without price category cannot add production", direct.client.rpc("add_job_production", {
+    p_job_id: directJob.id,
+    p_catalog_id: uncategorizedCatalog[0].id,
+    p_quantity: 1,
+    p_production_date: null,
+    p_notes: "Missing category fixture",
+  }));
+
+  const inhouseCategory = await ok("admin reads active Inhouse category", admin.client.from("price_categories")
+    .select("id").eq("slug", "inhouse").eq("active", true).single());
+  await ok("admin assigns Inhouse category to technician", admin.client.rpc("set_technician_price_category", {
+    p_technician_id: direct.id,
+    p_price_category_id: inhouseCategory.id,
+  }));
+  const catalog = await ok("categorized technician reads production catalog", direct.client.rpc("list_my_production_catalog"));
+  const ratedCatalogItem = catalog.find((item) => item.price_category_id === inhouseCategory.id && item.unit_rate !== null);
+  check(Boolean(ratedCatalogItem?.id), "production catalog contains an applicable Inhouse rate");
   await ok("technician adds positive production code", direct.client.rpc("add_job_production", {
     p_job_id: directJob.id,
-    p_catalog_id: catalog[0].id,
+    p_catalog_id: ratedCatalogItem.id,
     p_quantity: 1,
     p_production_date: null,
     p_notes: "RLS fixture",
@@ -253,8 +253,12 @@ async function main() {
   await privateObject("job-evidence bucket has no public object access", anonymous, "job-evidence", evidencePath);
 
   const history = await ok("assigned technician reads audit history", direct.client.from("job_status_history")
-    .select("changed_by").eq("job_id", directJob.id));
-  check(history.length === 2 && history.every((entry) => entry.changed_by === direct.id), "status and incident history has correct actor");
+    .select("previous_status,new_status,previous_incident,new_incident,changed_by").eq("job_id", directJob.id));
+  check(history.length === 3
+    && history.some((entry) => entry.previous_status === "sin_asignar" && entry.new_status === "asignado" && entry.changed_by === supervisor.id)
+    && history.some((entry) => entry.previous_status === "asignado" && entry.new_status === "en_progreso" && entry.changed_by === direct.id)
+    && history.some((entry) => entry.previous_incident === null && entry.new_incident === "no_access" && entry.changed_by === direct.id),
+  "assignment, status, and incident history preserve their actors");
 }
 
 let failure;
@@ -274,5 +278,5 @@ if (failure) {
   console.error(`[jobs-rls] FAIL ${failure.message}`);
   process.exitCode = 1;
 } else {
-  console.log(`[jobs-rls] PASS checks=${passed} cleanup=${cleanupPassed ? "passed" : "failed"} users=${userIds.length} jobs=${jobIds.length} crews=${crewIds.length} objects=${objects.length}`);
+  console.log(`[jobs-rls] PASS checks=${passed} cleanup=${cleanupPassed ? "passed" : "failed"} users=${userIds.length} jobs=${jobIds.length} objects=${objects.length}`);
 }

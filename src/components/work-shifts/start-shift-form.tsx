@@ -23,23 +23,29 @@ export function StartShiftForm() {
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
 
+  const clearPhoto = () => {
+    setPhoto(null);
+    if (cameraInput.current) cameraInput.current.value = "";
+    if (galleryInput.current) galleryInput.current.value = "";
+  };
+
   const chooseFuel = (choice: "yes" | "no") => {
     setFuelChoice(choice);
     setMessage("");
     if (choice === "no") {
       setAmount("0");
-      setPhoto(null);
-      if (cameraInput.current) cameraInput.current.value = "";
-      if (galleryInput.current) galleryInput.current.value = "";
+      clearPhoto();
     } else if (amount === "0") {
       setAmount("");
     }
   };
 
-  const selectPhoto = (file: File | undefined) => {
+  const selectPhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
     if (!file) return;
     if (!allowedPhotoTypes.includes(file.type) || file.size < 1 || file.size > MAX_PHOTO_BYTES) {
-      setPhoto(null);
+      clearPhoto();
       setMessage("La foto debe ser JPG, PNG o WebP y no superar 10 MB.");
       return;
     }
@@ -92,6 +98,7 @@ export function StartShiftForm() {
         });
         setMessage(result.message);
         if (result.success) {
+          clearPhoto();
           router.replace("/dashboard");
           router.refresh();
         }
@@ -163,8 +170,8 @@ export function StartShiftForm() {
               <p className="font-semibold">Fotografía del marcador</p>
               <p className="text-sm text-zinc-400">Opcional · JPG, PNG o WebP · máximo 10 MB</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-white/50 px-3 text-center font-semibold">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-white/50 px-3 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
                 Tomar foto
                 <input
                   ref={cameraInput}
@@ -172,18 +179,18 @@ export function StartShiftForm() {
                   accept="image/jpeg,image/png,image/webp"
                   capture="environment"
                   disabled={pending}
-                  onChange={(event) => selectPhoto(event.target.files?.[0])}
+                  onChange={selectPhoto}
                   className="sr-only"
                 />
               </label>
-              <label className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-white/50 px-3 text-center font-semibold">
+              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-white/50 px-3 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
                 Elegir de galería
                 <input
                   ref={galleryInput}
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   disabled={pending}
-                  onChange={(event) => selectPhoto(event.target.files?.[0])}
+                  onChange={selectPhoto}
                   className="sr-only"
                 />
               </label>
@@ -191,7 +198,7 @@ export function StartShiftForm() {
             {photo && (
               <div className="flex items-center justify-between gap-3 rounded-xl border border-white/20 p-3 text-sm">
                 <span className="min-w-0 truncate">{photo.name}</span>
-                <button type="button" disabled={pending} onClick={() => setPhoto(null)} className="font-bold underline">
+                <button type="button" disabled={pending} onClick={clearPhoto} className="font-bold underline">
                   Quitar
                 </button>
               </div>

@@ -13,6 +13,10 @@ import {
   requireActiveShift,
 } from "@/lib/work-shifts/access";
 import { ACTIVE_SHIFT_REQUIRED_MESSAGE } from "@/lib/work-shifts/types";
+import {
+  isOperationalFieldWorker,
+  READ_ONLY_HELPER_MESSAGE,
+} from "@/lib/auth/capabilities";
 
 type Bucket = "project-files" | "job-evidence";
 type Result<T> = { success: true; message: string; data: T } | { success: false; message: string };
@@ -35,6 +39,9 @@ export async function createPhotoUploadUrl(input: {
   jobId: string; mimeType: "image/jpeg" | "image/png" | "image/webp"; size: number;
 }): Promise<Result<{ path: string; token: string; signedUrl: string }>> {
   const profile = await requireProfile();
+  if (!isOperationalFieldWorker(profile)) {
+    return { success: false, message: READ_ONLY_HELPER_MESSAGE };
+  }
   const shiftFailure = await requireTechnicianShift(profile.role);
   if (shiftFailure) return shiftFailure;
   return preparePhotoUpload(await createClient(), input);
@@ -45,7 +52,7 @@ export async function discardUnconfirmedPhotoUpload(input: {
   path: string;
 }): Promise<Result<null>> {
   const profile = await requireProfile();
-  if (profile.role !== "tecnico"
+  if (!isOperationalFieldWorker(profile)
     || !uuidPattern.test(input.jobId)
     || !input.path.startsWith(`${input.jobId}/`)
     || input.path.slice(input.jobId.length + 1).includes("/")) {
@@ -223,7 +230,7 @@ export async function prepareBulkProjectUpload(input: BulkPrepareInput) {
   return prepareBulkProjectUploadCore(await createClient(), input);
 }
 
-export async function confirmBulkProjectUpload(input: { itemId: string }) {
+export async function confirmBulkProjectUpload(input: { itemId: string; assigneeType?: "technician"; assigneeId?: string }) {
   await requireSupervisor();
   const result = await confirmBulkProjectUploadCore(await createClient(), input);
   if (result.success) revalidatePath("/trabajos");

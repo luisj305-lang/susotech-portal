@@ -6,7 +6,7 @@ import { assignJobsInBulk } from "@/lib/jobs/actions";
 import { confirmBulkProjectUpload, prepareBulkProjectUpload } from "@/lib/storage/actions";
 import { extractPdfPreview, mapWithConcurrency } from "@/lib/jobs/pdf-parser";
 import type { PdfDraft } from "@/lib/jobs/pdf-parser";
-import type { AssigneeOption, AssigneeType } from "@/lib/jobs/types";
+import type { AssigneeOption } from "@/lib/jobs/types";
 import {
   applyImportOutcome, applyPdfPreview, createImportRows, filterImportRows, groupAssignmentChunks, importProgress, pageRows,
   selectUploadTargets, type ImportRow, type ImportState,
@@ -24,7 +24,9 @@ function assigneeValue(row: ImportRow) {
 
 function parseAssignee(value: string) {
   const [type, id] = value.split(":");
-  return type && id ? { assigneeType: type as AssigneeType, assigneeId: id } : { assigneeType: undefined, assigneeId: undefined };
+  return type === "technician" && id
+    ? { assigneeType: "technician" as const, assigneeId: id }
+    : { assigneeType: undefined, assigneeId: undefined };
 }
 
 export function BulkImport({ options }: { options: AssigneeOption[] }) {
@@ -128,14 +130,19 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
       }
       const confirmed = prepared.data.status === "imported" || prepared.data.status === "duplicate"
         ? { success: true as const, data: { status: prepared.data.status, jobId: prepared.data.jobId }, message: "Importación recuperada." }
-        : await confirmBulkProjectUpload({ itemId: prepared.data.itemId });
+        : await confirmBulkProjectUpload({
+          itemId: prepared.data.itemId,
+          assigneeType: row.assigneeType,
+          assigneeId: row.assigneeId,
+        });
       if (!confirmed.success) throw new Error(confirmed.message);
       const status: "duplicate" | "imported" = confirmed.data.status === "duplicate" ? "duplicate" : "imported";
       setRows((current) => applyImportOutcome(current, row.key, { status, jobId: confirmed.data.jobId, message: confirmed.message })
-        .map((item) => item.key === row.key ? { ...item, assignmentState: status === "imported" && row.assigneeId ? "pending" : undefined } : item));
-      return status === "imported" && row.assigneeType && row.assigneeId
-        ? { key: row.key, state: status, jobId: confirmed.data.jobId, assigneeType: row.assigneeType, assigneeId: row.assigneeId, assignmentState: "pending" as const }
-        : null;
+        .map((item) => item.key === row.key ? {
+          ...item,
+          assignmentState: status === "imported" && row.assigneeId ? "assigned" : undefined,
+        } : item));
+      return null;
     } catch (error) {
       setRows((current) => applyImportOutcome(current, snapshot.key, {
         status: "error",
@@ -168,14 +175,12 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
     if (!targets.length) { setMessage("No hay archivos seleccionados para procesar."); return; }
     setBusy(true);
     setMessage(`Procesando ${targets.length} archivo(s) con hasta 3 cargas simultáneas…`);
-    const confirmed: Array<NonNullable<Awaited<ReturnType<typeof processRow>>>> = [];
     const remaining = [...targets];
     // Establish or validate the shared batch before concurrent rows use it. This
     // also makes stale localStorage recovery deterministic for the whole batch.
     const first = remaining.shift();
-    if (first) { const result = await processRow(first); if (result) confirmed.push(result); }
-    await mapWithConcurrency(remaining, 3, async (row) => { const result = await processRow(row); if (result) confirmed.push(result); });
-    await assignGroups(groupAssignmentChunks(confirmed));
+    if (first) await processRow(first);
+    await mapWithConcurrency(remaining, 3, async (row) => { await processRow(row); });
     setBusy(false);
     setMessage("Lote finalizado. Revisa los resultados por archivo.");
   }

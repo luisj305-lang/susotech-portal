@@ -4,10 +4,15 @@ import { NextResponse } from "next/server";
 import { composeDeliveredPdf } from "@/lib/jobs/delivered-pdf";
 import { ensureVerifiedDocumentManifest } from "@/lib/jobs/document-manifest";
 import { codeColor, validatePlacements, type PdfCodePlacement } from "@/lib/jobs/pdf-code-editor-core";
+import { validatePdfTextNotes, type PdfTextNote } from "@/lib/jobs/pdf-text-note-core";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkShiftAccessForActor } from "@/lib/work-shifts/access";
 import { ACTIVE_SHIFT_REQUIRED_MESSAGE } from "@/lib/work-shifts/types";
+import {
+  isOperationalFieldWorker,
+  READ_ONLY_HELPER_MESSAGE,
+} from "@/lib/auth/capabilities";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -39,13 +44,28 @@ export async function POST(
   const { id: jobId } = await context.params;
   if (!uuidPattern.test(jobId)) return json("Trabajo no disponible.", 404);
 
-  let input: { submit?: unknown };
+  let input: { submit?: unknown; allocations?: unknown; allocationIdempotencyKey?: unknown };
   try {
     input = await request.json();
   } catch {
     return json("La solicitud no es válida.", 400);
   }
   if (typeof input.submit !== "boolean") return json("La solicitud no es válida.", 400);
+  const allocations = Array.isArray(input.allocations) ? input.allocations : [];
+  const validAllocations = allocations.length > 0 && allocations.length <= 100
+    && allocations.every((item): item is { participantId: string; percentageBasisPoints: number } => {
+      if (!item || typeof item !== "object") return false;
+      const value = item as Record<string, unknown>;
+      return typeof value.participantId === "string" && uuidPattern.test(value.participantId)
+        && Number.isInteger(value.percentageBasisPoints)
+        && Number(value.percentageBasisPoints) > 0 && Number(value.percentageBasisPoints) <= 10000;
+    })
+    && new Set(allocations.map((item) => (item as { participantId: string }).participantId)).size === allocations.length
+    && allocations.reduce((sum, item) => sum + Number((item as { percentageBasisPoints: number }).percentageBasisPoints), 0) === 10000;
+  if (input.submit && (!validAllocations || typeof input.allocationIdempotencyKey !== "string"
+    || !uuidPattern.test(input.allocationIdempotencyKey))) {
+    return json("La distribución financiera debe sumar exactamente 100.00%.", 400);
+  }
 
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -53,10 +73,13 @@ export async function POST(
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, role, is_active")
+    .select("id, role, is_active, worker_specialty, price_category_id")
     .eq("id", authData.user.id)
     .single();
   if (profileError || !profile?.is_active) return json("Acceso denegado.", 403);
+  if (profile.role === "tecnico" && !isOperationalFieldWorker(profile)) {
+    return json(READ_ONLY_HELPER_MESSAGE, 403);
+  }
 
   const shiftAccess = await getWorkShiftAccessForActor({ id: profile.id, role: profile.role }, supabase);
   if (!shiftAccess.active) return json(ACTIVE_SHIFT_REQUIRED_MESSAGE, 403);
@@ -79,6 +102,9 @@ export async function POST(
     return json("El PDF solo puede regenerarse mientras el trabajo sea editable.", 409);
   }
   if (!isTechnician && !isAdmin) return json("Acceso denegado.", 403);
+  if (isTechnician && !profile.price_category_id) {
+    return json("Tu categoría de precio no está configurada. Contacta a un administrador.", 409);
+  }
   if (!job.project_pdf_url?.startsWith(`${jobId}/`)) {
     return json("Este trabajo no tiene un PDF original válido.", 409);
   }
@@ -91,7 +117,7 @@ export async function POST(
     return json(error instanceof Error ? error.message : "No se pudieron verificar los PDFs fuente.", 409);
   }
   const [{ data: draft, error: draftError }, { data: catalog, error: catalogError }, { data: documents, error: documentsError }] = await Promise.all([
-    supabase.from("job_pdf_drafts").select("version,source_page_count,source_document_ids,placements").eq("job_id", jobId).maybeSingle(),
+    supabase.from("job_pdf_drafts").select("version,source_page_count,source_document_ids,placements,text_notes").eq("job_id", jobId).maybeSingle(),
     service.from("production_code_catalog").select("id,code,unit").eq("is_active", true),
     supabase.from("job_documents").select("id,storage_path,file_hash,page_count,position,document_type")
       .eq("job_id", jobId).eq("status", "active").is("deleted_at", null)
@@ -109,12 +135,33 @@ export async function POST(
   if (placements.some((item) => ["fixed", "event"].includes(catalogUnits.get(item.catalogId) ?? "") && !Number.isInteger(item.quantity))) {
     return json("Los códigos de cantidad fija o evento requieren un entero mayor que cero.", 409);
   }
+  if (isTechnician) {
+    const catalogIds = [...new Set(placements.map((item) => item.catalogId))];
+    const effectiveDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+    const { data: rates, error: ratesError } = await service
+      .from("production_code_rates")
+      .select("catalog_item_id")
+      .eq("price_category_id", profile.price_category_id)
+      .eq("active", true)
+      .lte("effective_from", effectiveDate)
+      .in("catalog_item_id", catalogIds);
+    const ratedIds = new Set((rates ?? []).map((rate) => rate.catalog_item_id));
+    if (ratesError || catalogIds.some((catalogId) => !ratedIds.has(catalogId))) {
+      return json("El borrador contiene un código sin tarifa configurada para tu categoría.", 409);
+    }
+  }
   const sourceDocuments = documents?.length ? documents : verifiedDocuments;
   if (!sourceDocuments.length || !sourceDocuments.some((document) => document.document_type === "original")
     || sourceDocuments.some((document) => !document.file_hash || !document.page_count)
     || sourceDocuments.map((document) => document.id).join(",") !== (draft.source_document_ids ?? []).join(",")) {
     return json("Los PDFs fuente cambiaron. Vuelve a abrir el editor antes de entregar.", 409);
   }
+  const textNotes = draft.text_notes as PdfTextNote[];
+  const textNoteError = validatePdfTextNotes(textNotes, sourceDocuments.map((document) => ({
+    id: document.id,
+    pageCount: Number(document.page_count),
+  })));
+  if (textNoteError) return json("El borrador contiene una nota de texto inválida.", 409);
 
   const { data: photos, error: photoError } = await supabase
     .from("job_photos")
@@ -175,6 +222,7 @@ export async function POST(
         comment: photo.comment,
       })),
       placements.map((item) => ({ ...item, code: catalogById.get(item.catalogId)!, color: codeColor(catalogById.get(item.catalogId)!) })),
+      textNotes,
     );
 
     const { error: uploadError } = await service.storage.from("project-files").upload(
@@ -190,6 +238,7 @@ export async function POST(
           source_photo_ids: delivered.sourcePhotoIds.join(","),
           source_document_ids: delivered.sourceDocumentIds.join(","),
           snapshot_hash: createHash("sha256").update(JSON.stringify(placements)).digest("hex"),
+          text_note_snapshot_hash: createHash("sha256").update(JSON.stringify(textNotes)).digest("hex"),
         },
       },
     );
@@ -197,7 +246,7 @@ export async function POST(
     uploaded = true;
 
     const { data: confirmation, error: confirmationError } = await supabase.rpc(
-      "confirm_delivered_job_pdf_complete",
+      input.submit ? "confirm_delivered_job_pdf_with_allocations_v3" : "confirm_delivered_job_pdf_complete_v3",
       {
         p_job_id: jobId,
         p_storage_path: deliveredPath,
@@ -206,6 +255,11 @@ export async function POST(
         p_submit: input.submit,
         p_expected_draft_version: draft.version,
         p_snapshot_hash: createHash("sha256").update(JSON.stringify(placements)).digest("hex"),
+        p_text_note_snapshot: textNotes,
+        ...(input.submit ? {
+          p_allocations: allocations,
+          p_allocation_idempotency_key: input.allocationIdempotencyKey,
+        } : {}),
       },
     );
 
@@ -214,13 +268,13 @@ export async function POST(
     if (confirmationError) {
       // A transport failure can be ambiguous: never delete an object that may
       // already be the committed pointer.
-      uploaded = false;
       const { data: current, error: currentError } = await supabase
         .from("jobs")
         .select("delivered_pdf_path")
         .eq("id", jobId)
         .maybeSingle();
       if (currentError) {
+        uploaded = false;
         throw new Error(
           confirmationError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
             || currentError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)

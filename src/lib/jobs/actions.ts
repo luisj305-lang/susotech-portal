@@ -3,10 +3,13 @@
 import "server-only";
 import { revalidatePath } from "next/cache";
 import { requireAdmin, requireProfile, requireSupervisor } from "@/lib/auth/session";
+import {
+  isOperationalFieldWorker,
+  READ_ONLY_HELPER_MESSAGE,
+} from "@/lib/auth/capabilities";
 import { confirmPhotoEvidence } from "@/lib/storage/core";
 import { createClient } from "@/lib/supabase/server";
 import { canTransition, INCIDENT_TYPES } from "./state";
-import { addCrewMemberCore, createCrewCore, removeCrewMemberCore, setCrewActiveCore, updateCrewCore } from "./crew-core";
 import { cleanupJobDeletionQueue, type JobDeletionCleanupRow } from "./deletion-core";
 import { validatePlacements, type PdfCodePlacement } from "./pdf-code-editor-core";
 import type { AssigneeType, IncidentType, JobCategory, JobStatus } from "./types";
@@ -56,6 +59,14 @@ async function requireTechnicianShift(role: "admin" | "supervisor" | "tecnico") 
     if (isActiveShiftRequiredError(error)) return failure(ACTIVE_SHIFT_REQUIRED_MESSAGE);
     throw error;
   }
+}
+
+function technicianMutationFailure(
+  profile: Awaited<ReturnType<typeof requireProfile>>,
+): Result<never> | null {
+  return profile.role === "tecnico" && !isOperationalFieldWorker(profile)
+    ? failure(READ_ONLY_HELPER_MESSAGE)
+    : null;
 }
 
 function cleanText(value: unknown, field: string, max = 5000): string | null {
@@ -110,51 +121,36 @@ function refresh(jobId?: string) {
   if (jobId) revalidatePath(`/trabajos/${jobId}`);
 }
 
-function refreshCrews() {
-  revalidatePath("/equipos");
-  revalidatePath("/trabajos");
-  revalidatePath("/trabajos/importar");
-}
-
-async function crewMutation(operation: (client: Awaited<ReturnType<typeof createClient>>) => Promise<void>, message: string): Promise<Result> {
-  try {
-    await operation(await createClient());
-    refreshCrews();
-    return { success: true, message, data: null };
-  } catch (error) {
-    return failure(error instanceof Error ? error.message : "No se pudo actualizar el equipo.");
-  }
-}
+const CREW_RETIREMENT_MESSAGE = "La administración de equipos fue retirada. Usa asignación individual.";
 
 export async function createCrew(input: { name: string; leadTechnicianId: string }): Promise<Result<{ id: string }>> {
   await requireAdmin();
-  try {
-    const data = await createCrewCore(await createClient(), input);
-    refreshCrews();
-    return { success: true, message: "Equipo creado.", data };
-  } catch (error) {
-    return failure(error instanceof Error ? error.message : "No se pudo crear el equipo.");
-  }
+  void input;
+  return failure(CREW_RETIREMENT_MESSAGE);
 }
 
 export async function updateCrew(input: { crewId: string; name?: string; leadTechnicianId?: string }) {
   await requireAdmin();
-  return crewMutation((client) => updateCrewCore(client, input), "Equipo actualizado.");
+  void input;
+  return failure(CREW_RETIREMENT_MESSAGE);
 }
 
 export async function setCrewActive(input: { crewId: string; active: boolean }) {
   await requireAdmin();
-  return crewMutation((client) => setCrewActiveCore(client, input), input.active ? "Equipo activado." : "Equipo desactivado.");
+  void input;
+  return failure(CREW_RETIREMENT_MESSAGE);
 }
 
 export async function addCrewMember(input: { crewId: string; technicianId: string }) {
   await requireAdmin();
-  return crewMutation((client) => addCrewMemberCore(client, input), "Integrante añadido.");
+  void input;
+  return failure(CREW_RETIREMENT_MESSAGE);
 }
 
 export async function removeCrewMember(input: { crewId: string; technicianId: string }) {
   await requireAdmin();
-  return crewMutation((client) => removeCrewMemberCore(client, input), "Integrante removido.");
+  void input;
+  return failure(CREW_RETIREMENT_MESSAGE);
 }
 
 export async function createJob(input: JobInput): Promise<Result<{ id: string }>> {
@@ -186,31 +182,36 @@ export async function updateJob(input: JobInput & { jobId: string }): Promise<Re
   }
 }
 
-async function assign(jobIds: string[], assigneeType: AssigneeType, assigneeId: string): Promise<Result<{ count: number }>> {
+async function assign(jobIds: string[], assigneeType: AssigneeType | null, assigneeId: string | null): Promise<Result<{ count: number }>> {
   const ids = [...new Set(jobIds)];
-  if (!ids.length || ids.length > 100 || ids.some((id) => !validId(id)) || !validId(assigneeId)) return failure("La asignación no es válida.");
-  if (assigneeType !== "technician" && assigneeType !== "crew") return failure("El tipo de asignado no es válido.");
+  if (!ids.length || ids.length > 100 || ids.some((id) => !validId(id))) return failure("La asignación no es válida.");
+  if ((assigneeType === null) !== (assigneeId === null)) return failure("La asignación no es válida.");
+  if (assigneeType !== null && assigneeType !== "technician") return failure("El tipo de asignado no es válido.");
+  if (assigneeId !== null && !validId(assigneeId)) return failure("La asignación no es válida.");
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("assign_jobs_atomic", {
     job_ids: ids, new_assignee_type: assigneeType, new_assignee_id: assigneeId,
   });
-  if (error || !data || data.length !== ids.length) return failure("No se pudo completar la asignación.");
+  const expectedRows = assigneeType === null ? 0 : ids.length;
+  if (error || !data || data.length !== expectedRows) return failure(assigneeType === null ? "No se pudo quitar la asignación." : "No se pudo completar la asignación.");
   ids.forEach((id) => refresh(id));
-  return { success: true, message: "Asignación completada.", data: { count: data.length } };
+  return { success: true, message: assigneeType === null ? "Asignación eliminada." : "Asignación completada.", data: { count: ids.length } };
 }
 
-export async function assignJob(input: { jobId: string; assigneeType: AssigneeType; assigneeId: string }) {
+export async function assignJob(input: { jobId: string; assigneeType: "technician"; assigneeId: string }) {
   await requireSupervisor();
   return assign([input.jobId], input.assigneeType, input.assigneeId);
 }
 
-export async function assignJobsInBulk(input: { jobIds: string[]; assigneeType: AssigneeType; assigneeId: string }) {
+export async function assignJobsInBulk(input: { jobIds: string[]; assigneeType: "technician"; assigneeId: string }) {
   await requireSupervisor();
   return assign(input.jobIds, input.assigneeType, input.assigneeId);
 }
 
 export async function transitionJob(input: { jobId: string; newStatus: JobStatus; reason?: string | null }): Promise<Result> {
   const profile = await requireProfile();
+  const capabilityFailure = technicianMutationFailure(profile);
+  if (capabilityFailure) return capabilityFailure;
   const shiftFailure = await requireTechnicianShift(profile.role);
   if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");
@@ -234,6 +235,8 @@ export async function transitionJob(input: { jobId: string; newStatus: JobStatus
 
 export async function setIncident(input: { jobId: string; incident: IncidentType | null; notes?: string | null }): Promise<Result> {
   const profile = await requireProfile();
+  const capabilityFailure = technicianMutationFailure(profile);
+  if (capabilityFailure) return capabilityFailure;
   const shiftFailure = await requireTechnicianShift(profile.role);
   if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId) || (input.incident !== null && !INCIDENT_TYPES.includes(input.incident))) return failure("La incidencia no es válida.");
@@ -253,6 +256,8 @@ export async function setIncident(input: { jobId: string; incident: IncidentType
 
 export async function addProductionCode(input: { jobId: string; catalogId: string; quantity: number; productionDate?: string | null; notes?: string | null }): Promise<Result> {
   const profile = await requireProfile();
+  const capabilityFailure = technicianMutationFailure(profile);
+  if (capabilityFailure) return capabilityFailure;
   const shiftFailure = await requireTechnicianShift(profile.role);
   if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId) || !validId(input.catalogId) || !Number.isFinite(input.quantity) || input.quantity <= 0) return failure("Código o cantidad no válidos.");
@@ -266,9 +271,20 @@ export async function addProductionCode(input: { jobId: string; catalogId: strin
     p_production_date: productionDate,
     p_notes: cleanText(input.notes, "Las notas", 2000),
   });
-  if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE) ? ACTIVE_SHIFT_REQUIRED_MESSAGE : "No se pudo añadir el código.");
+  if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
+    ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+    : error.message.includes("price category")
+      ? "Tu categoría de precio no está configurada. Contacta a un administrador."
+      : error.message.includes("configured rate")
+        ? "Este código no tiene tarifa configurada para tu categoría."
+        : "No se pudo añadir el código.");
   refresh(input.jobId);
   return { success: true, message: "Código añadido.", data: null };
+}
+
+export async function unassignJob(input: { jobId: string }) {
+  await requireSupervisor();
+  return assign([input.jobId], null, null);
 }
 
 const archiveReasonCodes = [
@@ -348,15 +364,21 @@ export async function retryPendingJobDeletionCleanup(): Promise<Result<{ pending
   };
 }
 
-export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: number; pageCount: number; placements: PdfCodePlacement[] }): Promise<Result<{ version: number }>> {
+export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: number; pageCount: number; placements: PdfCodePlacement[]; textNotes: import("./pdf-text-note-core").PdfTextNote[]; sourceDocuments: import("./pdf-text-note-core").PdfTextNoteSource[] }): Promise<Result<{ version: number }>> {
   const profile = await requireProfile();
+  const capabilityFailure = technicianMutationFailure(profile);
+  if (capabilityFailure) return capabilityFailure;
   const shiftFailure = await requireTechnicianShift(profile.role);
   if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId) || !Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) return failure("El borrador no es válido.");
   const validation = validatePlacements(input.placements, input.pageCount);
   if (validation) return failure(validation);
-  const { data, error } = await (await createClient()).rpc("save_job_pdf_draft_v2", {
-    p_job_id: input.jobId, p_expected_version: input.expectedVersion, p_placements: input.placements,
+  const { validatePdfTextNotes } = await import("./pdf-text-note-core");
+  const noteValidation = validatePdfTextNotes(input.textNotes, input.sourceDocuments);
+  if (noteValidation) return failure(noteValidation);
+  const { data, error } = await (await createClient()).rpc("save_job_pdf_draft_v3", {
+    p_job_id: input.jobId, p_expected_version: input.expectedVersion,
+    p_placements: input.placements, p_text_notes: input.textNotes,
   });
   if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
     ? ACTIVE_SHIFT_REQUIRED_MESSAGE
@@ -369,6 +391,8 @@ export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: n
 
 export async function addPhotoComment(input: { jobId: string; storagePath?: string; photoType?: typeof photoTypes[number]; comment?: string }): Promise<Result> {
   const profile = await requireProfile();
+  const capabilityFailure = technicianMutationFailure(profile);
+  if (capabilityFailure) return capabilityFailure;
   const shiftFailure = await requireTechnicianShift(profile.role);
   if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");

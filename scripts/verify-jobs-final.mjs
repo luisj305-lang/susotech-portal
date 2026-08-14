@@ -28,7 +28,6 @@ const runId = randomBytes(8).toString("hex");
 const password = `${randomBytes(18).toString("base64url")}Aa1!`;
 const users = [];
 const jobs = [];
-const crews = [];
 const projectObjects = [];
 const evidenceObjects = [];
 const deliveryContexts = new Map();
@@ -37,7 +36,10 @@ let checks = 0;
 let cleanupPassed = false;
 
 function check(condition, label, error) {
-  if (!condition) throw new Error(`${label} [${error?.code ?? error?.status ?? "assertion"}]`);
+  if (!condition) {
+    const detail = error?.message ? `: ${error.message}` : "";
+    throw new Error(`${label} [${error?.code ?? error?.status ?? "assertion"}]${detail}`);
+  }
   checks += 1;
 }
 
@@ -77,7 +79,7 @@ async function startShift(identity, label) {
 async function createJob(client, title) {
   const row = await ok(`create job ${title.slice(0, 12)}`, client.from("jobs").insert({ title }).select("id, main_status, category").single());
   jobs.push(row.id);
-  check(row.main_status === "asignado" && row.category === "categoria_1", "job defaults applied");
+  check(row.main_status === "sin_asignar" && row.category === "categoria_1", "job defaults applied");
   return row.id;
 }
 
@@ -199,7 +201,6 @@ async function cleanup() {
   if (projectObjects.length && (await service.storage.from("project-files").remove(projectObjects)).error) errors.push("project-files");
   if (evidenceObjects.length && (await service.storage.from("job-evidence").remove(evidenceObjects)).error) errors.push("job-evidence");
   if (jobs.length && (await service.from("jobs").delete().in("id", jobs)).error) errors.push("jobs");
-  if (crews.length && (await service.from("crews").delete().in("id", crews)).error) errors.push("crews");
   if (users.length && (await service.from("technician_shifts").delete().in("technician_id", users)).error) errors.push("shifts");
   for (const id of [...users].reverse()) if ((await service.auth.admin.deleteUser(id)).error) errors.push("users");
   cleanupPassed = errors.length === 0;
@@ -213,47 +214,32 @@ async function main() {
   const technician = await identity("technician", "tecnico");
   const other = await identity("other", "tecnico");
   const outsider = await identity("outsider", "tecnico");
-  const inactive = await identity("inactive", "tecnico", false);
+
+  const inhouseCategory = await ok("read active Inhouse category", admin.client.from("price_categories")
+    .select("id").eq("slug", "inhouse").eq("active", true).single());
+  await ok("assign technician Inhouse category", admin.client.rpc("set_technician_price_category", {
+    p_technician_id: technician.id,
+    p_price_category_id: inhouseCategory.id,
+  }));
 
   await startShift(technician, "technician");
   await startShift(other, "other technician");
   await startShift(outsider, "outsider technician");
 
-  await denied("non-technician crew lead rejected", admin.client.from("crews").insert({
-    name: `Invalid role ${runId}`, lead_technician_id: supervisor.id,
+  await denied("new crew creation is retired for Admin", admin.client.from("crews").insert({
+    name: `Retired crew ${runId}`, lead_technician_id: technician.id,
   }).select("id"));
-  await denied("inactive crew lead rejected", admin.client.from("crews").insert({
-    name: `Invalid inactive ${runId}`, lead_technician_id: inactive.id,
-  }).select("id"));
-  const crew = await ok("admin creates valid crew", admin.client.from("crews").insert({
-    name: `Final crew ${runId}`, lead_technician_id: technician.id,
-  }).select("id").single());
-  crews.push(crew.id);
-  await ok("admin explicitly adds crew member", admin.client.from("crew_members").insert({
-    crew_id: crew.id, technician_id: other.id,
+  const directJobA = await createJob(supervisor.client, `Direct bulk A ${runId}`);
+  const directJobB = await createJob(supervisor.client, `Direct bulk B ${runId}`);
+  const directAssigned = await assign(supervisor.client, [directJobA, directJobB], technician.id);
+  check(directAssigned.length === 2 && directAssigned.every((row) => row.technician_id === technician.id), "bulk individual assignment persisted");
+  const directJobs = await ok("technician sees bulk jobs", technician.client.from("jobs").select("id").in("id", [directJobA, directJobB]));
+  check(directJobs.length === 2, "technician sees both bulk jobs");
+  await denied("new crew assignment is retired", supervisor.client.rpc("assign_jobs_atomic", {
+    job_ids: [directJobA], new_assignee_type: "crew", new_assignee_id: randomUUID(),
   }));
-  await denied("duplicate crew member rejected", admin.client.from("crew_members").insert({
-    crew_id: crew.id, technician_id: other.id,
-  }).select("crew_id"));
-  const leadCrew = await ok("lead queries own crew", technician.client.from("crews").select("id").eq("id", crew.id));
-  check(leadCrew.length === 1, "lead sees own crew");
-  const memberCrew = await ok("member queries own crew", other.client.from("crews").select("id").eq("id", crew.id));
-  check(memberCrew.length === 1, "member sees own crew");
-  const memberRows = await ok("member queries own memberships", other.client.from("crew_members").select("technician_id").eq("crew_id", crew.id));
-  check(memberRows.some((row) => row.technician_id === other.id), "explicit membership visible");
-  await denied("outsider cannot query foreign crew", outsider.client.from("crews").select("id").eq("id", crew.id));
-  await denied("outsider cannot query foreign memberships", outsider.client.from("crew_members").select("crew_id").eq("crew_id", crew.id));
-
-  const crewJobA = await createJob(supervisor.client, `Crew bulk A ${runId}`);
-  const crewJobB = await createJob(supervisor.client, `Crew bulk B ${runId}`);
-  const crewAssigned = await assign(supervisor.client, [crewJobA, crewJobB], crew.id, "crew");
-  check(crewAssigned.length === 2 && crewAssigned.every((row) => row.crew_id === crew.id), "bulk crew assignment persisted");
-  const leadJobs = await ok("crew lead sees bulk jobs", technician.client.from("jobs").select("id").in("id", [crewJobA, crewJobB]));
-  check(leadJobs.length === 2, "crew lead sees both bulk jobs");
-  const memberJobs = await ok("crew member sees bulk jobs", other.client.from("jobs").select("id").in("id", [crewJobA, crewJobB]));
-  check(memberJobs.length === 2, "crew member sees both bulk jobs");
   await denied("ambiguous assignment rejected", supervisor.client.from("job_assignments").insert({
-    job_id: crewJobA, assignee_type: "technician", technician_id: technician.id, crew_id: crew.id, assigned_by: supervisor.id,
+    job_id: directJobA, assignee_type: "technician", technician_id: technician.id, crew_id: randomUUID(), assigned_by: supervisor.id,
   }).select("id"));
 
   const officeJob = await createJob(supervisor.client, `Final office ${runId}`);
@@ -285,7 +271,7 @@ async function main() {
   check(Boolean(paid.paid_at), "payment timestamp recorded");
   const officeHistory = await ok("read office lifecycle history", supervisor.client.from("job_status_history")
     .select("previous_status,new_status,changed_by").eq("job_id", officeJob));
-  check(officeHistory.filter((row) => row.previous_status !== row.new_status).length === 7, "seven lifecycle transitions audited including correction");
+  check(officeHistory.filter((row) => row.previous_status !== row.new_status).length === 8, "eight lifecycle transitions audited including assignment and correction");
 
   const fieldJob = await createJob(supervisor.client, `Final field ${runId}`);
   await assign(supervisor.client, [fieldJob], technician.id);
@@ -316,9 +302,14 @@ async function main() {
   await deliver(technician.client, fieldJob, [fieldPhotoId], "technician atomically submits field job");
   const fieldHistory = await ok("read field history", technician.client.from("job_status_history")
     .select("previous_status,new_status,previous_incident,new_incident,changed_by").eq("job_id", fieldJob));
-  check(fieldHistory.filter((row) => row.previous_status !== row.new_status).length === 2, "field status changes audited");
+  check(fieldHistory.filter((row) => row.previous_status !== row.new_status).length === 3, "field assignment and status changes audited");
   check(fieldHistory.filter((row) => row.previous_incident !== row.new_incident).length === 2, "incident changes audited");
-  check(fieldHistory.every((row) => row.changed_by === technician.id || row.previous_status === row.new_status), "field actor audit retained");
+  check(fieldHistory.every((row) => {
+    if (row.previous_status === "sin_asignar" && row.new_status === "asignado") {
+      return row.changed_by === supervisor.id;
+    }
+    return row.changed_by === technician.id || row.previous_status === row.new_status;
+  }), "assignment and field actors are audited correctly");
 
   const hiddenJob = await createJob(supervisor.client, `Final hidden ${runId}`);
   await denied("technician cannot see unassigned job", technician.client.from("jobs").select("id").eq("id", hiddenJob));
@@ -335,7 +326,7 @@ async function main() {
   const titles = pdfs.map((file) => file.name.replace(/\.pdf$/iu, ""));
   const search = await ok("search imported PDF title", supervisor.client.from("jobs").select("id,title,category,main_status,project_pdf_url")
     .ilike("title", `%Plano-B-${runId}%`));
-  check(search.length === 1 && search[0].category === "categoria_1" && search[0].main_status === "asignado" && Boolean(search[0].project_pdf_url), "import defaults and filename search work");
+  check(search.length === 1 && search[0].category === "categoria_1" && search[0].main_status === "sin_asignar" && Boolean(search[0].project_pdf_url), "unassigned import defaults and filename search work");
   await assign(supervisor.client, [imported[0].id], technician.id);
   const bulk = await assign(supervisor.client, [imported[1].id, imported[2].id], technician.id);
   check(bulk.length === 2, "bulk assignment returns both imported jobs");
@@ -364,5 +355,5 @@ if (failure) {
   console.error(`[jobs-final] FAIL ${failure.message} cleanup=${cleanupPassed ? "passed" : "failed"}`);
   process.exitCode = 1;
 } else {
-  console.log(`[jobs-final] PASS checks=${checks} cleanup=passed users=${users.length} jobs=${jobs.length} crews=${crews.length} objects=${projectObjects.length + evidenceObjects.length}`);
+  console.log(`[jobs-final] PASS checks=${checks} cleanup=passed users=${users.length} jobs=${jobs.length} objects=${projectObjects.length + evidenceObjects.length}`);
 }

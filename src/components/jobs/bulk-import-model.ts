@@ -1,5 +1,4 @@
 import type { PdfDraft, PdfPreview } from "@/lib/jobs/pdf-parser";
-import type { AssigneeType } from "@/lib/jobs/types";
 
 export type ImportState = "pending" | "processing" | "imported" | "duplicate" | "error";
 export type ImportRow = {
@@ -11,7 +10,7 @@ export type ImportRow = {
   fileHash?: string;
   pageCount?: number;
   responsibleSuggestion?: string | null;
-  assigneeType?: AssigneeType;
+  assigneeType?: "technician";
   assigneeId?: string;
   message?: string;
   jobId?: string;
@@ -92,7 +91,7 @@ export function pageRows(rows: ImportRow[], page: number, pageSize = 50) {
 }
 
 export function groupAssignmentChunks(rows: Array<Pick<ImportRow, "key" | "state" | "jobId" | "assigneeType" | "assigneeId" | "assignmentState">>) {
-  const grouped = new Map<string, { assigneeType: AssigneeType; assigneeId: string; jobIds: string[]; rowKeys: string[] }>();
+  const grouped = new Map<string, { assigneeType: "technician"; assigneeId: string; jobIds: string[]; rowKeys: string[] }>();
   for (const row of rows) {
     if (row.state !== "imported" || !row.jobId || !row.assigneeType || !row.assigneeId || row.assignmentState === "assigned") continue;
     const key = `${row.assigneeType}:${row.assigneeId}`;

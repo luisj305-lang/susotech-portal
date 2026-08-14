@@ -3,13 +3,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { TechnicianType, UserRole } from "@/lib/auth/session";
+import {
+  isWorkerSpecialty,
+  WORKER_SPECIALTIES,
+  WORKER_SPECIALTY_LABELS,
+  type WorkerSpecialty,
+} from "@/lib/auth/capabilities";
+import type { PriceCategory, UserRole } from "@/lib/auth/session";
 import {
   createUser,
   deleteUser,
   updateUserProfile,
   updateUserRoleAndStatus,
-  updateTechnicianType,
+  updateTechnicianPriceCategory,
+  updateWorkerSpecialty,
 } from "@/lib/users/actions";
 
 type ManagedProfile = {
@@ -18,8 +25,10 @@ type ManagedProfile = {
   full_name: string | null;
   role: UserRole;
   is_active: boolean;
+  worker_specialty: WorkerSpecialty | null;
   crew_names: string[];
-  technician_type: TechnicianType;
+  price_category_id: string | null;
+  price_category_name: string | null;
 };
 
 const roleLabels: Record<UserRole, string> = {
@@ -37,9 +46,13 @@ type ModalMode =
 export function UsersManager({
   currentUserId,
   initialUsers,
+  canManage,
+  priceCategories,
 }: {
   currentUserId: string;
   initialUsers: ManagedProfile[];
+  canManage: boolean;
+  priceCategories: PriceCategory[];
 }) {
   const router = useRouter();
   const [users, setUsers] = useState(initialUsers);
@@ -155,7 +168,18 @@ export function UsersManager({
 
     if (result.success) {
       setUsers((current) =>
-        current.map((u) => (u.id === userId ? { ...u, role: newRole } : u)),
+        current.map((u) =>
+          u.id === userId
+            ? {
+                ...u,
+                role: newRole,
+                worker_specialty:
+                  newRole === "tecnico"
+                    ? (u.worker_specialty ?? "tecnico")
+                    : null,
+              }
+            : u,
+        ),
       );
       setMessage(result.message);
     } else {
@@ -163,12 +187,38 @@ export function UsersManager({
     }
   };
 
-  const handleTechnicianTypeChange = async (userId: string, technicianType: TechnicianType) => {
+  const handlePriceCategoryChange = async (userId: string, priceCategoryId: string | null) => {
     setIsLoading(true);
-    const result = await updateTechnicianType({ userId, technicianType });
+    const result = await updateTechnicianPriceCategory({ userId, priceCategoryId });
     setIsLoading(false);
     setMessage(result.message);
-    if (result.success) setUsers((current) => current.map((user) => user.id === userId ? { ...user, technician_type: technicianType } : user));
+    if (result.success) {
+      const category = priceCategories.find((item) => item.id === priceCategoryId) ?? null;
+      setUsers((current) => current.map((user) => user.id === userId ? {
+        ...user,
+        price_category_id: category?.id ?? null,
+        price_category_name: category?.name ?? null,
+      } : user));
+    }
+  };
+
+  const handleWorkerSpecialtyChange = async (
+    userId: string,
+    workerSpecialty: WorkerSpecialty,
+  ) => {
+    setIsLoading(true);
+    setMessage("");
+    const result = await updateWorkerSpecialty({ userId, workerSpecialty });
+    setIsLoading(false);
+    setMessage(result.message);
+
+    if (result.success) {
+      setUsers((current) =>
+        current.map((user) =>
+          user.id === userId ? { ...user, worker_specialty: workerSpecialty } : user,
+        ),
+      );
+    }
   };
 
   const handleStatusToggle = async (userId: string) => {
@@ -248,10 +298,10 @@ export function UsersManager({
     <main style={{ minHeight: "100vh", padding: "40px" }}>
       <Link href="/dashboard">← Volver al dashboard</Link>
       <h1 style={{ fontSize: "30px", fontWeight: "bold", marginTop: "24px" }}>
-        Administración de usuarios
+        Usuarios
       </h1>
       <p style={{ margin: "8px 0 24px" }}>
-        Crea usuarios, edita sus datos y gestiona permisos.
+        {canManage ? "Crea usuarios, edita sus datos y gestiona permisos." : "Consulta usuarios, crews y categorías de precio."}
       </p>
 
       {message && (
@@ -260,7 +310,7 @@ export function UsersManager({
         </p>
       )}
 
-      <div style={{ marginBottom: "24px" }}>
+      {canManage && <div style={{ marginBottom: "24px" }}>
         <button
           type="button"
           onClick={() => {
@@ -272,7 +322,7 @@ export function UsersManager({
         >
           + Nuevo usuario
         </button>
-      </div>
+      </div>}
 
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -281,7 +331,8 @@ export function UsersManager({
               <th style={{ padding: "12px", textAlign: "left" }}>Nombre</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Correo</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Rol</th>
-              <th style={{ padding: "12px", textAlign: "left" }}>Tipo técnico</th>
+              <th style={{ padding: "12px", textAlign: "left" }}>Especialidad</th>
+              <th style={{ padding: "12px", textAlign: "left" }}>Categoría de precio</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Crew / Equipos</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Estado</th>
               <th style={{ padding: "12px", textAlign: "left" }}>Acciones</th>
@@ -302,7 +353,7 @@ export function UsersManager({
                       <span style={{ position: "absolute", left: "-9999px" }}>
                         Rol de {user.full_name ?? user.email}
                       </span>
-                      <select
+                      {canManage ? <select
                         value={user.role}
                         disabled={isCurrentUser || isLoading}
                         onChange={(event) =>
@@ -318,13 +369,46 @@ export function UsersManager({
                             {label}
                           </option>
                         ))}
-                      </select>
+                      </select> : roleLabels[user.role]}
                     </label>
                   </td>
-                  <td style={{ padding: "12px" }}>{user.role === "tecnico" ? <select value={user.technician_type} disabled={isLoading} onChange={(event) => void handleTechnicianTypeChange(user.id, event.target.value as TechnicianType)}><option value="in_house">In-house</option><option value="contractor">Contractor</option></select> : "—"}</td>
+                  <td style={{ padding: "12px" }}>
+                    {user.role === "tecnico" ? (
+                      canManage ? (
+                        <select
+                          aria-label={`Especialidad de ${user.full_name ?? user.email}`}
+                          value={user.worker_specialty ?? ""}
+                          disabled={isLoading}
+                          onChange={(event) => {
+                            const specialty = event.target.value;
+                            if (isWorkerSpecialty(specialty)) {
+                              void handleWorkerSpecialtyChange(user.id, specialty);
+                            }
+                          }}
+                          style={{ padding: "8px" }}
+                        >
+                          <option value="" disabled>
+                            Sin especialidad
+                          </option>
+                          {WORKER_SPECIALTIES.map((specialty) => (
+                            <option key={specialty} value={specialty}>
+                              {WORKER_SPECIALTY_LABELS[specialty]}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        user.worker_specialty
+                          ? WORKER_SPECIALTY_LABELS[user.worker_specialty]
+                          : "Sin especialidad"
+                      )
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td style={{ padding: "12px" }}>{user.role === "tecnico" ? canManage ? <select aria-label={`Categoría de precio de ${user.full_name ?? user.email}`} value={user.price_category_id ?? ""} disabled={isLoading} onChange={(event) => void handlePriceCategoryChange(user.id, event.target.value || null)}><option value="">Sin categoría</option>{priceCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select> : (user.price_category_name ?? "Sin categoría") : "—"}</td>
                   <td style={{ padding: "12px" }}>{user.crew_names.join(", ") || "—"}</td>
                   <td style={{ padding: "12px" }}>
-                    <button
+                    {canManage ? <button
                       type="button"
                       disabled={isCurrentUser || isLoading}
                       onClick={() => void handleStatusToggle(user.id)}
@@ -334,11 +418,11 @@ export function UsersManager({
                       }}
                     >
                       {user.is_active ? "Activo" : "Inactivo"}
-                    </button>
+                    </button> : user.is_active ? "Activo" : "Inactivo"}
                     {isCurrentUser && <span> (tu cuenta)</span>}
                   </td>
                   <td style={{ padding: "12px" }}>
-                    <button
+                    {canManage && <><button
                       type="button"
                       disabled={isLoading}
                       onClick={() => openEdit(user)}
@@ -360,7 +444,7 @@ export function UsersManager({
                       }}
                     >
                       Eliminar
-                    </button>
+                    </button></>}
                   </td>
                 </tr>
               );

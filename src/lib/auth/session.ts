@@ -2,10 +2,19 @@ import "server-only";
 
 import { cache } from "react";
 import { redirect } from "next/navigation";
+import type {
+  UserRole,
+  WorkerSpecialty,
+} from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
 
-export type UserRole = "admin" | "supervisor" | "tecnico";
+export type { UserRole, WorkerSpecialty } from "@/lib/auth/capabilities";
 export type TechnicianType = "in_house" | "contractor";
+export type PriceCategory = {
+  id: string;
+  slug: "inhouse" | "subcontractor" | "wallace";
+  name: string;
+};
 
 export type CurrentProfile = {
   id: string;
@@ -14,6 +23,8 @@ export type CurrentProfile = {
   role: UserRole;
   is_active: boolean;
   technician_type: TechnicianType;
+  worker_specialty: WorkerSpecialty | null;
+  price_category_id: string | null;
 };
 
 export const requireProfile = cache(async (): Promise<CurrentProfile> => {
@@ -28,7 +39,9 @@ export const requireProfile = cache(async (): Promise<CurrentProfile> => {
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, is_active, technician_type")
+    .select(
+      "id, email, full_name, role, is_active, technician_type, worker_specialty, price_category_id",
+    )
     .eq("id", user.id)
     .single();
 

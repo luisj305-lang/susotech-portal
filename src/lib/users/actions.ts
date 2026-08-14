@@ -1,9 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  isWorkerSpecialty,
+  type WorkerSpecialty,
+} from "@/lib/auth/capabilities";
 import { requireAdmin } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/service";
-import type { TechnicianType, UserRole } from "@/lib/auth/session";
+import { createClient } from "@/lib/supabase/server";
+import type { UserRole } from "@/lib/auth/session";
 
 const allowedRoles: UserRole[] = ["admin", "supervisor", "tecnico"];
 
@@ -326,16 +331,65 @@ export async function deleteUser(input: {
   }
 }
 
-export async function updateTechnicianType(input: { userId: string; technicianType: TechnicianType }): Promise<ActionResult> {
+export async function updateTechnicianPriceCategory(input: { userId: string; priceCategoryId: string | null }): Promise<ActionResult> {
   try {
     await requireAdmin();
-    if (!['in_house', 'contractor'].includes(input.technicianType)) return { success: false, message: "El tipo de técnico no es válido." };
-    const { error } = await createServiceClient().from("profiles").update({ technician_type: input.technicianType, updated_at: new Date().toISOString() }).eq("id", input.userId).eq("role", "tecnico");
-    if (error) return { success: false, message: "No se pudo actualizar el tipo de técnico." };
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(input.userId)
+      || (input.priceCategoryId !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(input.priceCategoryId))) {
+      return { success: false, message: "La categoría de precio no es válida." };
+    }
+    const { error } = await (await createClient()).rpc("set_technician_price_category", {
+      p_technician_id: input.userId,
+      p_price_category_id: input.priceCategoryId,
+    });
+    if (error) return { success: false, message: "No se pudo actualizar la categoría de precio." };
     revalidatePath("/usuarios");
-    return { success: true, message: "Tipo de técnico actualizado." };
+    return { success: true, message: "Categoría de precio actualizada." };
   } catch (error) {
     if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error;
-    return { success: false, message: "No se pudo actualizar el tipo de técnico." };
+    return { success: false, message: "No se pudo actualizar la categoría de precio." };
+  }
+}
+
+export async function updateWorkerSpecialty(input: {
+  userId: string;
+  workerSpecialty: WorkerSpecialty;
+}): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+        input.userId,
+      ) ||
+      !isWorkerSpecialty(input.workerSpecialty)
+    ) {
+      return { success: false, message: "La especialidad no es válida." };
+    }
+
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("set_worker_specialty", {
+      p_profile_id: input.userId,
+      p_worker_specialty: input.workerSpecialty,
+    });
+
+    if (error) {
+      return {
+        success: false,
+        message: "No se pudo actualizar la especialidad.",
+      };
+    }
+
+    revalidatePath("/usuarios");
+    return { success: true, message: "Especialidad actualizada." };
+  } catch (error) {
+    if (error instanceof Error && error.message === "NEXT_REDIRECT") {
+      throw error;
+    }
+
+    return {
+      success: false,
+      message: "No se pudo actualizar la especialidad.",
+    };
   }
 }

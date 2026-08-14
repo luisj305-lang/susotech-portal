@@ -1,6 +1,6 @@
 import type { JobStatusHistoryEntry } from "@/lib/jobs/types";
 
-const labels: Record<string, string> = { asignado: "Asignado", en_progreso: "En progreso", enviado_revision: "En revisión", aprobado: "Aprobado", listo_pagar: "Listo para pagar", pagado: "Pagado" };
+const labels: Record<string, string> = { sin_asignar: "Sin asignar", asignado: "Asignado", en_progreso: "En progreso", enviado_revision: "En revisión", aprobado: "Aprobado", listo_pagar: "Listo para pagar", pagado: "Pagado" };
 const incidents: Record<string, string> = { need_splicing: "Requiere empalme", no_access: "Sin acceso", need_cr: "Requiere CR", permit_pending: "Permiso pendiente", returned: "Devuelto", incomplete: "Incompleto" };
 
 export function Timeline({ entries }: { entries: JobStatusHistoryEntry[] }) {

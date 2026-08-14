@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { confirmBulkProjectUploadCore, prepareBulkProjectUploadCore } from "../src/lib/storage/bulk-import-core.ts";
@@ -30,7 +30,6 @@ const password = `${randomBytes(18).toString("base64url")}Aa1!`;
 const users = [];
 const jobs = [];
 const objects = [];
-const crews = [];
 const batches = [];
 let checks = 0;
 let cleanupPassed = false;
@@ -59,6 +58,15 @@ async function identity(label, role) {
   return { id, client };
 }
 
+async function startShift(identity, label) {
+  const data = await ok(`${label} starts active shift`, identity.client.rpc("start_technician_shift", {
+    p_no_fuel_today: true,
+    p_fuel_amount: 0,
+    p_fuel_photo_path: null,
+  }));
+  check(Boolean(data?.[0]?.shift_id), `${label} active shift created`);
+}
+
 async function prepare(client, file, fields, batchId = null) {
   const fileHash = createHash("sha256").update(new Uint8Array(await file.arrayBuffer())).digest("hex");
   const result = await prepareBulkProjectUploadCore(client, { batchId, fileName: file.name, fileHash, fileSize: file.size, mimeType: file.type, pdfHeader: "%PDF-", fields });
@@ -66,14 +74,14 @@ async function prepare(client, file, fields, batchId = null) {
   return result;
 }
 
-async function uploadAndConfirm(client, file, fields, batchId = null) {
+async function uploadAndConfirm(client, file, fields, batchId = null, assignment = {}) {
   const prepared = await prepare(client, file, fields, batchId);
   if (!prepared.success) return { status: "error", message: prepared.message };
   if (prepared.data.status === "imported" || prepared.data.status === "duplicate") return { status: prepared.data.status, jobId: prepared.data.jobId, batchId: prepared.data.batchId, itemId: prepared.data.itemId };
   const uploaded = await client.storage.from("project-files").uploadToSignedUrl(prepared.data.path, prepared.data.token, file, { contentType: "application/pdf" });
   check(!uploaded.error, "office uploads private PDF", uploaded.error);
   if (!objects.includes(prepared.data.path)) objects.push(prepared.data.path);
-  const result = await confirmBulkProjectUploadCore(client, { itemId: prepared.data.itemId });
+  const result = await confirmBulkProjectUploadCore(client, { itemId: prepared.data.itemId, ...assignment });
   if (!result.success) return { status: "error", message: result.message };
   if (result.data.status === "imported" && !jobs.includes(result.data.jobId)) jobs.push(result.data.jobId);
   return { status: result.data.status, jobId: result.data.jobId, batchId: prepared.data.batchId, itemId: prepared.data.itemId };
@@ -84,24 +92,24 @@ async function cleanup() {
   if (objects.length && (await service.storage.from("project-files").remove(objects)).error) errors.push("objects");
   if (batches.length && (await service.from("job_import_batches").delete().in("id", batches)).error) errors.push("batches");
   if (jobs.length && (await service.from("jobs").delete().in("id", jobs)).error) errors.push("jobs");
-  if (crews.length && (await service.from("crews").delete().in("id", crews)).error) errors.push("crews");
+  if (users.length && (await service.from("technician_shifts").delete().in("technician_id", users)).error) errors.push("shifts");
   for (const id of [...users].reverse()) if ((await service.auth.admin.deleteUser(id)).error) errors.push("users");
   cleanupPassed = errors.length === 0;
   if (!cleanupPassed) throw new Error(`Cleanup failed [${[...new Set(errors)].join(",")}]`);
 }
 
 async function main() {
-  const migration = await service.from("job_import_items").select("item_id").limit(1);
+  const admin = await identity("admin", "admin");
+  const migration = await admin.client.from("job_import_items").select("item_id").limit(1);
   if (migration.error) { migrationPending = true; return; }
   check(Array.isArray(migration.data), "resumable bulk import migration is available");
-  const admin = await identity("admin", "admin");
   const supervisor = await identity("supervisor", "supervisor");
   const direct = await identity("direct", "tecnico");
-  const crewTech = await identity("crew-tech", "tecnico");
+  const secondTech = await identity("second", "tecnico");
   const foreign = await identity("foreign", "tecnico");
-  const crew = await ok("admin creates active crew", admin.client.from("crews").insert({ name: `Bulk crew ${runId}`, lead_technician_id: crewTech.id }).select("id").single());
-  crews.push(crew.id);
-
+  await startShift(direct, "direct technician");
+  await startShift(secondTech, "second technician");
+  await startShift(foreign, "foreign technician");
   const bytes = readFileSync("C:\\Users\\goofy\\Downloads\\6556114.pdf");
   const wasm = readFileSync(new URL("../public/pdfium.wasm", import.meta.url));
   const realFile = new File([bytes], "6556114.pdf", { type: "application/pdf" });
@@ -128,17 +136,35 @@ async function main() {
   check(!beforeUpload.success, "interrupted item cannot confirm without object");
   const resumed = await prepare(admin.client, importFile, importFields, interrupted.data.batchId);
   check(resumed.success && resumed.data.itemId === interrupted.data.itemId, "reprepare reuses same hash-size item");
-  const first = await uploadAndConfirm(admin.client, importFile, importFields, interrupted.data.batchId);
+  const first = await uploadAndConfirm(admin.client, importFile, importFields, interrupted.data.batchId, {
+    assigneeType: "technician", assigneeId: direct.id,
+  });
   check(first.status === "imported" && Boolean(first.jobId), "admin imports one real PDF after interruption");
   const repeated = await confirmBulkProjectUploadCore(admin.client, { itemId: first.itemId });
   check(repeated.success && repeated.data.jobId === first.jobId, "repeated confirmation returns same job");
-  await ok("assign direct import", admin.client.rpc("assign_jobs_atomic", { job_ids: [first.jobId], new_assignee_type: "technician", new_assignee_id: direct.id }));
   const secondBytes = Buffer.concat([bytes, Buffer.from(`\n% bulk ${runId}\n`)]);
   const secondFile = new File([secondBytes], "6556114.pdf", { type: "application/pdf" });
-  const secondFields = { ...preview.fields, title: `Orden editada ${runId}`, orderIdentifier: `${runId}-crew`, prismNumber: `${runId}-crew` };
-  const second = await uploadAndConfirm(supervisor.client, secondFile, secondFields);
+  const secondFields = { ...preview.fields, title: `Orden editada ${runId}`, orderIdentifier: `${runId}-second`, prismNumber: `${runId}-second` };
+  const second = await uploadAndConfirm(supervisor.client, secondFile, secondFields, null, {
+    assigneeType: "technician", assigneeId: secondTech.id,
+  });
   check(second.status === "imported" && Boolean(second.jobId), "supervisor imports same-name/different-content preview");
-  await ok("assign crew import", supervisor.client.rpc("assign_jobs_atomic", { job_ids: [second.jobId], new_assignee_type: "crew", new_assignee_id: crew.id }));
+  const importedStates = await ok("read atomically assigned import states", admin.client.from("jobs")
+    .select("id,main_status").in("id", [first.jobId, second.jobId]));
+  check(importedStates.length === 2 && importedStates.every((job) => job.main_status === "asignado"),
+    "import and assignment commit with coherent assigned status");
+
+  const unassignedBytes = Buffer.concat([bytes, Buffer.from(`\n% unassigned ${runId}\n`)]);
+  const unassigned = await uploadAndConfirm(admin.client,
+    new File([unassignedBytes], `unassigned-${runId}.pdf`, { type: "application/pdf" }),
+    { ...preview.fields, title: `Unassigned ${runId}`, orderIdentifier: `${runId}-unassigned`, prismNumber: `${runId}-unassigned` });
+  check(unassigned.status === "imported" && Boolean(unassigned.jobId), "bulk import accepts explicit unassigned row");
+  const unassignedState = await ok("read unassigned import state", admin.client.from("jobs")
+    .select("main_status").eq("id", unassigned.jobId).single());
+  check(unassignedState.main_status === "sin_asignar", "unassigned import keeps unassigned source of truth");
+  const unassignedAssignments = await ok("read unassigned import assignments", admin.client.from("job_assignments")
+    .select("id").eq("job_id", unassigned.jobId));
+  check(unassignedAssignments.length === 0, "unassigned import creates no assignment row");
 
   const duplicateHash = await uploadAndConfirm(admin.client, importFile, { ...preview.fields, orderIdentifier: `${runId}-other`, prismNumber: `${runId}-other` }, first.batchId);
   check(duplicateHash.status === "imported" && duplicateHash.itemId === first.itemId && duplicateHash.jobId === first.jobId, "same batch hash-size reuses the same item and job");
@@ -158,13 +184,17 @@ async function main() {
   check(secondAudit?.imported_by === supervisor.id, "supervisor importer is audited");
   const assignments = await ok("read assignment audit", admin.client.from("job_assignments").select("job_id,assignee_type,technician_id,crew_id,assigned_by").in("job_id", [first.jobId, second.jobId]));
   check(assignments.find((row) => row.job_id === first.jobId)?.technician_id === direct.id && assignments.find((row) => row.job_id === first.jobId)?.assigned_by === admin.id, "individual assignment and actor are audited");
-  check(assignments.find((row) => row.job_id === second.jobId)?.crew_id === crew.id && assignments.find((row) => row.job_id === second.jobId)?.assigned_by === supervisor.id, "crew assignment and actor are audited");
+  check(assignments.find((row) => row.job_id === second.jobId)?.technician_id === secondTech.id && assignments.find((row) => row.job_id === second.jobId)?.assigned_by === supervisor.id, "second individual assignment and actor are audited");
+  const retiredCrew = await admin.client.rpc("assign_jobs_atomic", {
+    job_ids: [first.jobId], new_assignee_type: "crew", new_assignee_id: randomUUID(),
+  });
+  check(Boolean(retiredCrew.error) && /retired/i.test(retiredCrew.error.message), "retired crew assignment remains rejected");
 
   const directJobs = await ok("direct technician visibility", direct.client.from("jobs").select("id").in("id", [first.jobId, second.jobId]));
-  const crewJobs = await ok("crew technician visibility", crewTech.client.from("jobs").select("id").in("id", [first.jobId, second.jobId]));
+  const secondJobs = await ok("second technician visibility", secondTech.client.from("jobs").select("id").in("id", [first.jobId, second.jobId]));
   const foreignJobs = await ok("foreign technician visibility", foreign.client.from("jobs").select("id").in("id", [first.jobId, second.jobId]));
   check(directJobs.length === 1 && directJobs[0].id === first.jobId, "technician sees direct assignment only");
-  check(crewJobs.length === 1 && crewJobs[0].id === second.jobId, "technician sees crew assignment only");
+  check(secondJobs.length === 1 && secondJobs[0].id === second.jobId, "technician sees second direct assignment only");
   check(foreignJobs.length === 0, "technician cannot see unassigned imports");
   const hiddenAudit = await foreign.client.from("job_imports").select("job_id").in("job_id", [first.jobId, second.jobId]);
   check(!hiddenAudit.error && hiddenAudit.data.length === 0, "technician cannot read office import audit");
@@ -185,5 +215,5 @@ if (failure) {
 } else if (migrationPending) {
   console.log("[bulk-import-runtime] EXPECTED_PRECHECK_FAIL migration=20260810005000_jobs_bulk_import_resume.sql cleanup=passed checks=0");
 } else {
-  console.log(`[bulk-import-runtime] PASS checks=${checks} cleanup=passed users=${users.length} jobs=${jobs.length} crews=${crews.length} batches=${batches.length} objects=${objects.length}`);
+  console.log(`[bulk-import-runtime] PASS checks=${checks} cleanup=passed users=${users.length} jobs=${jobs.length} batches=${batches.length} objects=${objects.length}`);
 }

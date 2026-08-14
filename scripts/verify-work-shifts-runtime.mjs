@@ -35,7 +35,6 @@ const password = `${randomBytes(18).toString("base64url")}Aa1!`;
 const exactShiftMessage = "Tu jornada de trabajo terminó. Inicia una nueva jornada para continuar.";
 const users = [];
 const jobs = [];
-const crews = [];
 const objects = { "project-files": [], "job-evidence": [], "technician-shift-fuel": [] };
 let checks = 0;
 let cleanupPassed = false;
@@ -129,7 +128,7 @@ async function createJob(admin, title, assignee) {
   const id = randomUUID();
   const originalPath = `${id}/original.pdf`;
   await ok(`create ${title}`, admin.client.from("jobs").insert({
-    id, title, main_status: "en_progreso", project_pdf_url: originalPath,
+    id, title, main_status: "sin_asignar", project_pdf_url: originalPath,
   }));
   jobs.push(id);
   await upload("project-files", originalPath, minimalPdf, "application/pdf");
@@ -138,6 +137,7 @@ async function createJob(admin, title, assignee) {
     new_assignee_type: assignee.type,
     new_assignee_id: assignee.id,
   }));
+  await ok(`start ${title}`, admin.client.from("jobs").update({ main_status: "en_progreso" }).eq("id", id));
   return { id, originalPath };
 }
 
@@ -278,7 +278,6 @@ async function cleanup() {
     if (paths.length && (await service.storage.from(bucket).remove(paths)).error) errors.push(bucket);
   }
   if (jobs.length && (await service.from("jobs").delete().in("id", jobs)).error) errors.push("jobs");
-  if (crews.length && (await service.from("crews").delete().in("id", crews)).error) errors.push("crews");
   if (users.length && (await service.from("technician_shifts").delete().in("technician_id", users)).error) errors.push("shifts");
 
   if (jobs.length) {
@@ -393,26 +392,25 @@ async function main() {
     { check_job_id: randomUUID(), check_user_id: admin.id },
   ));
   check(foreignJobProbe === false, "technician cannot impersonate office staff through can_access_job");
-  const crew = await ok("create crew fixture", admin.client.from("crews").insert({
-    name: `Shift crew ${runId}`, lead_technician_id: expired.id,
-  }).select("id").single());
-  crews.push(crew.id);
-  await ok("add active technician to crew fixture", admin.client.from("crew_members").insert({
-    crew_id: crew.id, technician_id: noFuel.id,
-  }));
   const individualJob = await createJob(admin, `No shift individual ${runId}`, { type: "technician", id: noShift.id });
-  const crewJob = await createJob(admin, `Expired crew ${runId}`, { type: "crew", id: crew.id });
+  const expiredJob = await createJob(admin, `Expired individual ${runId}`, { type: "technician", id: expired.id });
+  const activeJob = await createJob(admin, `Active individual ${runId}`, { type: "technician", id: noFuel.id });
+  const retiredCrew = await admin.client.rpc("assign_jobs_atomic", {
+    job_ids: [activeJob.id], new_assignee_type: "crew", new_assignee_id: randomUUID(),
+  });
+  check(Boolean(retiredCrew.error) && /retired/i.test(retiredCrew.error.message), "shift fixtures reject retired crew assignments");
   const individualFixture = await seedRelated(individualJob, noShift.id);
-  const crewFixture = await seedRelated(crewJob, expired.id);
+  const expiredFixture = await seedRelated(expiredJob, expired.id);
+  await seedRelated(activeJob, noFuel.id);
 
   await assertBlockedBoundaries(noShift, individualJob, individualFixture, "individual", "no shift");
-  await assertBlockedBoundaries(expired, crewJob, crewFixture, "crew", "expired shift");
+  await assertBlockedBoundaries(expired, expiredJob, expiredFixture, "individual", "expired shift");
   await assertOfficeBypass(admin, individualJob, individualFixture, "admin");
-  await assertOfficeBypass(supervisor, crewJob, crewFixture, "supervisor");
+  await assertOfficeBypass(supervisor, expiredJob, expiredFixture, "supervisor");
 
-  const activeJobs = await ok("active technician reads assigned crew job", noFuel.client.from("jobs")
-    .select("id").eq("id", crewJob.id));
-  check(activeJobs.length === 1, "active shift permits normal crew job access");
+  const activeJobs = await ok("active technician reads assigned individual job", noFuel.client.from("jobs")
+    .select("id").eq("id", activeJob.id));
+  check(activeJobs.length === 1, "active shift permits normal individual job access");
 }
 
 let failure;

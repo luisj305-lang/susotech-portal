@@ -10,6 +10,7 @@ import { PhotoUpload } from "@/components/jobs/photo-upload";
 import { TechnicianActions } from "@/components/jobs/technician-actions";
 import { Timeline } from "@/components/jobs/timeline";
 import { requireProfile } from "@/lib/auth/session";
+import { isOperationalFieldWorker } from "@/lib/auth/capabilities";
 import { getOfficeJob, getTechnicianJob } from "@/lib/jobs/queries";
 import { getJobMapUrl } from "@/lib/jobs/maps";
 import { requireActiveShiftPage } from "@/lib/work-shifts/access";
@@ -17,7 +18,7 @@ import { requireActiveShiftPage } from "@/lib/work-shifts/access";
 import { getDeliveredPdfStatus } from "@/lib/jobs/delivered-status";
 
 
-async function TechnicianDetail({ id }: { id: string }) {
+async function TechnicianDetail({ id, canMutate }: { id: string; canMutate: boolean }) {
   const detail = await getTechnicianJob(id);
   if (!detail) notFound();
   const { job, history, codes, photos, documents, draft, deliveredDraftVersion } = detail;
@@ -26,9 +27,9 @@ async function TechnicianDetail({ id }: { id: string }) {
     <section className="rounded-2xl bg-black p-5 text-white shadow-lg"><h2 className="text-xl font-bold">Instrucciones</h2><dl className="mt-3 grid gap-3"><div><dt className="font-semibold">Descripción</dt><dd>{job.description || "Sin descripción"}</dd></div><div><dt className="font-semibold">Instrucciones especiales</dt><dd>{job.special_instructions || "Ninguna"}</dd></div><div><dt className="font-semibold">Material requerido</dt><dd>{job.required_material || "No indicado"}</dd></div></dl>{mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-12 items-center font-bold text-white underline">Abrir mapa del proyecto</a>}</section>
     <JobDocuments jobId={job.id} originalPath={job.project_pdf_url} deliveredPath={job.delivered_pdf_path} deliveredStatus={getDeliveredPdfStatus(job, photos.map((photo) => photo.id), documents.map((document) => document.id), draft?.version, deliveredDraftVersion)} jobStatus={job.main_status} />
     <JobAttachments jobId={job.id} documents={documents.filter((document) => document.document_type === "additional")} canManage={false} />
-    <TechnicianActions jobId={job.id} status={job.main_status} incident={job.incident} />
+    {canMutate && <TechnicianActions jobId={job.id} status={job.main_status} incident={job.incident} />}
     {codes.length > 0 && <section className="rounded-2xl bg-black p-5 text-white"><h2 className="text-xl font-bold">Producción histórica</h2><p className="text-sm">Los nuevos códigos y cantidades se registran dentro del editor de entrega.</p><ul className="mt-3 grid gap-2">{codes.map((code) => <li key={code.id} className="rounded-lg bg-black p-3"><strong>{code.code}</strong> · {code.quantity}{code.notes ? ` · ${code.notes}` : ""}</li>)}</ul></section>}
-    {job.main_status === "en_progreso" && <PhotoUpload jobId={job.id} />}{(photos.length > 0 || job.comments) && <section className="rounded-2xl border border-white bg-black p-5 text-white"><h2 className="text-xl font-bold">Evidencia guardada</h2><p className="mt-2 text-white">{photos.length} foto(s)</p>{photos.length > 0 && <JobEvidenceList photos={photos} />}{job.comments && <p className="mt-2 rounded-lg bg-black p-3"><strong>Comentario general:</strong> {job.comments}</p>}</section>}<Timeline entries={history} /></div></main>;
+    {canMutate && job.main_status === "en_progreso" && <PhotoUpload jobId={job.id} />}{(photos.length > 0 || job.comments) && <section className="rounded-2xl border border-white bg-black p-5 text-white"><h2 className="text-xl font-bold">Evidencia guardada</h2><p className="mt-2 text-white">{photos.length} foto(s)</p>{photos.length > 0 && <JobEvidenceList photos={photos} />}{job.comments && <p className="mt-2 rounded-lg bg-black p-3"><strong>Comentario general:</strong> {job.comments}</p>}</section>}<Timeline entries={history} /></div></main>;
 }
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -36,7 +37,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   if (profile.role === "tecnico") {
     await requireActiveShiftPage();
-    return <TechnicianDetail id={id} />;
+    return <TechnicianDetail id={id} canMutate={isOperationalFieldWorker(profile)} />;
   }
   const detail = await getOfficeJob(id);
   if (!detail) notFound();

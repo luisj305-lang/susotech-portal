@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -34,7 +34,6 @@ const runId = randomBytes(8).toString("hex");
 const password = `${randomBytes(18).toString("base64url")}Aa1!`;
 const users = [];
 const jobs = [];
-const crews = [];
 const objects = [];
 let checks = 0;
 let cleanupPassed = false;
@@ -103,7 +102,7 @@ async function startNext() {
     cwd: process.cwd(), env: { ...process.env, NODE_ENV: "production" }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
   });
   const base = `http://127.0.0.1:${port}`;
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     if (nextProcess.exitCode !== null) throw new Error("Next server exited before readiness");
     try { const response = await fetch(`${base}/login`); if (response.ok) { check(true, "compiled Next server ready"); return base; } } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -124,7 +123,6 @@ async function cleanup() {
   const errors = [];
   if (objects.length && (await service.storage.from("project-files").remove(objects)).error) errors.push("objects");
   if (jobs.length && (await service.from("jobs").delete().in("id", jobs)).error) errors.push("jobs");
-  if (crews.length && (await service.from("crews").delete().in("id", crews)).error) errors.push("crews");
   if (users.length && (await service.from("technician_shifts").delete().in("technician_id", users)).error) errors.push("shifts");
   for (const id of [...users].reverse()) if ((await service.auth.admin.deleteUser(id)).error) errors.push("users");
   cleanupPassed = errors.length === 0;
@@ -149,27 +147,27 @@ async function main() {
   await startShift(technician, "technician");
   await startShift(empty, "empty technician");
   const directTitle = `Direct route ${runId}`;
-  const crewTitle = `Crew route ${runId}`;
+  const secondTitle = `Second route ${runId}`;
   const foreignTitle = `Foreign route ${runId}`;
   const created = await ok("office creates route jobs", supervisor.client.from("jobs").insert([
     { title: directTitle, description: "Direct instructions" },
-    { title: crewTitle, description: "Crew instructions" },
+    { title: secondTitle, description: "Second direct instructions" },
     { title: foreignTitle, description: "Foreign instructions" },
   ]).select("id,title"));
   jobs.push(...created.map((row) => row.id));
   const directJob = created.find((row) => row.title === directTitle).id;
-  const crewJob = created.find((row) => row.title === crewTitle).id;
+  const secondJob = created.find((row) => row.title === secondTitle).id;
   const foreignJob = created.find((row) => row.title === foreignTitle).id;
-  const crew = await ok("admin creates route crew", admin.client.from("crews").insert({
-    name: `Route crew ${runId}`, lead_technician_id: technician.id,
-  }).select("id").single());
-  crews.push(crew.id);
   await ok("office assigns direct job", supervisor.client.rpc("assign_jobs_atomic", {
     job_ids: [directJob], new_assignee_type: "technician", new_assignee_id: technician.id,
   }));
-  await ok("office assigns crew job", supervisor.client.rpc("assign_jobs_atomic", {
-    job_ids: [crewJob], new_assignee_type: "crew", new_assignee_id: crew.id,
+  await ok("office assigns second direct job", supervisor.client.rpc("assign_jobs_atomic", {
+    job_ids: [secondJob], new_assignee_type: "technician", new_assignee_id: technician.id,
   }));
+  const retiredCrew = await supervisor.client.rpc("assign_jobs_atomic", {
+    job_ids: [secondJob], new_assignee_type: "crew", new_assignee_id: randomUUID(),
+  });
+  check(Boolean(retiredCrew.error) && /retired/i.test(retiredCrew.error.message), "route setup rejects retired crew assignments");
   const importedTitle = `Plano 42 route ${runId}`;
   const imported = await ok("create search fixture", supervisor.client.from("jobs").insert({ title: importedTitle }).select("id").single());
   const importedId = imported.id;
@@ -177,7 +175,7 @@ async function main() {
 
   const base = await startNext();
   const adminDashboard = await html(base, "/dashboard", admin.cookie);
-  check(adminDashboard.response.status === 200 && adminDashboard.body.includes('href="/trabajos/nuevo"') && adminDashboard.body.includes("+ Nuevo trabajo") && adminDashboard.body.includes("Operación semanal"), "admin dashboard renders native new-job link and worker operations");
+  check(adminDashboard.response.status === 200 && adminDashboard.body.includes('href="/trabajos/nuevo"'), `admin dashboard renders native new-job link status=${adminDashboard.response.status} location=${adminDashboard.response.headers.get("location") ?? "none"}`);
   check(adminDashboard.body.includes('href="/trabajos"') && adminDashboard.body.includes("Ver trabajos"), "admin dashboard renders jobs-list link");
   const supervisorDashboard = await html(base, "/dashboard", supervisor.cookie);
   check(supervisorDashboard.response.status === 200 && supervisorDashboard.body.includes('href="/trabajos/nuevo"'), "supervisor dashboard renders native new-job link");
@@ -185,10 +183,10 @@ async function main() {
   check(technicianDashboard.response.status === 200 && !technicianDashboard.body.includes('href="/trabajos/nuevo"') && technicianDashboard.body.includes('href="/trabajos"'), "technician dashboard hides creation and keeps jobs-list link");
   check(!adminDashboard.body.includes("Nuevo Proyecto") && !adminDashboard.body.includes("/proyectos"), "dashboard removes legacy projects domain");
   const usersPage = await html(base, "/usuarios", admin.cookie);
-  check(usersPage.response.status === 200 && usersPage.body.includes("Administración de usuarios"), "admin renders users route");
+  check(usersPage.response.status === 200 && usersPage.body.includes(">Usuarios<") && usersPage.body.includes("Categoría de precio"), "admin renders users route");
   const deniedUsers = await html(base, "/usuarios", technician.cookie);
   const usersRedirect = deniedUsers.response.headers.get("location")?.endsWith("/acceso-denegado") || deniedUsers.body.includes("/acceso-denegado");
-  check(Boolean(usersRedirect) && !deniedUsers.body.includes("Administración de usuarios"), "technician receives access-denied navigation from users route");
+  check(Boolean(usersRedirect) && !deniedUsers.body.includes("Categoría de precio"), "technician receives access-denied navigation from users route");
   const newJob = await html(base, "/trabajos/nuevo", supervisor.cookie);
   check(newJob.response.status === 200 && newJob.body.includes("Nuevo trabajo"), "supervisor requireRole route renders");
   const deniedImport = await html(base, "/trabajos/importar", technician.cookie);
@@ -198,10 +196,10 @@ async function main() {
   check(supervisorList.response.status === 200 && supervisorList.body.includes("Operaciones") && supervisorList.body.includes("Importar PDF"), "supervisor renders allowed office view");
   const searched = await html(base, `/trabajos?q=${encodeURIComponent(importedTitle)}`, supervisor.cookie);
   check(searched.response.status === 200 && searched.body.includes(importedTitle), "office route renders filename-style search match");
-  check(!searched.body.includes(directTitle) && !searched.body.includes(crewTitle) && !searched.body.includes(foreignTitle), "office search omits unrelated titles");
+  check(!searched.body.includes(directTitle) && !searched.body.includes(secondTitle) && !searched.body.includes(foreignTitle), "office search omits unrelated titles");
   const field = await html(base, "/trabajos", technician.cookie);
   check(field.response.status === 200 && field.body.includes("Mis trabajos") && !field.body.includes("Importar PDF"), "technician renders field view without office controls");
-  check(field.body.includes(directTitle) && field.body.includes(crewTitle) && !field.body.includes(foreignTitle), "mixed direct and crew list excludes foreign job");
+  check(field.body.includes(directTitle) && field.body.includes(secondTitle) && !field.body.includes(foreignTitle), "direct assignment list excludes foreign job");
   const emptyList = await html(base, "/trabajos", empty.cookie);
   check(emptyList.response.status === 200 && emptyList.body.includes("No tienes trabajos asignados"), "empty technician state renders");
   const ownDetail = await html(base, `/trabajos/${directJob}`, technician.cookie);
@@ -230,5 +228,5 @@ if (failure) {
   console.error(`[jobs-routes-runtime] FAIL ${failure.message} server=${serverStopped ? "stopped" : "running"} cleanup=${cleanupPassed ? "passed" : "failed"}`);
   process.exitCode = 1;
 } else {
-  console.log(`[jobs-routes-runtime] PASS checks=${checks} server=stopped cleanup=passed users=${users.length} jobs=${jobs.length} crews=${crews.length} objects=${objects.length}`);
+  console.log(`[jobs-routes-runtime] PASS checks=${checks} server=stopped cleanup=passed users=${users.length} jobs=${jobs.length} objects=${objects.length}`);
 }

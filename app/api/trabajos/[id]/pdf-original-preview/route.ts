@@ -4,6 +4,10 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkShiftAccessForActor } from "@/lib/work-shifts/access";
 import { ACTIVE_SHIFT_REQUIRED_MESSAGE } from "@/lib/work-shifts/types";
+import {
+  isOperationalFieldWorker,
+  READ_ONLY_HELPER_MESSAGE,
+} from "@/lib/auth/capabilities";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,10 +22,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!user.user) return new Response("Unauthorized", { status: 401 });
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, role, is_active")
+    .select("id, role, is_active, worker_specialty")
     .eq("id", user.user.id)
     .single();
   if (profileError || !profile?.is_active) return new Response("Forbidden", { status: 403 });
+  if (profile.role === "tecnico" && !isOperationalFieldWorker(profile)) {
+    return new Response(READ_ONLY_HELPER_MESSAGE, { status: 403 });
+  }
   const access = await getWorkShiftAccessForActor({ id: profile.id, role: profile.role }, supabase);
   if (!access.active) return new Response(ACTIVE_SHIFT_REQUIRED_MESSAGE, { status: 403 });
   const { data: job, error: jobError } = await supabase.from("jobs").select("project_pdf_url").eq("id", id).maybeSingle();
@@ -47,7 +54,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const downloaded = await service.storage.from("project-files").download(source.storage_path);
     if (downloaded.error || !downloaded.data) return new Response("Unavailable", { status: 409 });
     const rendered = await renderOriginalPdfPreview(new Uint8Array(await downloaded.data.arrayBuffer()), sourcePage);
-    const initialized = await supabase.rpc("initialize_job_pdf_draft_v2", {
+    const initialized = await supabase.rpc("initialize_job_pdf_draft_v3", {
       p_job_id: id,
       p_source_document_ids: sourceDocuments.map((document) => document.id),
       p_page_count: totalPages,
