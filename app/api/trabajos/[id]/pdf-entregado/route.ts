@@ -167,6 +167,7 @@ export async function POST(
     .from("job_photos")
     .select("id, storage_path, uploaded_by, created_at, comment")
     .eq("job_id", jobId)
+    .is("deleted_at", null)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
   if (photoError) return photoError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)

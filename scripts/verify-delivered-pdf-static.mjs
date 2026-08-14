@@ -14,6 +14,7 @@ const checks = [
   [migration.includes("revoke all on function public.confirm_delivered_job_pdf") && migration.includes("to authenticated"), "RPC grants"],
   [route.includes("supabase.auth.getUser()"), "explicit route authentication"],
   [route.includes('.from("job_photos")') && !route.includes("p_source_photo_ids: input"), "server-derived evidence list"],
+  [/\.from\("job_photos"\)[\s\S]*?\.eq\("job_id", jobId\)[\s\S]*?\.is\("deleted_at", null\)[\s\S]*?\.order\("created_at"/u.test(route), "soft-deleted evidence excluded from PDF composition"],
   [route.includes('from("project-files").upload') && route.includes("createServiceClient"), "private server upload"],
   [compositor.includes("FPDF_RenderPageBitmap") && compositor.includes("useObjectStreams: false"), "fresh PDFium raster composition"],
   [compositor.includes(".rotate()") && compositor.includes("withoutEnlargement: true"), "EXIF and aspect-ratio image normalization"],

@@ -403,6 +403,19 @@ try {
   const afterSupervisor = await ok("read pointer after supervisor denial", admin.client.from("jobs")
     .select("delivered_pdf_path").eq("id", jobId).single());
   check(afterSupervisor.delivered_pdf_path === firstDeliveredPath, "supervisor denial preserves the valid pointer");
+  const deletedPhoto = await ok("admin soft-deletes later evidence", admin.client.rpc("delete_job_photo_audited", {
+    p_photo_id: photoTwoId,
+  }));
+  check(deletedPhoto?.[0]?.object_name === photoTwoPath, "photo deletion returns the private cleanup target");
+  await ok("remove soft-deleted private evidence object", service.storage.from("job-evidence").remove([photoTwoPath]));
+  const auditVisiblePhotos = await ok("admin retains deleted evidence audit visibility", admin.client
+    .from("job_photos").select("id, deleted_at").eq("job_id", jobId).order("created_at"));
+  check(auditVisiblePhotos.length === 2 && auditVisiblePhotos.some((photo) => photo.id === photoTwoId && photo.deleted_at),
+    "soft-deleted evidence remains auditable to admin");
+  const activePhotos = await ok("PDF composition query excludes deleted evidence", admin.client
+    .from("job_photos").select("id").eq("job_id", jobId).is("deleted_at", null).order("created_at"));
+  check(activePhotos.length === 1 && activePhotos[0].id === photoOneId,
+    "only active evidence remains eligible for PDF regeneration");
   const reportDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
   const currentFinancialReport = await ok("current allocation appears in office report", admin.client
     .rpc("get_financial_allocation_report", { p_start_date: reportDate, p_end_date: reportDate }));
@@ -411,13 +424,13 @@ try {
 
   const adminPath = `${jobId}/delivered/${randomUUID()}.pdf`;
   await upload("project-files", adminPath, minimalPdf, "application/pdf", service, {
-    generator: "susotech-portal", job_id: jobId, source_photo_ids: [photoOneId, photoTwoId].sort().join(","),
+    generator: "susotech-portal", job_id: jobId, source_photo_ids: photoOneId,
     source_document_ids: documentId, snapshot_hash: snapshotHash,
   });
-  const adminResult = await ok("admin regenerates current PDF", admin.client.rpc("confirm_delivered_job_pdf_complete", {
+  const adminResult = await ok("admin regenerates after evidence deletion", admin.client.rpc("confirm_delivered_job_pdf_complete", {
     p_job_id: jobId,
     p_storage_path: adminPath,
-    p_source_photo_ids: [photoOneId, photoTwoId],
+    p_source_photo_ids: [photoOneId],
     p_source_document_ids: [documentId],
     p_submit: false,
     p_expected_draft_version: draftVersion,
@@ -425,10 +438,13 @@ try {
   }));
   check(adminResult?.[0]?.previous_storage_path === firstDeliveredPath, "admin RPC returns cleanup candidate");
   const finalJob = await ok("read final pointer", admin.client.from("jobs")
-    .select("main_status, delivered_pdf_path, delivered_pdf_generated_by")
+    .select("main_status, delivered_pdf_path, delivered_pdf_generated_by, delivered_pdf_source_photo_ids")
     .eq("id", jobId).single());
   check(finalJob.main_status === "enviado_revision", "office regeneration does not invent a state");
   check(finalJob.delivered_pdf_path === adminPath && finalJob.delivered_pdf_generated_by === admin.id, "admin regeneration persisted");
+  check(finalJob.delivered_pdf_source_photo_ids?.length === 1
+    && finalJob.delivered_pdf_source_photo_ids[0] === photoOneId,
+  "regenerated PDF snapshot excludes deleted evidence");
 
   await ok("office rejects submitted delivery", admin.client.from("jobs")
     .update({ main_status: "en_progreso", comments: "Runtime rejection" }).eq("id", jobId).select("id").single());
