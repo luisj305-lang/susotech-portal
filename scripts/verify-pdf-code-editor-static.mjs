@@ -23,6 +23,11 @@ assert.doesNotMatch(detail,/PdfCodeEditor/u); assert.match(deliveryPage,/isOpera
 assert.match(preview,/renderOriginalPdfPreview/u); assert.match(preview,/cache-control/u);
 assert.match(preview,/export async function POST/u); assert.match(editor,/method: "POST"/u);
 assert.match(route,/p_expected_draft_version/u); assert.match(compositor,/page\.drawRectangle/u); assert.match(compositor,/page\.drawText/u); assert.match(compositor,/page\.drawLine/u);
+assert.match(editor,/backgroundColor: "#ffffff", borderColor: color, color: "#000000"/u);
+assert.match(editor,/fontSize: `min\(12px, \$\{fittedFontSize\}cqw\)`/u);
+assert.match(compositor,/color: rgb\(1, 1, 1\),\s*borderColor: color,\s*borderWidth: 2/u);
+assert.match(compositor,/widthOfTextAtSize\(placementText, heightBoundSize\)/u);
+assert.match(compositor,/font: codeFont,\s*color: rgb\(0, 0, 0\)/u);
 assert.match(editor,/Cantidad seleccionada/u); assert.match(editor,/arrowTipX/u); assert.match(sql,/p_source_document_ids/u);
 assert.match(sql,/follow-up contract migration revokes them/u);
 assert.match(contract,/revoke execute on function public\.save_job_pdf_draft\(uuid, integer, jsonb\) from authenticated/u);

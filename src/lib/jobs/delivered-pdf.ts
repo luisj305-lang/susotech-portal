@@ -289,9 +289,33 @@ async function composeUnlocked(
             color,
           });
         }
-        page.drawRectangle({ x, y, width, height, color, borderColor: rgb(1, 1, 1), borderWidth: 1, opacity: 0.92 });
+        page.drawRectangle({
+          x,
+          y,
+          width,
+          height,
+          color: rgb(1, 1, 1),
+          borderColor: color,
+          borderWidth: 2,
+          opacity: 1,
+          borderOpacity: 1,
+        });
         const placementText = `${asciiText(placement.code)} × ${placement.quantity}`.slice(0, 36);
-        page.drawText(placementText, { x: x + 3, y: y + Math.max(2, height * 0.25), size: Math.max(7, Math.min(18, height * 0.48)), font: codeFont, color: rgb(1, 1, 1) });
+        const horizontalPadding = Math.min(3, width * 0.08);
+        const heightBoundSize = Math.max(1, Math.min(18, height * 0.48));
+        const availableTextWidth = Math.max(1, width - horizontalPadding * 2);
+        const naturalTextWidth = codeFont.widthOfTextAtSize(placementText, heightBoundSize);
+        const fittedTextSize = Math.max(1, Math.min(
+          heightBoundSize,
+          naturalTextWidth > 0 ? heightBoundSize * availableTextWidth / naturalTextWidth : heightBoundSize,
+        ));
+        page.drawText(placementText, {
+          x: x + horizontalPadding,
+          y: y + Math.max(1, (height - fittedTextSize) / 2),
+          size: fittedTextSize,
+          font: codeFont,
+          color: rgb(0, 0, 0),
+        });
       }
     }
       originalPageCount += sourcePageCount;
