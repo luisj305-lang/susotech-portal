@@ -5,6 +5,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const enumMigration = read("../supabase/migrations/20260813033000_add_unassigned_job_status.sql");
 const coherence = read("../supabase/migrations/20260813034000_enforce_assignment_status_coherence.sql");
 const backfill = read("../supabase/migrations/20260813035000_backfill_unassigned_jobs.sql");
+const remainingBackfill = read("../supabase/migrations/20260813050000_backfill_remaining_unassigned_jobs.sql");
 const actions = read("../src/lib/jobs/actions.ts");
 const bulkCore = read("../src/lib/storage/bulk-import-core.ts");
 const bulkUi = read("../src/components/jobs/bulk-import.tsx");
@@ -33,6 +34,13 @@ assert.match(backfill, /j\.archived_at is null/u);
 assert.match(backfill, /not exists \(select 1 from public\.job_assignments/u);
 assert.match(backfill, /h\.new_status <> 'asignado'/u);
 assert.match(backfill, /Backfill: imported job had no assignment/u);
+assert.match(remainingBackfill, /job\.main_status = 'asignado'/u);
+assert.match(remainingBackfill, /not exists \([\s\S]*public\.job_assignments/u);
+assert.match(remainingBackfill, /not exists \([\s\S]*public\.job_status_history/u);
+assert.match(remainingBackfill, /not exists \([\s\S]*public\.job_deliveries/u);
+assert.match(remainingBackfill, /not exists \([\s\S]*public\.job_production_codes/u);
+assert.match(remainingBackfill, /not exists \([\s\S]*public\.job_photos/u);
+assert.match(remainingBackfill, /set constraints enforce_job_assignment_status_on_jobs immediate/u);
 
 assert.match(actions, /export async function unassignJob/u);
 assert.match(actions, /assign\(\[input\.jobId\], null, null\)/u);
@@ -41,4 +49,4 @@ assert.match(bulkUi, /confirmBulkProjectUpload\(\{[\s\S]*assigneeType: row\.assi
 assert.doesNotMatch(bulkUi, /await assignGroups\(groupAssignmentChunks\(confirmed\)\)/u);
 assert.match(officeUi, /Quitar asignación/u);
 
-console.log("[assignment-status-static] PASS checks=30 backfill_candidates=5 archived_legacy_untouched=true");
+console.log("[assignment-status-static] PASS checks=37 reviewed_candidates=5 remaining_backfill_fail_closed=true");
