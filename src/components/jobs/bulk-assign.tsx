@@ -24,7 +24,7 @@ export function BulkAssign({ jobs, options }: { jobs: ImportedJob[]; options: As
     });
   }
 
-  return <section className="mt-6 rounded-2xl border border-white bg-black p-5 shadow-sm"><h2 className="text-lg font-semibold">Asignar trabajos importados</h2><p className="mt-1 text-sm text-white">Selecciona uno para asignación individual o varios para asignación masiva.</p>
+  return <section className="mt-6 rounded-2xl border border-black bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Asignar trabajos importados</h2><p className="mt-1 text-sm text-black">Selecciona uno para asignación individual o varios para asignación masiva.</p>
     <fieldset className="my-4 grid gap-2"><legend className="sr-only">Trabajos para asignar</legend>{jobs.map((job) => <label key={job.id} className="flex min-h-11 items-center gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(job.id)} onChange={() => toggle(job.id)} /> <span>{job.title}</span></label>)}</fieldset>
     <form action={assign} className="flex flex-col gap-3 sm:flex-row"><label className="grid flex-1 gap-1 text-sm font-medium">Responsable principal<AssigneeSelect name="assignee" options={options} required /></label><button disabled={pending || !selected.length || !options.length} className="self-end rounded-lg bg-black px-5 py-3 font-semibold text-white disabled:opacity-60">{pending ? "Asignando…" : `Asignar ${selected.length || ""}`}</button></form>
     <p role="status" aria-live="polite" className="mt-3 text-sm">{message}</p>

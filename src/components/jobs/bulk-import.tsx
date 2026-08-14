@@ -192,14 +192,14 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
   }
 
   return <div className="grid gap-5">
-    <section className="rounded-2xl border border-white bg-black p-5 shadow-sm">
+    <section className="rounded-2xl border border-black bg-white p-5 shadow-sm">
       <div
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => { event.preventDefault(); void addFiles(Array.from(event.dataTransfer.files)); }}
-        className="rounded-xl border-2 border-dashed border-white p-8 text-center"
+        className="rounded-xl border-2 border-dashed border-black p-8 text-center"
       >
         <p className="font-semibold">Arrastra aquí tus órdenes PDF</p>
-        <p className="mt-1 text-sm text-white">O selecciona hasta 100 archivos de 25 MB cada uno.</p>
+        <p className="mt-1 text-sm text-black">O selecciona hasta 100 archivos de 25 MB cada uno.</p>
         <label className="mt-4 inline-block cursor-pointer rounded-lg bg-black px-5 py-3 font-semibold text-white focus-within:outline-2">
           Seleccionar PDF
           <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple onChange={(event) => choose(event.target.files)} className="sr-only" />
@@ -212,7 +212,7 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
       <p role="status" aria-live="polite" className="mt-3 text-sm">{message}</p>
     </section>
 
-    {rows.length > 0 && <section className="rounded-2xl border border-white bg-black p-4 shadow-sm">
+    {rows.length > 0 && <section className="rounded-2xl border border-black bg-white p-4 shadow-sm">
       <div className="grid gap-3 lg:grid-cols-[2fr_1fr_2fr_auto]">
         <label className="grid gap-1 text-sm font-medium">Buscar<input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Archivo, orden o dirección" className="rounded-lg border p-3" /></label>
         <label className="grid gap-1 text-sm font-medium">Estado<select value={stateFilter} onChange={(event) => { setStateFilter(event.target.value as ImportState | "all"); setPage(1); }} className="rounded-lg border p-3"><option value="all">Todos</option>{Object.entries(stateLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -222,18 +222,18 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
 
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[1180px] border-separate border-spacing-y-2 text-sm">
-          <thead><tr className="text-left text-white"><th className="px-2"><input type="checkbox" aria-label="Seleccionar filas visibles" checked={allVisibleSelected} onChange={toggleVisible} /></th><th>Archivo y estado</th><th>Orden y título</th><th>Dirección</th><th>Fecha y tipo</th><th>Cliente y descripción</th><th>Asignación</th></tr></thead>
+          <thead><tr className="text-left text-black"><th className="px-2"><input type="checkbox" aria-label="Seleccionar filas visibles" checked={allVisibleSelected} onChange={toggleVisible} /></th><th>Archivo y estado</th><th>Orden y título</th><th>Dirección</th><th>Fecha y tipo</th><th>Cliente y descripción</th><th>Asignación</th></tr></thead>
           <tbody>{visible.rows.map((row) => {
             const locked = row.state === "processing" || row.state === "imported" || row.state === "duplicate";
             const assignmentLocked = locked && row.assignmentState !== "error";
             return <tr key={row.key} className="align-top">
-              <td className="rounded-l-xl bg-black p-3"><input type="checkbox" aria-label={`Seleccionar ${row.file.name}`} checked={row.selected} disabled={locked} onChange={() => patchRow(row.key, { selected: !row.selected })} /></td>
-              <td className="bg-black p-3"><strong className="block max-w-48 break-all">{row.file.name}</strong><span className={`mt-2 inline-block rounded-full px-2 py-1 text-xs font-semibold ${row.state === "error" ? "bg-black text-white" : row.state === "imported" ? "bg-black text-white" : row.state === "duplicate" ? "bg-black text-white" : "bg-black"}`}>{stateLabels[row.state]}</span><p className="mt-2 max-w-52 text-xs text-white">{row.message}</p></td>
-              <td className="bg-black p-3"><input aria-label={`Número de orden de ${row.file.name}`} value={row.fields.orderIdentifier ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { orderIdentifier: event.target.value || null, prismNumber: event.target.value || null })} placeholder="Número de orden" className="mb-2 w-full rounded border p-2" /><input aria-label={`Título de ${row.file.name}`} value={row.fields.title} disabled={locked} onChange={(event) => updateFields(row.key, { title: event.target.value })} className="w-full rounded border p-2" /></td>
-              <td className="bg-black p-3"><input aria-label={`Dirección de ${row.file.name}`} value={row.fields.address ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { address: event.target.value || null })} placeholder="Dirección" className="mb-2 w-full rounded border p-2" /><input aria-label={`Ubicación de ${row.file.name}`} value={row.fields.location ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { location: event.target.value || null })} placeholder="Ciudad, estado, ZIP" className="w-full rounded border p-2" /></td>
-              <td className="bg-black p-3"><input type="date" aria-label={`Fecha de ${row.file.name}`} value={row.fields.requestDate ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { requestDate: event.target.value || null })} className="mb-2 w-full rounded border p-2" /><input aria-label={`Tipo de trabajo de ${row.file.name}`} value={row.fields.jobType ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { jobType: event.target.value || null })} placeholder="Tipo de trabajo" className="w-full rounded border p-2" /></td>
-              <td className="bg-black p-3"><input aria-label={`Cliente de ${row.file.name}`} value={row.fields.customerName ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { customerName: event.target.value || null })} placeholder="Cliente (si aparece)" className="mb-2 w-full rounded border p-2" /><textarea aria-label={`Descripción de ${row.file.name}`} value={row.fields.description ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { description: event.target.value || null })} rows={3} className="w-full rounded border p-2" /></td>
-              <td className="rounded-r-xl bg-black p-3"><fieldset disabled={assignmentLocked}><AssigneeSelect ariaLabel={`Asignación de ${row.file.name}`} options={options} value={assigneeValue(row)} onChange={(value) => setRowAssignee(row.key, value)} className="w-full rounded border p-2" /></fieldset>{row.responsibleSuggestion && <p className="mt-2 rounded bg-black p-2 text-xs text-white">Sugerencia: {row.responsibleSuggestion}. Confirma manualmente una opción.</p>}</td>
+              <td className="rounded-l-xl bg-white p-3"><input type="checkbox" aria-label={`Seleccionar ${row.file.name}`} checked={row.selected} disabled={locked} onChange={() => patchRow(row.key, { selected: !row.selected })} /></td>
+              <td className="bg-white p-3"><strong className="block max-w-48 break-all">{row.file.name}</strong><span className={`mt-2 inline-block rounded-full px-2 py-1 text-xs font-semibold ${row.state === "error" ? "bg-white text-black" : row.state === "imported" ? "bg-white text-black" : row.state === "duplicate" ? "bg-white text-black" : "bg-white"}`}>{stateLabels[row.state]}</span><p className="mt-2 max-w-52 text-xs text-black">{row.message}</p></td>
+              <td className="bg-white p-3"><input aria-label={`Número de orden de ${row.file.name}`} value={row.fields.orderIdentifier ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { orderIdentifier: event.target.value || null, prismNumber: event.target.value || null })} placeholder="Número de orden" className="mb-2 w-full rounded border p-2" /><input aria-label={`Título de ${row.file.name}`} value={row.fields.title} disabled={locked} onChange={(event) => updateFields(row.key, { title: event.target.value })} className="w-full rounded border p-2" /></td>
+              <td className="bg-white p-3"><input aria-label={`Dirección de ${row.file.name}`} value={row.fields.address ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { address: event.target.value || null })} placeholder="Dirección" className="mb-2 w-full rounded border p-2" /><input aria-label={`Ubicación de ${row.file.name}`} value={row.fields.location ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { location: event.target.value || null })} placeholder="Ciudad, estado, ZIP" className="w-full rounded border p-2" /></td>
+              <td className="bg-white p-3"><input type="date" aria-label={`Fecha de ${row.file.name}`} value={row.fields.requestDate ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { requestDate: event.target.value || null })} className="mb-2 w-full rounded border p-2" /><input aria-label={`Tipo de trabajo de ${row.file.name}`} value={row.fields.jobType ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { jobType: event.target.value || null })} placeholder="Tipo de trabajo" className="w-full rounded border p-2" /></td>
+              <td className="bg-white p-3"><input aria-label={`Cliente de ${row.file.name}`} value={row.fields.customerName ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { customerName: event.target.value || null })} placeholder="Cliente (si aparece)" className="mb-2 w-full rounded border p-2" /><textarea aria-label={`Descripción de ${row.file.name}`} value={row.fields.description ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { description: event.target.value || null })} rows={3} className="w-full rounded border p-2" /></td>
+              <td className="rounded-r-xl bg-white p-3"><fieldset disabled={assignmentLocked}><AssigneeSelect ariaLabel={`Asignación de ${row.file.name}`} options={options} value={assigneeValue(row)} onChange={(value) => setRowAssignee(row.key, value)} className="w-full rounded border p-2" /></fieldset>{row.responsibleSuggestion && <p className="mt-2 rounded bg-white p-2 text-xs text-black">Sugerencia: {row.responsibleSuggestion}. Confirma manualmente una opción.</p>}</td>
             </tr>;
           })}</tbody>
         </table>

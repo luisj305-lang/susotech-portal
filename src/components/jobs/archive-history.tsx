@@ -18,9 +18,9 @@ export function ArchiveHistory({ events }: { events: JobArchiveEvent[] }) {
   if (events.length === 0) return null;
 
   return (
-    <section className="rounded-2xl border border-white bg-black p-5 shadow-sm">
+    <section className="rounded-2xl border border-black bg-white p-5 shadow-sm">
       <h2 className="text-lg font-semibold">Historial de archivado</h2>
-      <ol className="mt-4 grid gap-4 border-l-2 border-white pl-5">
+      <ol className="mt-4 grid gap-4 border-l-2 border-black pl-5">
         {events.map((event) => (
           <li key={event.id}>
             <p className="font-medium">
@@ -28,7 +28,7 @@ export function ArchiveHistory({ events }: { events: JobArchiveEvent[] }) {
             </p>
             {event.reason_code && <p className="text-sm">{reasonLabels[event.reason_code]}</p>}
             {event.notes && <p className="text-sm">{event.notes}</p>}
-            <p className="text-sm text-white">
+            <p className="text-sm text-black">
               {event.actor_name ?? "Usuario no disponible"} · {dateTime.format(new Date(event.occurred_at))}
               {event.is_legacy ? " · Registro anterior" : ""}
             </p>

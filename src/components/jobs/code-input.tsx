@@ -28,7 +28,7 @@ export function CodeInput({ jobId, enabled, catalog }: { jobId: string; enabled:
     });
   }
 
-  return <section className="rounded-2xl bg-black p-5 text-white shadow-lg">
+  return <section className="rounded-2xl bg-white p-5 text-black shadow-lg">
     <h2 className="text-xl font-bold">Código de producción</h2>
     <form action={submit} className="mt-4 grid gap-3">
       <label className="grid gap-1 font-semibold">Actividad
@@ -43,8 +43,8 @@ export function CodeInput({ jobId, enabled, catalog }: { jobId: string; enabled:
       <label className="grid gap-1 font-semibold">Notas<input name="notes" disabled={!enabled} className="min-h-12 rounded-xl border p-3" /></label>
       <button disabled={pending || !enabled || !catalog.length || selected?.unit_rate == null} className="min-h-14 rounded-xl bg-black px-5 text-lg font-bold text-white disabled:opacity-50">{pending ? "Guardando…" : "Añadir código"}</button>
     </form>
-    {!enabled && <p className="mt-3 text-sm text-white">Inicia el trabajo antes de registrar producción.</p>}
-    {!catalog.length && <p className="mt-3 text-sm text-white">No hay códigos disponibles para tu tipo de técnico.</p>}
+    {!enabled && <p className="mt-3 text-sm text-black">Inicia el trabajo antes de registrar producción.</p>}
+    {!catalog.length && <p className="mt-3 text-sm text-black">No hay códigos disponibles para tu tipo de técnico.</p>}
     <p role="status" aria-live="polite" className="mt-2">{message}</p>
   </section>;
 }

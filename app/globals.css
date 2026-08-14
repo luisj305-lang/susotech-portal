@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #000000;
-  --foreground: #ffffff;
-  color-scheme: dark;
+  --background: #ffffff;
+  --foreground: #000000;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -24,14 +24,19 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-button,
+button {
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid #000000;
+}
+
 a,
 input,
 select,
 textarea {
-  background: #000000;
-  color: #ffffff;
-  border: 1px solid #ffffff;
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #000000;
 }
 
 a {
@@ -43,7 +48,11 @@ a {
 input,
 select,
 textarea,
-option,
+option {
+  background: #ffffff;
+  color: #000000;
+}
+
 ::file-selector-button {
   background: #000000;
   color: #ffffff;
@@ -56,22 +65,22 @@ li[class*="rounded"],
 div[class*="rounded"],
 span[class*="rounded"],
 ::file-selector-button {
-  border: 1px solid #ffffff;
+  border: 1px solid #000000;
 }
 
 table {
-  border: 1px solid #ffffff;
+  border: 1px solid #000000;
 }
 
 th,
 td {
-  border-color: #ffffff;
+  border-color: #000000;
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #ffffff;
-  opacity: 0.7;
+  color: #000000;
+  opacity: 0.6;
 }
 
 input:focus,
@@ -79,12 +88,12 @@ select:focus,
 textarea:focus,
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid #ffffff;
+  outline: 2px solid #000000;
   outline-offset: 2px;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
+  filter: none;
 }
 
 input:-webkit-autofill,
@@ -92,7 +101,7 @@ input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 textarea:-webkit-autofill,
 select:-webkit-autofill {
-  -webkit-text-fill-color: #ffffff;
-  box-shadow: 0 0 0 1000px #000000 inset;
-  caret-color: #ffffff;
+  -webkit-text-fill-color: #000000;
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  caret-color: #000000;
 }

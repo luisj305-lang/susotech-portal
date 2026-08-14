@@ -343,7 +343,7 @@ export function UsersManager({
               const isCurrentUser = user.id === currentUserId;
 
               return (
-                <tr key={user.id} style={{ borderTop: "1px solid #ffffff" }}>
+                <tr key={user.id} style={{ borderTop: "1px solid #000000" }}>
                   <td style={{ padding: "12px" }}>
                     {user.full_name ?? "Sin nombre"}
                   </td>

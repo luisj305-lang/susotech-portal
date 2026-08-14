@@ -37,7 +37,7 @@ export function JobForm({ job }: { job?: Job }) {
     });
   }
 
-  return <form action={submit} className="grid gap-4 rounded-2xl border border-white bg-black p-5 shadow-sm sm:grid-cols-2">
+  return <form action={submit} className="grid gap-4 rounded-2xl border border-black bg-white p-5 shadow-sm sm:grid-cols-2">
     <label className="grid gap-1 text-sm font-medium sm:col-span-2">Título<input name="title" required maxLength={200} defaultValue={job?.title} className="rounded-lg border p-3" /></label>
     <label className="grid gap-1 text-sm font-medium">Categoría<select name="category" defaultValue={job?.category ?? "categoria_1"} className="rounded-lg border p-3"><option value="categoria_1">Categoría 1</option><option value="categoria_2">Categoría 2</option><option value="categoria_3">Categoría 3</option></select></label>
     {fields.map(([name, label, key]) => <label key={name} className="grid gap-1 text-sm font-medium">{label}<input name={name} defaultValue={job?.[key] ?? ""} className="rounded-lg border p-3" /></label>)}

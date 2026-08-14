@@ -109,13 +109,13 @@ export function StartShiftForm() {
   };
 
   return (
-    <section className="grid gap-6 rounded-3xl border border-white/20 bg-zinc-950 p-5 shadow-2xl sm:p-7">
+    <section className="grid gap-6 rounded-3xl border border-black/20 bg-white p-5 shadow-2xl sm:p-7">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-400">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/60">
           Paso obligatorio
         </p>
         <h1 className="mt-2 text-3xl font-bold">Iniciar jornada</h1>
-        <p className="mt-2 text-sm leading-6 text-zinc-300">
+        <p className="mt-2 text-sm leading-6 text-black/70">
           Tu acceso a los trabajos estará activo durante 10 horas desde este momento.
         </p>
       </div>
@@ -127,7 +127,7 @@ export function StartShiftForm() {
           aria-pressed={fuelChoice === "yes"}
           disabled={pending}
           onClick={() => chooseFuel("yes")}
-          className={`min-h-16 rounded-2xl border px-5 text-left text-lg font-bold transition disabled:opacity-60 ${fuelChoice === "yes" ? "border-white bg-white text-black" : "border-white/40 bg-black text-white"}`}
+          className={`min-h-16 rounded-2xl border px-5 text-left text-lg font-bold transition disabled:opacity-60 ${fuelChoice === "yes" ? "border-black bg-black text-white" : "border-black/40 bg-white text-black"}`}
         >
           Sí, cargué gasolina
         </button>
@@ -136,18 +136,18 @@ export function StartShiftForm() {
           aria-pressed={fuelChoice === "no"}
           disabled={pending}
           onClick={() => chooseFuel("no")}
-          className={`min-h-16 rounded-2xl border px-5 text-left text-lg font-bold transition disabled:opacity-60 ${fuelChoice === "no" ? "border-white bg-white text-black" : "border-white/40 bg-black text-white"}`}
+          className={`min-h-16 rounded-2xl border px-5 text-left text-lg font-bold transition disabled:opacity-60 ${fuelChoice === "no" ? "border-black bg-black text-white" : "border-black/40 bg-white text-black"}`}
         >
           No cargué gasolina
         </button>
       </fieldset>
 
       {fuelChoice === "yes" && (
-        <div className="grid gap-5 border-t border-white/20 pt-5">
+        <div className="grid gap-5 border-t border-black/20 pt-5">
           <label className="grid gap-2 font-semibold">
             Monto total gastado en USD
-            <div className="flex min-h-14 items-center rounded-xl border border-white/50 bg-black px-4 focus-within:border-white">
-              <span aria-hidden="true" className="mr-2 text-zinc-400">$</span>
+            <div className="flex min-h-14 items-center rounded-xl border border-black/50 bg-white px-4 focus-within:border-black">
+              <span aria-hidden="true" className="mr-2 text-black/60">$</span>
               <input
                 type="text"
                 inputMode="decimal"
@@ -162,16 +162,16 @@ export function StartShiftForm() {
                 className="min-w-0 flex-1 bg-transparent py-3 text-lg outline-none"
               />
             </div>
-            <span className="text-xs font-normal text-zinc-400">Máximo dos decimales.</span>
+            <span className="text-xs font-normal text-black/60">Máximo dos decimales.</span>
           </label>
 
           <div className="grid gap-3">
             <div>
               <p className="font-semibold">Fotografía del marcador</p>
-              <p className="text-sm text-zinc-400">Opcional · JPG, PNG o WebP · máximo 10 MB</p>
+              <p className="text-sm text-black/60">Opcional · JPG, PNG o WebP · máximo 10 MB</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-white/50 px-3 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-black/50 px-3 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
                 Tomar foto
                 <input
                   ref={cameraInput}
@@ -183,7 +183,7 @@ export function StartShiftForm() {
                   className="sr-only"
                 />
               </label>
-              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-white/50 px-3 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-black/50 px-3 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
                 Elegir de galería
                 <input
                   ref={galleryInput}
@@ -196,7 +196,7 @@ export function StartShiftForm() {
               </label>
             </div>
             {photo && (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-white/20 p-3 text-sm">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-black/20 p-3 text-sm">
                 <span className="min-w-0 truncate">{photo.name}</span>
                 <button type="button" disabled={pending} onClick={clearPhoto} className="font-bold underline">
                   Quitar
@@ -208,7 +208,7 @@ export function StartShiftForm() {
       )}
 
       {fuelChoice === "no" && (
-        <p className="rounded-xl border border-white/20 bg-black p-4 text-sm text-zinc-300">
+        <p className="rounded-xl border border-black/20 bg-white p-4 text-sm text-black/70">
           Se registrará explícitamente que hoy no compraste gasolina, con monto $0.00.
         </p>
       )}
@@ -217,11 +217,11 @@ export function StartShiftForm() {
         type="button"
         disabled={pending || !fuelChoice}
         onClick={submit}
-        className="min-h-16 rounded-2xl bg-white px-5 text-lg font-bold text-black disabled:cursor-not-allowed disabled:opacity-50"
+        className="min-h-16 rounded-2xl bg-black px-5 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
         {pending ? "Procesando…" : "Iniciar jornada de 10 horas"}
       </button>
-      <p role="status" aria-live="polite" className="min-h-6 text-sm text-zinc-200">
+      <p role="status" aria-live="polite" className="min-h-6 text-sm text-black/80">
         {message}
       </p>
     </section>

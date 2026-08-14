@@ -1,17 +1,17 @@
 import type { DeliveredPdfStatus, JobStatus } from "./types";
 
 export const jobStatusBadgeClasses: Record<JobStatus, string> = {
-  sin_asignar: "border border-zinc-400 bg-zinc-900 text-zinc-100",
-  asignado: "border border-sky-400 bg-sky-950 text-sky-100",
-  en_progreso: "border border-amber-400 bg-amber-950 text-amber-100",
-  enviado_revision: "border border-violet-400 bg-violet-950 text-violet-100",
-  aprobado: "border border-emerald-400 bg-emerald-950 text-emerald-100",
-  listo_pagar: "border border-orange-400 bg-orange-950 text-orange-100",
-  pagado: "border border-teal-400 bg-teal-950 text-teal-100",
+  sin_asignar: "border border-black bg-white text-black",
+  asignado: "border border-black bg-white text-black",
+  en_progreso: "border border-black bg-white text-black",
+  enviado_revision: "border border-black bg-white text-black",
+  aprobado: "border border-black bg-white text-black",
+  listo_pagar: "border border-black bg-white text-black",
+  pagado: "border border-black bg-white text-black",
 };
 
 export const deliveredPdfStatusClasses: Record<DeliveredPdfStatus, string> = {
-  pending: "text-slate-300",
-  current: "text-emerald-300",
-  stale: "text-rose-300",
+  pending: "text-black",
+  current: "text-black",
+  stale: "text-black",
 };

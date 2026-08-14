@@ -17,10 +17,10 @@ export default async function StartShiftPage({ searchParams }: { searchParams: S
   const reason = Array.isArray(values.reason) ? values.reason[0] : values.reason;
 
   return (
-    <main className="min-h-screen bg-black px-4 py-8 text-white sm:py-12">
+    <main className="min-h-screen bg-white px-4 py-8 text-black sm:py-12">
       <div className="mx-auto grid w-full max-w-lg gap-4">
         {reason === "expired" && (
-          <p role="alert" className="rounded-2xl border border-amber-300/60 bg-amber-950/40 p-4 text-sm font-semibold text-amber-100">
+          <p role="alert" className="rounded-2xl border border-black bg-white p-4 text-sm font-semibold text-black">
             {ACTIVE_SHIFT_REQUIRED_MESSAGE}
           </p>
         )}

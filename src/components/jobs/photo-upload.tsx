@@ -103,13 +103,13 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
   }
 
   return (
-    <section className="grid gap-6 rounded-2xl bg-black p-5 text-white shadow-lg">
+    <section className="grid gap-6 rounded-2xl bg-white p-5 text-black shadow-lg">
       <div>
         <h2 className="text-xl font-bold">Evidencia fotográfica</h2>
         <form action={upload} className="mt-4 grid gap-3">
           <div className="grid gap-2">
             <p className="font-semibold">Foto</p>
-            <p className="text-sm text-zinc-300">
+            <p className="text-sm text-black/70">
               JPG, PNG o WebP · máximo 10 MB
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -167,7 +167,7 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
           </label>
           <label className="grid gap-1 font-semibold">
             Comentario de esta foto{" "}
-            <span className="font-normal text-white">(opcional)</span>
+            <span className="font-normal text-black">(opcional)</span>
             <textarea
               name="photoComment"
               rows={2}
@@ -195,7 +195,7 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
         </label>
         <button
           disabled={pending}
-          className="min-h-14 rounded-xl border-2 border-white px-5 text-lg font-bold"
+          className="min-h-14 rounded-xl border-2 border-black px-5 text-lg font-bold"
         >
           Guardar comentario general
         </button>
