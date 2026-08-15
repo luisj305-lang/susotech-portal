@@ -25,7 +25,7 @@ for (const path of [
 
 assert.match(files["app/trabajos/[id]/entregar/page.tsx"], /if \(!isOperationalFieldWorker\(profile\)\) notFound\(\)/u);
 assert.match(files["app/trabajos/[id]/page.tsx"], /canMutate && <TechnicianActions/u);
-assert.match(files["app/trabajos/[id]/page.tsx"], /canMutate && job\.main_status === "en_progreso" && <PhotoUpload/u);
+assert.match(files["app/trabajos/[id]/page.tsx"], /canMutate && \["en_progreso", "enviado_revision"\]\.includes\(job\.main_status\) && <PhotoUpload/u);
 
 const actions = files["src/lib/jobs/actions.ts"];
 for (const name of ["transitionJob", "setIncident", "addProductionCode", "saveJobPdfDraft", "addPhotoComment"]) {
@@ -34,7 +34,7 @@ for (const name of ["transitionJob", "setIncident", "addProductionCode", "saveJo
   assert.match(actions.slice(start, start + 550), /technicianMutationFailure\(profile\)/u, `${name} must enforce specialty`);
 }
 
-assert.match(files["src/lib/storage/actions.ts"], /createPhotoUploadUrl[\s\S]*?isOperationalFieldWorker\(profile\)/u);
-assert.match(files["src/lib/storage/actions.ts"], /discardUnconfirmedPhotoUpload[\s\S]*?!isOperationalFieldWorker\(profile\)/u);
+assert.match(files["src/lib/storage/actions.ts"], /createPhotoUploadUrl[\s\S]*?profile\.role !== "admin" && !isOperationalFieldWorker\(profile\)/u);
+assert.match(files["src/lib/storage/actions.ts"], /discardUnconfirmedPhotoUpload[\s\S]*?profile\.role !== "admin" && !isOperationalFieldWorker\(profile\)/u);
 
 console.log("PASS worker specialty app mutation guards");

@@ -39,7 +39,7 @@ export async function createPhotoUploadUrl(input: {
   jobId: string; mimeType: "image/jpeg" | "image/png" | "image/webp"; size: number;
 }): Promise<Result<{ path: string; token: string; signedUrl: string }>> {
   const profile = await requireProfile();
-  if (!isOperationalFieldWorker(profile)) {
+  if (profile.role !== "admin" && !isOperationalFieldWorker(profile)) {
     return { success: false, message: READ_ONLY_HELPER_MESSAGE };
   }
   const shiftFailure = await requireTechnicianShift(profile.role);
@@ -52,7 +52,7 @@ export async function discardUnconfirmedPhotoUpload(input: {
   path: string;
 }): Promise<Result<null>> {
   const profile = await requireProfile();
-  if (!isOperationalFieldWorker(profile)
+  if ((profile.role !== "admin" && !isOperationalFieldWorker(profile))
     || !uuidPattern.test(input.jobId)
     || !input.path.startsWith(`${input.jobId}/`)
     || input.path.slice(input.jobId.length + 1).includes("/")) {

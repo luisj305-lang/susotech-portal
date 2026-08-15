@@ -26,14 +26,18 @@ async function readableJob(supabase: SupabaseClient, jobId: string): Promise<Cor
 }
 
 async function editableEvidenceJob(supabase: SupabaseClient, jobId: string): Promise<CoreResult<true>> {
-  if (!uuidPattern.test(jobId)) return fail("Solo se puede agregar evidencia mientras el trabajo está en progreso.");
-  const { data, error } = await supabase.from("jobs").select("id").eq("id", jobId).eq("main_status", "en_progreso").maybeSingle();
+  const unavailableMessage = "Solo se puede agregar evidencia mientras el trabajo está en progreso o en revisión.";
+  if (!uuidPattern.test(jobId)) return fail(unavailableMessage);
+  const { data, error } = await supabase.from("jobs").select("id").eq("id", jobId)
+    .in("main_status", ["en_progreso", "enviado_revision"])
+    .is("archived_at", null)
+    .maybeSingle();
   if (error) return fail(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
     ? ACTIVE_SHIFT_REQUIRED_MESSAGE
-    : "Solo se puede agregar evidencia mientras el trabajo está en progreso.");
+    : unavailableMessage);
   return data
     ? { success: true, message: "Trabajo editable.", data: true }
-    : fail("Solo se puede agregar evidencia mientras el trabajo está en progreso.");
+    : fail(unavailableMessage);
 }
 
 export async function preparePhotoUpload(supabase: SupabaseClient, input: { jobId: string; mimeType: string; size: number }): Promise<CoreResult<{ path: string; token: string; signedUrl: string }>> {
