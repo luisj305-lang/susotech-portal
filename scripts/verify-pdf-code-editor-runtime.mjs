@@ -20,22 +20,33 @@ try {
   await writeFile(modulePath,source.replace(/import "server-only";\r?\n/u,""));
   const {composeDeliveredPdf,renderOriginalPdfPreview}=await import(`${pathToFileURL(modulePath).href}?v=${Date.now()}`);
   const original=await PDFDocument.create(); const font=await original.embedFont(StandardFonts.Helvetica);
-  const first=original.addPage([612,792]); first.drawText("REPRESENTATIVE ORIGINAL - PAGE 1",{x:48,y:730,size:20,font,color:rgb(0,0,0)}); first.drawRectangle({x:45,y:100,width:520,height:580,borderWidth:2,borderColor:rgb(.2,.2,.2)});
+  const first=original.addPage([612,792]); first.drawText("REPRESENTATIVE ORIGINAL - PAGE 1",{x:48,y:730,size:20,font,color:rgb(0,0,0)}); first.drawRectangle({x:45,y:100,width:520,height:580,borderWidth:2,borderColor:rgb(.2,.2,.2)}); first.drawRectangle({x:450,y:80,width:100,height:100,color:rgb(1,0,0)});
   const originalBytes=await original.save({useObjectStreams:false});
   const additional=await PDFDocument.create(); const additionalFont=await additional.embedFont(StandardFonts.Helvetica);
-  const second=additional.addPage([792,612]); second.drawText("ADDITIONAL SOURCE - PAGE 1",{x:50,y:550,size:24,font:additionalFont});
+  const second=additional.addPage([792,612]); second.drawText("ADDITIONAL SOURCE - PAGE 1",{x:50,y:550,size:24,font:additionalFont}); second.drawRectangle({x:50,y:80,width:100,height:100,color:rgb(0,0,1)});
   const additionalBytes=await additional.save({useObjectStreams:false});
   const evidence=await sharp(Buffer.from('<svg width="800" height="600"><rect width="800" height="600" fill="#ddd"/><text x="80" y="300" font-size="64">EVIDENCE PHOTO</text></svg>')).jpeg().toBuffer();
   const additionalId="66666666-6666-4666-8666-666666666666";
   const delivered=await composeDeliveredPdf([{id:placement.sourceDocumentId,bytes:originalBytes},{id:additionalId,bytes:additionalBytes}],[{id:"44444444-4444-4444-8444-444444444444",bytes:evidence}], [{...placement,code:"AS01",color:codeColor("AS01")},{...placement,page:2,sourceDocumentId:additionalId,sourcePage:1,x:.55,y:.4,arrowTipX:.85,arrowTipY:.55,code:"US40-A",color:codeColor("US40-A")}]);
   const pdfPath=path.join(scratch,"representative-code-delivery.pdf"); await writeFile(pdfPath,delivered.bytes);
+  const reopened=await PDFDocument.load(delivered.bytes);
+  const [reopenedOriginal,reopenedAdditional]=reopened.getPages();
   const previews=[]; for(let page=1;page<=3;page+=1){const rendered=await renderOriginalPdfPreview(delivered.bytes,page); const output=path.join(scratch,`representative-code-delivery-page-${page}.png`); await writeFile(output,rendered.png); previews.push({rendered,output});}
   const preview=previews[0].rendered; const pngPath=previews[0].output;
   assert.equal(delivered.originalPageCount,2); assert.equal(delivered.pageCount,3); assert.ok(preview.png.length>10000);
   assert.deepEqual(delivered.sourceDocumentIds,[placement.sourceDocumentId,additionalId]);
+  assert.equal(reopened.getPageCount(),3);
+  assert.deepEqual([Math.round(reopenedOriginal.getWidth()),Math.round(reopenedOriginal.getHeight())],[612,792]);
+  assert.deepEqual([Math.round(reopenedAdditional.getWidth()),Math.round(reopenedAdditional.getHeight())],[792,612]);
   const {data:pixels,info}=await sharp(preview.png).removeAlpha().raw().toBuffer({resolveWithObject:true});
   let greenPixels=0; for(let index=0;index<pixels.length;index+=info.channels){if(pixels[index+1]>pixels[index]*1.25&&pixels[index+1]>pixels[index+2]*1.25&&pixels[index+1]>100)greenPixels+=1;}
   assert.ok(greenPixels>500,"flattened code keeps its stable color");
+  const renderedSources=await Promise.all(previews.slice(0,2).map(({rendered})=>sharp(rendered.png).removeAlpha().raw().toBuffer({resolveWithObject:true})));
+  const countColor=({data,info},color)=>{let count=0;for(let index=0;index<data.length;index+=info.channels){const red=data[index],green=data[index+1],blue=data[index+2];if(color==="red"?red>180&&green<80&&blue<80:blue>180&&red<80&&green<80)count+=1;}return count;};
+  const firstRed=countColor(renderedSources[0],"red"), firstBlue=countColor(renderedSources[0],"blue");
+  const secondRed=countColor(renderedSources[1],"red"), secondBlue=countColor(renderedSources[1],"blue");
+  assert.ok(firstRed>1000&&firstBlue<100,"page 1 contains only the red original-source marker");
+  assert.ok(secondBlue>1000&&secondRed<100,"page 2 contains only the blue additional-source marker");
   await rm(modulePath,{force:true});
   console.log(JSON.stringify({result:"PASS",pdfPath,pngPath,pageCount:delivered.pageCount,bytes:delivered.bytes.length}));
 } catch(error) { await rm(modulePath,{force:true}); throw error; }

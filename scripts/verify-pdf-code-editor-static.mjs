@@ -29,6 +29,13 @@ assert.match(compositor,/color: rgb\(1, 1, 1\),\s*borderColor: color,\s*borderWi
 assert.match(compositor,/widthOfTextAtSize\(placementText, heightBoundSize\)/u);
 assert.match(compositor,/font: codeFont,\s*color: rgb\(0, 0, 0\)/u);
 assert.match(editor,/Cantidad seleccionada/u); assert.match(editor,/arrowTipX/u); assert.match(sql,/p_source_document_ids/u);
+assert.match(editor,/Guardar y continuar después/u); assert.match(editor,/saveInFlight/u); assert.match(editor,/persistStableDraft/u);
+assert.match(editor,/inert=\{submitting\}/u); assert.match(editor,/changeGeneration\.current === generation/u);
+assert.match(technicianActions,/Abrir o continuar la entrega/u);
+assert.match(deliveryPage,/main_status !== "en_progreso"/u);
+assert.match(route,/for \(const document of sourceDocuments\)/u);
+assert.match(route,/sourceBytes\.push\(\{ id: document\.id, bytes \}\)/u);
+assert.match(route,/composeDeliveredPdf\(\s*sourceBytes/u);
 assert.match(sql,/follow-up contract migration revokes them/u);
 assert.match(contract,/revoke execute on function public\.save_job_pdf_draft\(uuid, integer, jsonb\) from authenticated/u);
 assert.match(contract,/revoke execute on function public\.confirm_delivered_job_pdf_versioned/u);

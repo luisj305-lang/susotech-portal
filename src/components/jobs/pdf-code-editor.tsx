@@ -137,6 +137,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   ]);
   const [pageCount, setPageCount] = useState(sourcePages.length || initialDraft?.source_page_count || 1);
   const [version, setVersion] = useState(initialDraft?.version ?? 0);
+  const versionRef = useRef(initialDraft?.version ?? 0);
   const [placements, setPlacements] = useState<PdfCodePlacement[]>(() => (initialDraft?.placements ?? []).map((placement) => {
     const source = sourcePages.find((item) => item.page === placement.page);
     return {
@@ -161,6 +162,11 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const changeGeneration = useRef(0);
+  const saveInFlight = useRef<Promise<boolean> | null>(null);
+  const placementsRef = useRef(placements);
+  const notesRef = useRef(notes);
+  placementsRef.current = placements;
+  notesRef.current = notes;
   const selected = placements.find((item) => item.id === selectedId) ?? null;
   const selectedNote = notes.find((item) => item.editorId === selectedId) ?? null;
   const normalizedSearch = catalogSearch.trim().toLocaleLowerCase();
@@ -176,54 +182,75 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
 
   const onMetadata = useCallback((count: number, draftVersion: number) => {
     if (count > 0) setPageCount(count);
-    if (!initialDraft) setVersion((current) => Math.max(current, draftVersion));
+    if (!initialDraft) setVersion((current) => {
+      const next = Math.max(current, draftVersion);
+      versionRef.current = next;
+      return next;
+    });
     setMessage((current) => current === "Preparando los PDFs fuente…" ? "Tocá cualquier página para colocar el código seleccionado." : current);
   }, [initialDraft]);
 
   const change = useCallback((next: PdfCodePlacement[]) => {
+    if (submitting) return;
     changeGeneration.current += 1; setPlacements(next); setDirty(true); setMessage("Cambios sin guardar…");
-  }, []);
+  }, [submitting]);
 
   const changeNotes = useCallback((next: EditorNote[]) => {
+    if (submitting) return;
     changeGeneration.current += 1; setNotes(next); setDirty(true); setMessage("Cambios sin guardar…");
-  }, []);
+  }, [submitting]);
 
-  const save = useCallback(async (current: PdfCodePlacement[], currentNotes: EditorNote[]) => {
-    if (saving) return false;
-    const validation = validatePlacements(current, pageCount);
-    if (validation) { setMessage(validation); return false; }
-    const invalidQuantity = current.find((placement) => {
-      const unit = catalog.find((item) => item.id === placement.catalogId)?.unit;
-      return (unit === "fixed" || unit === "event") && !Number.isInteger(placement.quantity);
+  const save = useCallback((current: PdfCodePlacement[], currentNotes: EditorNote[]) => {
+    if (saveInFlight.current) return saveInFlight.current;
+    const operation = (async () => {
+      try {
+        const validation = validatePlacements(current, pageCount);
+        if (validation) { setMessage(validation); return false; }
+        const invalidQuantity = current.find((placement) => {
+          const unit = catalog.find((item) => item.id === placement.catalogId)?.unit;
+          return (unit === "fixed" || unit === "event") && !Number.isInteger(placement.quantity);
+        });
+        if (invalidQuantity) { setMessage("Los códigos de cantidad fija o evento requieren un entero mayor que cero."); return false; }
+        const generation = changeGeneration.current;
+        setSaving(true); setMessage("Guardando borrador…");
+        const sourceDocuments = [...new Set(sourcePages.map((source) => source.documentId))].map((id) => ({
+          id,
+          pageCount: Math.max(...sourcePages.filter((source) => source.documentId === id).map((source) => source.sourcePage)),
+        }));
+        const persistedNotes = currentNotes.map((note) => ({
+          page: note.page, sourceDocumentId: note.sourceDocumentId, sourcePage: note.sourcePage,
+          text: note.text, x: note.x, y: note.y, width: note.width, height: note.height,
+          fontSizeRatio: note.fontSizeRatio,
+        }));
+        const noteValidation = validatePdfTextNotes(persistedNotes, sourceDocuments);
+        if (noteValidation) { setMessage("Hay una nota inválida. Revisá el texto y sus límites."); return false; }
+        const result = await saveJobPdfDraft({
+          jobId,
+          expectedVersion: versionRef.current,
+          pageCount,
+          placements: current,
+          textNotes: persistedNotes,
+          sourceDocuments,
+        });
+        setMessage(result.message);
+        if (!result.success) return false;
+        versionRef.current = result.data.version;
+        setVersion(result.data.version);
+        if (changeGeneration.current === generation) setDirty(false);
+        return true;
+      } catch {
+        setMessage("No se pudo guardar el borrador. Inténtalo nuevamente.");
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    })();
+    saveInFlight.current = operation;
+    void operation.then(() => {
+      if (saveInFlight.current === operation) saveInFlight.current = null;
     });
-    if (invalidQuantity) { setMessage("Los códigos de cantidad fija o evento requieren un entero mayor que cero."); return false; }
-    const generation = changeGeneration.current;
-    setSaving(true); setMessage("Guardando borrador…");
-    const sourceDocuments = [...new Set(sourcePages.map((source) => source.documentId))].map((id) => ({
-      id,
-      pageCount: Math.max(...sourcePages.filter((source) => source.documentId === id).map((source) => source.sourcePage)),
-    }));
-    const persistedNotes = currentNotes.map((note) => ({
-      page: note.page, sourceDocumentId: note.sourceDocumentId, sourcePage: note.sourcePage,
-      text: note.text, x: note.x, y: note.y, width: note.width, height: note.height,
-      fontSizeRatio: note.fontSizeRatio,
-    }));
-    const noteValidation = validatePdfTextNotes(persistedNotes, sourceDocuments);
-    if (noteValidation) { setSaving(false); setMessage("Hay una nota inválida. Revisá el texto y sus límites."); return false; }
-    const result = await saveJobPdfDraft({
-      jobId,
-      expectedVersion: version,
-      pageCount,
-      placements: current,
-      textNotes: persistedNotes,
-      sourceDocuments,
-    });
-    setSaving(false); setMessage(result.message);
-    if (!result.success) return false;
-    setVersion(result.data.version);
-    if (changeGeneration.current === generation) setDirty(false);
-    return true;
-  }, [catalog, jobId, pageCount, saving, sourcePages, version]);
+    return operation;
+  }, [catalog, jobId, pageCount, sourcePages]);
 
   useEffect(() => {
     if (!dirty || saving || submitting) return;
@@ -231,7 +258,18 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     return () => clearTimeout(timeout);
   }, [dirty, notes, placements, save, saving, submitting]);
 
+  const persistStableDraft = async () => {
+    const activeSave = saveInFlight.current;
+    if (activeSave && !await activeSave) return false;
+    for (;;) {
+      const generation = changeGeneration.current;
+      if (!await save(placementsRef.current, notesRef.current)) return false;
+      if (changeGeneration.current === generation) return true;
+    }
+  };
+
   const add = (page: number, x: number, y: number) => {
+    if (submitting) return;
     if (tool === "note") {
       const text = noteText.trim();
       if (!text) { setMessage("Escribí el texto de la nota antes de colocarla."); return; }
@@ -276,6 +314,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     change(next); setSelectedId(item.id);
   };
   const update = (id: string, patch: Partial<PdfCodePlacement>) => {
+    if (submitting) return;
     const current = placements.find((item) => item.id === id); if (!current) return;
     const next = placements.map((item) => item.id === id ? clampPlacement({ ...current, ...patch }) : item);
     const error = validatePlacements(next, pageCount); if (error) { setMessage(error); return; }
@@ -294,7 +333,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       return;
     }
     setSubmitting(true);
-    if (dirty && !await save(placements, notes)) { setSubmitting(false); return; }
+    if (!await persistStableDraft()) { setSubmitting(false); return; }
     setMessage("Generando y enviando el PDF final…");
     const response = await fetch(`/api/trabajos/${jobId}/pdf-entregado`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
       submit: true,
@@ -305,8 +344,13 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     setMessage(result.message || "No se pudo entregar el trabajo."); setSubmitting(false);
     if (response.ok) router.replace(`/trabajos/${jobId}`);
   };
+  const saveAndContinueLater = async () => {
+    setSubmitting(true);
+    if (!await persistStableDraft()) { setSubmitting(false); return; }
+    router.replace(`/trabajos/${jobId}`);
+  };
 
-  return <main className="min-h-screen bg-white px-3 pb-[28rem] pt-4 text-black sm:px-6 sm:pb-80">
+  return <main inert={submitting} aria-busy={submitting} className="min-h-screen bg-white px-3 pb-[28rem] pt-4 text-black sm:px-6 sm:pb-80">
     <header className="mx-auto mb-5 max-w-5xl"><p className="text-sm font-semibold uppercase tracking-widest">Entrega del trabajo</p><h1 className="text-2xl font-bold sm:text-3xl">Marcá los códigos sobre el PDF</h1><p className="mt-2 text-sm text-black/80">El original permanece intacto. Todas las páginas están en orden y se cargan al acercarte.</p></header>
     <div className="grid gap-8">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={setSelectedId} onSelectNote={setSelectedId} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
       const item = placements.find((entry) => entry.id === id); if (!item) return;
@@ -339,7 +383,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       {selectedNote && <div className="flex items-center justify-between gap-3 text-sm"><span>Nota · pág. {selectedNote.page}. Arrastrá para mover; usá la esquina azul para redimensionar.</span><button type="button" onClick={() => { changeNotes(notes.filter((note) => note.editorId !== selectedNote.editorId)); setSelectedId(null); }} className="min-h-10 border border-black px-3 font-bold">Eliminar nota</button></div>}
       {selected && <div className="grid gap-3 sm:grid-cols-[9rem_1fr_auto]"><label className="grid gap-1 text-sm font-bold">Cantidad seleccionada<input aria-label="Cantidad del código seleccionado" inputMode="decimal" type="number" min="0.01" step="0.01" value={selected.quantity || ""} onChange={(event) => update(selected.id, { quantity: Number(event.target.value) })} className="min-h-11 rounded-lg border border-black bg-white p-2" /></label><label className="flex items-center gap-2 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label><span className="self-center text-xs">Pág. {selected.page}</span></div>}
       <p role="status" aria-live="polite" className="min-h-5 text-sm">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
-      <div className="grid grid-cols-2 gap-2"><Link href={`/trabajos/${jobId}`} className="flex min-h-12 items-center justify-center border border-black font-bold">Cancelar / Volver</Link><button type="button" disabled={saving || submitting || !priceCategoryName || hasUnratedPlacement} onClick={() => void confirm()} className="min-h-12 bg-black px-3 font-bold text-white disabled:opacity-50">{submitting ? "Enviando…" : "Confirmar y enviar"}</button></div>
+      <div className="grid gap-2 sm:grid-cols-3"><Link href={`/trabajos/${jobId}`} className="flex min-h-12 items-center justify-center border border-black font-bold">Cancelar / Volver</Link><button type="button" disabled={submitting} onClick={() => void saveAndContinueLater()} className="min-h-12 border border-black px-3 font-bold disabled:opacity-50">{saving ? "Guardando…" : "Guardar y continuar después"}</button><button type="button" disabled={saving || submitting || !priceCategoryName || hasUnratedPlacement} onClick={() => void confirm()} className="min-h-12 bg-black px-3 font-bold text-white disabled:opacity-50">{submitting ? "Enviando…" : "Confirmar y enviar"}</button></div>
     </div></div>
   </main>;
 }

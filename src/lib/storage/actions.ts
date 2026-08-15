@@ -119,6 +119,62 @@ export async function prepareJobDocumentUpload(input: {
   };
 }
 
+export async function prepareJobOriginalReplacementUpload(input: {
+  jobId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  fileHash: string;
+}): Promise<Result<{ documentId: string; path: string; token: string; signedUrl: string }>> {
+  await requireAdmin();
+  if (!validJobDocumentMetadata(input) || !/^[a-f0-9]{64}$/u.test(input.fileHash)) {
+    return { success: false, message: "El PDF no es válido o supera 25 MB." };
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("prepare_job_original_replacement", {
+    p_job_id: input.jobId,
+    p_display_name: input.fileName.trim(),
+    p_mime_type: input.mimeType,
+    p_size_bytes: input.size,
+    p_file_hash: input.fileHash,
+  });
+  const prepared = data?.[0];
+  if (error || !prepared) return { success: false, message: "No se pudo preparar el nuevo PDF original." };
+  const signed = await supabase.storage.from("project-files").createSignedUploadUrl(prepared.storage_path);
+  if (signed.error || !signed.data) {
+    await supabase.rpc("discard_job_original_replacement", { p_document_id: prepared.document_id });
+    return { success: false, message: "No se pudo autorizar la carga del nuevo PDF original." };
+  }
+  return {
+    success: true,
+    message: "Carga preparada.",
+    data: {
+      documentId: prepared.document_id,
+      path: prepared.storage_path,
+      token: signed.data.token,
+      signedUrl: signed.data.signedUrl,
+    },
+  };
+}
+
+export async function discardJobOriginalReplacementUpload(input: {
+  documentId: string;
+  jobId: string;
+}): Promise<Result<null>> {
+  await requireAdmin();
+  if (!uuidPattern.test(input.documentId) || !uuidPattern.test(input.jobId)) {
+    return { success: false, message: "El reemplazo no es válido." };
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("discard_job_original_replacement", {
+    p_document_id: input.documentId,
+  });
+  if (error) return { success: false, message: "No se pudo descartar el reemplazo." };
+  await cleanupJobDeletionQueue(supabase, (data ?? []) as JobDeletionCleanupRow[]);
+  revalidatePath(`/trabajos/${input.jobId}`);
+  return { success: true, message: "Carga descartada.", data: null };
+}
+
 export async function deleteJobDocument(input: { documentId: string; jobId: string }): Promise<Result<null>> {
   await requireAdmin();
   const validId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;

@@ -1,0 +1,68 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const migration = read("../supabase/migrations/20260814010000_replace_job_original_pdf.sql");
+const actions = read("../src/lib/storage/actions.ts");
+const documents = read("../src/components/jobs/job-documents.tsx");
+const confirmation = read("../app/api/trabajos/[id]/documentos/[documentId]/confirmar/route.ts");
+const editor = read("../src/components/jobs/pdf-code-editor.tsx");
+const technicianActions = read("../src/components/jobs/technician-actions.tsx");
+const deliveryPage = read("../app/trabajos/[id]/entregar/page.tsx");
+const runtime = read("./verify-pdf-code-editor-runtime.mjs");
+
+assert.match(migration, /create unique index job_documents_job_position_idx[\s\S]*where status = 'active' and deleted_at is null/u);
+assert.match(migration, /create unique index job_documents_one_original_idx[\s\S]*document_type = 'original' and status = 'active' and deleted_at is null/u);
+assert.match(migration, /create or replace function public\.prepare_job_original_replacement/u);
+assert.match(migration, /new_id uuid := gen_random_uuid\(\)/u);
+assert.match(migration, /\/originals\/.*new_id::text/u);
+assert.match(migration, /selected_job\.project_pdf_url is not null/u);
+assert.match(migration, /pending public\.job_documents%rowtype/u);
+assert.match(migration, /set deleted_at = clock_timestamp\(\), deleted_by = actor[\s\S]*where id = pending\.id/u);
+assert.match(migration, /job_deletion_cleanup_queue[\s\S]*pending\.storage_path/u);
+assert.match(migration, /document_type, position,[\s\S]*'original', 0/u);
+assert.match(migration, /create or replace function public\.confirm_job_original_replacement/u);
+const confirmStart = migration.indexOf("create or replace function public.confirm_job_original_replacement");
+const confirmEnd = migration.indexOf("create or replace function public.discard_job_original_replacement", confirmStart);
+const confirmBody = migration.slice(confirmStart, confirmEnd);
+assert.ok(confirmBody.indexOf("pg_advisory_xact_lock") < confirmBody.indexOf("for update"), "confirmation takes the job advisory lock before row locks");
+assert.match(migration, /stored_mime <> 'application\/pdf' or stored_size <> document\.size_bytes/u);
+assert.match(migration, /p_file_hash is distinct from document\.file_hash/u);
+assert.match(migration, /set deleted_at = clock_timestamp\(\), deleted_by = actor[\s\S]*id <> document\.id/u);
+assert.match(migration, /set status = 'active'.*verification_status = 'pdf_verified'/su);
+assert.match(migration, /set project_pdf_url = document\.storage_path/u);
+assert.match(migration, /source_document_ids = manifest_ids/u);
+assert.match(migration, /placements = '\[\]'::jsonb/u);
+assert.match(migration, /text_notes = '\[\]'::jsonb/u);
+assert.match(migration, /if document\.status = 'active' or document\.deleted_at is not null then return; end if/u);
+assert.doesNotMatch(migration, /update public\.job_documents[\s\S]*document_type = 'additional'[\s\S]*set position/iu);
+
+assert.match(actions, /prepareJobOriginalReplacementUpload/u);
+assert.match(actions, /prepare_job_original_replacement/u);
+assert.match(actions, /discardJobOriginalReplacementUpload/u);
+assert.match(documents, /Subir nuevo PDF original/u);
+assert.match(documents, /crypto\.subtle\.digest\("SHA-256"/u);
+assert.match(documents, /uploadToSignedUrl/u);
+assert.match(documents, /prepareJobOriginalReplacementUpload/u);
+assert.match(documents, /try \{[\s\S]*discardJobOriginalReplacementUpload/u);
+assert.match(documents, /idempotent discard[\s\S]*active original untouched/u);
+assert.match(confirmation, /inspectPdfDocument/u);
+assert.match(confirmation, /createHash\("sha256"\)/u);
+assert.match(confirmation, /confirm_job_original_replacement/u);
+assert.match(confirmation, /document\.document_type === "original"/u);
+
+assert.match(editor, /Guardar y continuar después/u);
+assert.match(editor, /const activeSave = saveInFlight\.current/u);
+assert.match(editor, /expectedVersion: versionRef\.current/u);
+assert.match(editor, /versionRef\.current = result\.data\.version/u);
+assert.match(editor, /for \(;;\)[\s\S]*changeGeneration\.current === generation/u);
+assert.match(editor, /inert=\{submitting\}/u);
+assert.match(editor, /await save\(placementsRef\.current, notesRef\.current\)/u);
+assert.match(editor, /router\.replace\(`\/trabajos\/\$\{jobId\}`\)/u);
+assert.match(technicianActions, /Abrir o continuar la entrega/u);
+assert.match(deliveryPage, /main_status !== "en_progreso"/u);
+assert.match(runtime, /page 1 contains only the red original-source marker/u);
+assert.match(runtime, /page 2 contains only the blue additional-source marker/u);
+assert.doesNotMatch(runtime, /createHash|originalHash|additionalHash/u);
+
+console.log("PASS original PDF replacement and resumable editor static checks");

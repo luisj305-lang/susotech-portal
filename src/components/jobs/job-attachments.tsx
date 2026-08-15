@@ -115,7 +115,7 @@ export function JobAttachments({
 
   return <section className="rounded-2xl border border-black bg-white p-5 text-black shadow-lg">
     <h2 className="text-xl font-bold">Adjuntos PDF</h2>
-    <p className="mt-1 text-sm text-black">Documentos adicionales; no reemplazan el PDF original ni el entregado.</p>
+    <p className="mt-1 text-sm text-black">Documentos adicionales; se concatenan en este orden después del original dentro del único PDF final.</p>
     {documents.length ? <ul className="mt-4 grid gap-3">{documents.map((document) => <li key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-black p-3">
       <div><p className="font-semibold">{document.position}. {document.display_name}</p><p className="text-sm">{(document.size_bytes / 1024 / 1024).toFixed(2)} MB · {document.page_count ?? "?"} página(s)</p></div>
       <div className="flex gap-2"><button type="button" disabled={pending} onClick={() => open(document.storage_path)} className="min-h-11 rounded-lg border border-black px-4 font-semibold disabled:opacity-60">Ver PDF</button>{canManage && <button type="button" disabled={pending} onClick={() => remove(document)} className="min-h-11 rounded-lg border border-black px-4 font-semibold disabled:opacity-60">Eliminar</button>}</div>

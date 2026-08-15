@@ -27,10 +27,12 @@ export async function POST(
 
   const service = createServiceClient();
   const { data: document, error: documentError } = await service.from("job_documents")
-    .select("storage_path,file_hash,size_bytes")
-    .eq("id", documentId).eq("job_id", jobId).eq("document_type", "additional")
+    .select("storage_path,file_hash,size_bytes,document_type,status")
+    .eq("id", documentId).eq("job_id", jobId)
     .is("deleted_at", null).maybeSingle();
-  if (documentError || !document?.file_hash) return json("No se pudo consultar el adjunto.", 404);
+  if (documentError || !document?.file_hash
+    || !["original", "additional"].includes(document.document_type)
+    || document.status !== "pending") return json("No se pudo consultar el PDF preparado.", 404);
   const downloaded = await service.storage.from("project-files").download(document.storage_path);
   if (downloaded.error || !downloaded.data) return json("No se pudo verificar el PDF privado.", 409);
   const bytes = new Uint8Array(await downloaded.data.arrayBuffer());
@@ -44,9 +46,22 @@ export async function POST(
   } catch {
     return json("PDFium no pudo validar el documento.", 422);
   }
-  const { error } = await supabase.rpc("confirm_job_document_verified", {
-    p_document_id: documentId, p_file_hash: hash, p_page_count: pageCount,
-  });
-  if (error) return json("No se pudo confirmar el adjunto.", 409);
-  return json("Adjunto añadido.", 200, true);
+  const confirmation = document.document_type === "original"
+    ? await supabase.rpc("confirm_job_original_replacement", {
+      p_document_id: documentId, p_file_hash: hash, p_page_count: pageCount,
+    })
+    : await supabase.rpc("confirm_job_document_verified", {
+      p_document_id: documentId, p_file_hash: hash, p_page_count: pageCount,
+    });
+  if (confirmation.error) return json(
+    document.document_type === "original"
+      ? "No se pudo confirmar el nuevo PDF original."
+      : "No se pudo confirmar el adjunto.",
+    409,
+  );
+  return json(
+    document.document_type === "original" ? "PDF original reemplazado." : "Adjunto añadido.",
+    200,
+    true,
+  );
 }
