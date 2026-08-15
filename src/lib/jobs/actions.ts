@@ -382,6 +382,8 @@ export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: n
   });
   if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
     ? ACTIVE_SHIFT_REQUIRED_MESSAGE
+    : error.message.includes("PDF source manifest changed")
+      ? "El administrador cambió los PDFs del trabajo. Recarga el editor para verlos todos unidos."
     : error.message.includes("version conflict")
       ? "El borrador cambió en otro dispositivo. Recarga antes de guardar."
       : "No se pudo guardar el borrador.");
@@ -420,7 +422,10 @@ export async function addPhotoComment(input: { jobId: string; storagePath?: stri
 }
 
 export async function deleteJobPhoto(input: { jobId: string; photoId: string }): Promise<Result> {
-  await requireAdmin();
+  const profile = await requireProfile();
+  if (profile.role !== "admin" && !isOperationalFieldWorker(profile)) {
+    return failure(READ_ONLY_HELPER_MESSAGE);
+  }
   if (!validId(input.jobId) || !validId(input.photoId)) return failure("La fotografía no es válida.");
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("delete_job_photo_audited", {

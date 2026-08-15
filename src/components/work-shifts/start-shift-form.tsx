@@ -112,11 +112,11 @@ export function StartShiftForm() {
     <section className="grid gap-6 rounded-3xl border border-black/20 bg-white p-5 shadow-2xl sm:p-7">
       <div>
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/60">
-          Paso obligatorio
+          Registro de jornada
         </p>
         <h1 className="mt-2 text-3xl font-bold">Iniciar jornada</h1>
         <p className="mt-2 text-sm leading-6 text-black/70">
-          Tu acceso a los trabajos estará activo durante 10 horas desde este momento.
+          Registra tu jornada y la información de gasolina de hoy.
         </p>
       </div>
 
@@ -219,7 +219,7 @@ export function StartShiftForm() {
         onClick={submit}
         className="min-h-16 rounded-2xl bg-black px-5 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {pending ? "Procesando…" : "Iniciar jornada de 10 horas"}
+        {pending ? "Procesando…" : "Empezar jornada"}
       </button>
       <p role="status" aria-live="polite" className="min-h-6 text-sm text-black/80">
         {message}

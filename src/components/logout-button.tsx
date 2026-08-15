@@ -7,6 +7,10 @@ export function LogoutButton() {
   const router = useRouter();
 
   const handleLogout = async () => {
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith("technician-shift-prompt:")) sessionStorage.removeItem(key);
+    }
     await supabase.auth.signOut();
     router.replace("/login");
     router.refresh();

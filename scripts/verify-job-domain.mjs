@@ -108,10 +108,10 @@ const technicianUiContracts = [
   ["../app/trabajos/page.tsx", [/profile\.role === "tecnico"/u, /listTechnicianJobs/u, /<JobList/u]],
   ["../app/trabajos/[id]/page.tsx", [/profile\.role === "tecnico"/u, /getTechnicianJob/u, /<TechnicianActions/u, /<JobAttachments/u, /<PhotoUpload/u, /Producción histórica/u]],
   ["../src/components/jobs/job-list.tsx", [/min-h-40/u, /jobs\.map/u, /No tienes trabajos asignados/u]],
-  ["../src/components/jobs/technician-actions.tsx", [/^"use client";/u, /transitionJob/u, /setIncident/u, /\/trabajos\/\$\{jobId\}\/entregar/u, /Entregar trabajo/u, /min-h-14/u]],
+  ["../src/components/jobs/technician-actions.tsx", [/^"use client";/u, /transitionJob/u, /setIncident/u, /\/trabajos\/\$\{jobId\}\/entregar/u, /Abrir o continuar la entrega/u, /enviado_revision/u, /min-h-14/u]],
   ["../src/components/jobs/job-documents.tsx", [/^"use client";/u, /createSignedDownloadUrl/u, /Ver PDF original/u, /Ver PDF entregado/u]],
   ["../src/components/jobs/photo-upload.tsx", [/^"use client";/u, /createPhotoUploadUrl/u, /uploadToSignedUrl/u, /addPhotoComment/u, /capture="environment"/u]],
-  ["../src/components/jobs/pdf-code-editor.tsx", [/^"use client";/u, /quantity/u, /arrowTipX/u, /Confirmar y enviar/u]],
+  ["../src/components/jobs/pdf-code-editor.tsx", [/^"use client";/u, /quantity/u, /arrowTipX/u, /Confirmar PDF/u, /Distribución financiera/u, /Entregar trabajo/u]],
 ];
 let technicianContractCount = 0;
 for (const [path, patterns] of technicianUiContracts) {

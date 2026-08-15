@@ -151,9 +151,9 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   }));
   const [notes, setNotes] = useState<EditorNote[]>(() => (initialDraft?.text_notes ?? []).map((note) => ({ ...note, editorId: crypto.randomUUID() })));
   const [tool, setTool] = useState<"code" | "note">("code");
+  const [stage, setStage] = useState<"edit" | "allocation">("edit");
   const [noteText, setNoteText] = useState("");
   const [selectedCatalogId, setSelectedCatalogId] = useState(catalog[0]?.id ?? "");
-  const [catalogSearch, setCatalogSearch] = useState("");
   const [newQuantity, setNewQuantity] = useState("1");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const hasLegacyPlacements = placements.some((placement) => placement.quantity <= 0);
@@ -169,14 +169,6 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   notesRef.current = notes;
   const selected = placements.find((item) => item.id === selectedId) ?? null;
   const selectedNote = notes.find((item) => item.editorId === selectedId) ?? null;
-  const normalizedSearch = catalogSearch.trim().toLocaleLowerCase();
-  const matchingCatalog = normalizedSearch
-    ? catalog.filter((item) => `${item.code} ${item.description}`.toLocaleLowerCase().includes(normalizedSearch))
-    : catalog;
-  const selectedCatalog = catalog.find((item) => item.id === selectedCatalogId);
-  const filteredCatalog = selectedCatalog && !matchingCatalog.some((item) => item.id === selectedCatalog.id)
-    ? [selectedCatalog, ...matchingCatalog]
-    : matchingCatalog;
   const priceCategoryName = catalog.find((item) => item.price_category_name)?.price_category_name ?? null;
   const hasUnratedPlacement = placements.some((placement) => catalog.find((item) => item.id === placement.catalogId)?.unit_rate == null);
 
@@ -344,13 +336,20 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     setMessage(result.message || "No se pudo entregar el trabajo."); setSubmitting(false);
     if (response.ok) router.replace(`/trabajos/${jobId}`);
   };
+  const confirmPdf = async () => {
+    setSubmitting(true);
+    if (!await persistStableDraft()) { setSubmitting(false); return; }
+    setSubmitting(false);
+    setStage("allocation");
+    setMessage("PDF confirmado. Completa la distribución financiera para entregar.");
+  };
   const saveAndContinueLater = async () => {
     setSubmitting(true);
     if (!await persistStableDraft()) { setSubmitting(false); return; }
     router.replace(`/trabajos/${jobId}`);
   };
 
-  return <main inert={submitting} aria-busy={submitting} className="min-h-screen bg-white px-3 pb-[28rem] pt-4 text-black sm:px-6 sm:pb-80">
+  return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-black sm:px-6 ${stage === "edit" ? "pb-64 sm:pb-52" : "pb-[28rem] sm:pb-80"}`}>
     <header className="mx-auto mb-5 max-w-5xl"><p className="text-sm font-semibold uppercase tracking-widest">Entrega del trabajo</p><h1 className="text-2xl font-bold sm:text-3xl">Marcá los códigos sobre el PDF</h1><p className="mt-2 text-sm text-black/80">El original permanece intacto. Todas las páginas están en orden y se cargan al acercarte.</p></header>
     <div className="grid gap-8">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={setSelectedId} onSelectNote={setSelectedId} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
       const item = placements.find((entry) => entry.id === id); if (!item) return;
@@ -358,12 +357,19 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       const dy = Math.min(1 - item.y - item.height, 1 - item.arrowTipY, Math.max(-item.y, -item.arrowTipY, requestedDy));
       update(id, { x: item.x + dx, y: item.y + dy, arrowTipX: item.arrowTipX + dx, arrowTipY: item.arrowTipY + dy });
     }} onMoveArrow={(id, x, y) => update(id, { arrowTipX: x, arrowTipY: y })} />)}</div>
-    <div className="fixed inset-x-0 bottom-0 z-50 overflow-x-hidden border-t border-black/30 bg-white/95 p-3 shadow-2xl backdrop-blur sm:p-4"><div className="mx-auto grid w-full min-w-0 max-w-5xl gap-3">
+    <div className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto overflow-x-hidden border-t border-black/30 bg-white/95 p-3 shadow-2xl backdrop-blur sm:p-4"><div className="mx-auto grid w-full min-w-0 max-w-5xl gap-3">
+      {stage === "edit" ? <>
       <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => { setTool("code"); setSelectedId(null); }} className={`min-h-11 border px-3 font-bold ${tool === "code" ? "border-black bg-black text-white" : "border-black bg-white text-black"}`}>Código</button><button type="button" onClick={() => { setTool("note"); setSelectedId(null); }} className={`min-h-11 border px-3 font-bold ${tool === "note" ? "border-black bg-black text-white" : "border-black bg-white text-black"}`}>Nota de texto</button></div>
       {tool === "note" && <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={selectedNote?.text ?? noteText} onChange={(event) => selectedNote ? changeNotes(notes.map((note) => note.editorId === selectedNote.editorId ? { ...note, text: event.target.value } : note)) : setNoteText(event.target.value)} rows={3} maxLength={2000} placeholder="Escribí hasta 20 líneas y tocá el PDF para colocarla" className="rounded-lg border border-black bg-white p-2" /></label>}
-      <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]"><div className="grid min-w-0 gap-1"><label htmlFor="catalog-search" className="text-sm font-bold">Buscar código o descripción</label><input id="catalog-search" type="search" value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Ej. AS18 o ground rod" className="min-h-11 min-w-0 rounded-lg border border-black bg-white p-2" /><label className="grid min-w-0 gap-1 text-sm font-bold">Código<select aria-label="Código para colocar" value={selectedCatalogId} onChange={(event) => setSelectedCatalogId(event.target.value)} style={{ borderColor: codeColor(catalog.find((item) => item.id === selectedCatalogId)?.code ?? selectedCatalogId) }} className="min-h-12 w-full min-w-0 rounded-lg border-4 bg-white p-2"><option value="">Selecciona un código</option>{filteredCatalog.map((item) => <option key={item.id} value={item.id} style={{ color: codeColor(item.code) }}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select></label></div><label className="grid min-w-0 content-end gap-1 text-sm font-bold">Cantidad<input aria-label="Cantidad para el nuevo código" inputMode="decimal" type="number" min="0.01" step="0.01" value={newQuantity} onChange={(event) => setNewQuantity(event.target.value)} className="min-h-12 min-w-0 rounded-lg border border-black bg-white p-2" /></label>{selected && <button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} className="self-end min-h-12 border border-black px-3 font-bold">Eliminar</button>}</div>
+      <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]"><label className="grid min-w-0 gap-1 text-sm font-bold">Código<select aria-label="Código para colocar" value={selectedCatalogId} onChange={(event) => setSelectedCatalogId(event.target.value)} style={{ borderColor: codeColor(catalog.find((item) => item.id === selectedCatalogId)?.code ?? selectedCatalogId) }} className="min-h-12 w-full min-w-0 rounded-lg border-4 bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id} style={{ color: codeColor(item.code) }}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select></label><label className="grid min-w-0 content-end gap-1 text-sm font-bold">Cantidad<input aria-label="Cantidad para el nuevo código" inputMode="decimal" type="number" min="0.01" step="0.01" value={newQuantity} onChange={(event) => setNewQuantity(event.target.value)} className="min-h-12 min-w-0 rounded-lg border border-black bg-white p-2" /></label>{selected && <button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} className="self-end min-h-12 border border-black px-3 font-bold">Eliminar</button>}</div>
+      {selectedNote && <div className="flex items-center justify-between gap-3 text-sm"><span>Nota · pág. {selectedNote.page}. Arrastrá para mover; usá la esquina azul para redimensionar.</span><button type="button" onClick={() => { changeNotes(notes.filter((note) => note.editorId !== selectedNote.editorId)); setSelectedId(null); }} className="min-h-10 border border-black px-3 font-bold">Eliminar nota</button></div>}
+      {selected && <div className="grid gap-3 sm:grid-cols-[9rem_1fr_auto]"><label className="grid gap-1 text-sm font-bold">Cantidad seleccionada<input aria-label="Cantidad del código seleccionado" inputMode="decimal" type="number" min="0.01" step="0.01" value={selected.quantity || ""} onChange={(event) => update(selected.id, { quantity: Number(event.target.value) })} className="min-h-11 rounded-lg border border-black bg-white p-2" /></label><label className="flex items-center gap-2 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label><span className="self-center text-xs">Pág. {selected.page}</span></div>}
+      <p role="status" aria-live="polite" className="min-h-5 text-sm">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
+      <div className="grid gap-2 sm:grid-cols-3"><Link href={`/trabajos/${jobId}`} className="flex min-h-12 items-center justify-center border border-black font-bold">Cancelar / Volver</Link><button type="button" disabled={submitting} onClick={() => void saveAndContinueLater()} className="min-h-12 border border-black px-3 font-bold disabled:opacity-50">{saving ? "Guardando…" : "Guardar y continuar después"}</button><button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} className="min-h-12 bg-black px-3 font-bold text-white disabled:opacity-50">{submitting ? "Confirmando…" : "Confirmar PDF"}</button></div>
+      </> : <>
+      <h2 className="text-lg font-bold">Distribución financiera</h2>
       <p className="text-xs text-black/80">Categoría aplicable: {priceCategoryName ?? "Sin categoría"}</p>
-      <details className="max-h-48 overflow-auto border border-black/40 p-2">
+      <details open className="max-h-48 overflow-auto border border-black/40 p-2">
         <summary className="cursor-pointer text-sm font-bold">Distribución financiera ({allocations.reduce((sum, item) => sum + (Number(item.percentage) || 0), 0).toFixed(2)}%)</summary>
         <div className="mt-2 grid gap-2">
           {participants.map((participant) => {
@@ -380,10 +386,9 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       </details>
       {!priceCategoryName && <p role="alert" className="border border-black bg-white p-2 text-sm font-bold text-black">Tu categoría de precio no está configurada. Contacta a un administrador antes de entregar.</p>}
       {hasUnratedPlacement && <p role="alert" className="border border-black bg-white p-2 text-sm font-bold text-black">El borrador contiene un código sin tarifa configurada para tu categoría.</p>}
-      {selectedNote && <div className="flex items-center justify-between gap-3 text-sm"><span>Nota · pág. {selectedNote.page}. Arrastrá para mover; usá la esquina azul para redimensionar.</span><button type="button" onClick={() => { changeNotes(notes.filter((note) => note.editorId !== selectedNote.editorId)); setSelectedId(null); }} className="min-h-10 border border-black px-3 font-bold">Eliminar nota</button></div>}
-      {selected && <div className="grid gap-3 sm:grid-cols-[9rem_1fr_auto]"><label className="grid gap-1 text-sm font-bold">Cantidad seleccionada<input aria-label="Cantidad del código seleccionado" inputMode="decimal" type="number" min="0.01" step="0.01" value={selected.quantity || ""} onChange={(event) => update(selected.id, { quantity: Number(event.target.value) })} className="min-h-11 rounded-lg border border-black bg-white p-2" /></label><label className="flex items-center gap-2 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label><span className="self-center text-xs">Pág. {selected.page}</span></div>}
       <p role="status" aria-live="polite" className="min-h-5 text-sm">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
-      <div className="grid gap-2 sm:grid-cols-3"><Link href={`/trabajos/${jobId}`} className="flex min-h-12 items-center justify-center border border-black font-bold">Cancelar / Volver</Link><button type="button" disabled={submitting} onClick={() => void saveAndContinueLater()} className="min-h-12 border border-black px-3 font-bold disabled:opacity-50">{saving ? "Guardando…" : "Guardar y continuar después"}</button><button type="button" disabled={saving || submitting || !priceCategoryName || hasUnratedPlacement} onClick={() => void confirm()} className="min-h-12 bg-black px-3 font-bold text-white disabled:opacity-50">{submitting ? "Enviando…" : "Confirmar y enviar"}</button></div>
+      <div className="grid gap-2 sm:grid-cols-2"><button type="button" disabled={submitting} onClick={() => setStage("edit")} className="min-h-12 border border-black font-bold">Volver a editar el PDF</button><button type="button" disabled={submitting || !priceCategoryName || hasUnratedPlacement} onClick={() => void confirm()} className="min-h-12 bg-black px-3 font-bold text-white disabled:opacity-50">{submitting ? "Enviando…" : "Entregar trabajo"}</button></div>
+      </>}
     </div></div>
   </main>;
 }

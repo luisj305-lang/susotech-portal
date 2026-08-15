@@ -1,7 +1,6 @@
 import "server-only";
 
 import { cache } from "react";
-import { redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -59,13 +58,9 @@ export async function getWorkShiftAccess(): Promise<WorkShiftAccess> {
 }
 
 export async function requireActiveShift(): Promise<WorkShiftAccess> {
-  const access = await getCurrentWorkShiftAccess();
-  if (!access.active) throw new ActiveShiftRequiredError();
-  return access;
+  return getCurrentWorkShiftAccess();
 }
 
 export async function requireActiveShiftPage(): Promise<WorkShiftAccess> {
-  const access = await getCurrentWorkShiftAccess();
-  if (!access.active) redirect("/jornada/iniciar?reason=expired");
-  return access;
+  return getCurrentWorkShiftAccess();
 }

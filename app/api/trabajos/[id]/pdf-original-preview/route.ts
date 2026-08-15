@@ -2,7 +2,6 @@ import { renderOriginalPdfPreview } from "@/lib/jobs/delivered-pdf";
 import { ensureVerifiedDocumentManifest } from "@/lib/jobs/document-manifest";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
-import { getWorkShiftAccessForActor } from "@/lib/work-shifts/access";
 import { ACTIVE_SHIFT_REQUIRED_MESSAGE } from "@/lib/work-shifts/types";
 import {
   isOperationalFieldWorker,
@@ -29,8 +28,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (profile.role === "tecnico" && !isOperationalFieldWorker(profile)) {
     return new Response(READ_ONLY_HELPER_MESSAGE, { status: 403 });
   }
-  const access = await getWorkShiftAccessForActor({ id: profile.id, role: profile.role }, supabase);
-  if (!access.active) return new Response(ACTIVE_SHIFT_REQUIRED_MESSAGE, { status: 403 });
   const { data: job, error: jobError } = await supabase.from("jobs").select("project_pdf_url").eq("id", id).maybeSingle();
   if (jobError) {
     return new Response(

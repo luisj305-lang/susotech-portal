@@ -7,7 +7,6 @@ import { codeColor, validatePlacements, type PdfCodePlacement } from "@/lib/jobs
 import { validatePdfTextNotes, type PdfTextNote } from "@/lib/jobs/pdf-text-note-core";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
-import { getWorkShiftAccessForActor } from "@/lib/work-shifts/access";
 import { ACTIVE_SHIFT_REQUIRED_MESSAGE } from "@/lib/work-shifts/types";
 import {
   isOperationalFieldWorker,
@@ -81,9 +80,6 @@ export async function POST(
     return json(READ_ONLY_HELPER_MESSAGE, 403);
   }
 
-  const shiftAccess = await getWorkShiftAccessForActor({ id: profile.id, role: profile.role }, supabase);
-  if (!shiftAccess.active) return json(ACTIVE_SHIFT_REQUIRED_MESSAGE, 403);
-
   const { data: job, error: jobError } = await supabase
     .from("jobs")
     .select("id, main_status, project_pdf_url, delivered_pdf_path")
@@ -95,8 +91,8 @@ export async function POST(
 
   const isTechnician = profile.role === "tecnico";
   const isAdmin = profile.role === "admin";
-  if (isTechnician && (!input.submit || job.main_status !== "en_progreso")) {
-    return json("Solo puedes entregar un trabajo en progreso.", 409);
+  if (isTechnician && (!input.submit || !["en_progreso", "enviado_revision"].includes(job.main_status))) {
+    return json("Solo puedes entregar un trabajo en progreso o en revisión.", 409);
   }
   if (isAdmin && (input.submit || !["en_progreso", "enviado_revision"].includes(job.main_status))) {
     return json("El PDF solo puede regenerarse mientras el trabajo sea editable.", 409);

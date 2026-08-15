@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const primitives = read("supabase/migrations/20260813010000_technician_shift_primitives.sql");
 const enforcement = read("supabase/migrations/20260813020000_enforce_active_technician_shifts.sql");
+const optionalShifts = read("supabase/migrations/20260814020000_make_technician_shifts_optional.sql");
 const fuelUploadFix = read("supabase/migrations/20260813021000_fix_shift_fuel_signed_upload.sql");
 const access = read("src/lib/work-shifts/access.ts");
 const types = read("src/lib/work-shifts/types.ts");
@@ -15,6 +16,9 @@ const jobActions = read("src/lib/jobs/actions.ts");
 const storageActions = read("src/lib/storage/actions.ts");
 const deliveredRoute = read("app/api/trabajos/[id]/pdf-entregado/route.ts");
 const previewRoute = read("app/api/trabajos/[id]/pdf-original-preview/route.ts");
+const dashboard = read("app/dashboard/page.tsx");
+const prompt = read("src/components/work-shifts/shift-start-prompt.tsx");
+const logout = read("src/components/logout-button.tsx");
 
 const exactMessage = "Tu jornada de trabajo terminó. Inicia una nueva jornada para continuar.";
 let checks = 0;
@@ -43,7 +47,7 @@ matches(fuelUploadFix, /file_size_limit = 10485760/u, "fuel bucket enforces the 
 matches(fuelUploadFix, /allowed_mime_types = array\['image\/jpeg', 'image\/png', 'image\/webp'\]::text\[\]/u, "fuel bucket enforces image MIME types");
 matches(fuelUploadFix, /storage\.foldername\(name\)\)\[1\] = auth\.uid\(\)::text/u, "signed fuel uploads stay inside the technician path");
 omits(fuelUploadFix, /metadata\s*->>/u, "signed-upload policy does not require unavailable object metadata");
-matches(storageActions, /new Date\(access\.shift!\.server_now\)[\s\S]*expiresIn = Math\.min\(expiresIn, remaining\)/u, "technician download TTL is bounded by database shift time");
+matches(storageActions, /if \(access\.shift\)[\s\S]*expiresIn = Math\.min\(expiresIn, remaining\)/u, "active shifts may still bound technician download TTL");
 matches(form, /const \[amount, setAmount\] = useState\(""\)/u, "fuel money remains a string in client state");
 matches(form, /moneyPattern[\s\S]*\\d\{1,2\}/u, "fuel input accepts at most two decimals");
 matches(form, /type="file"[\s\S]*capture="environment"/u, "shift form exposes the device camera");
@@ -58,6 +62,9 @@ matches(enforcement, new RegExp(exactMessage.replace(/[.*+?^${}()|[\]\\]/gu, "\\
 matches(enforcement, /if public\.is_office_staff\(check_user_id\) then return true; end if;/u, "office access bypasses technician shifts");
 matches(enforcement, /perform public\.require_active_technician_shift\(check_user_id\);/u, "job authorization requires an active shift");
 matches(enforcement, /public\.has_active_technician_shift\(\)[\s\S]*assignee_type = 'technician'[\s\S]*public\.can_access_crew/u, "assignment RLS covers individual and crew assignments");
+matches(optionalShifts, /create or replace function public\.require_active_technician_shift[\s\S]*p\.is_active[\s\S]*end;/u, "optional-shift compatibility hook only requires an active profile");
+omits(optionalShifts, /has_active_technician_shift\(\)/u, "current assignment access no longer depends on a shift");
+matches(optionalShifts, /create policy "Technicians can view their assignments"[\s\S]*assignee_type = 'technician'[\s\S]*public\.can_access_crew/u, "optional-shift assignment policy preserves assignment scope");
 
 for (const trigger of [
   "guard_active_shift_job_update_before_update",
@@ -88,9 +95,12 @@ checks += 1;
 matches(access, /get_my_active_shift/u, "server access helper reads the authoritative shift");
 matches(jobActions, /requireTechnicianShift/u, "job actions guard technician mutations");
 matches(storageActions, /requireTechnicianShift/u, "Storage actions guard technician operations");
-matches(deliveredRoute, /getWorkShiftAccessForActor/u, "delivered PDF route guards active shifts");
-matches(previewRoute, /getWorkShiftAccessForActor/u, "PDF preview route guards active shifts");
+omits(deliveredRoute, /getWorkShiftAccessForActor/u, "delivered PDF route permits assigned technicians off shift");
+omits(previewRoute, /getWorkShiftAccessForActor/u, "PDF preview route permits assigned technicians off shift");
 omits(proxy, /work-shifts|work_shift|jornada|get_my_active_shift|has_active_technician_shift/u, "Proxy performs no shift lookup");
 matches(editor, /if \(!response\.ok\) \{[\s\S]*await response\.text\(\)[\s\S]*throw new Error\(message/u, "editor propagates the preview 403 response body");
+matches(dashboard, /getWorkShiftAccess\(\)[\s\S]*ShiftStartPrompt/u, "dashboard presents the optional shift prompt");
+matches(prompt, /sessionStorage[\s\S]*Esta vez no estoy en jornada/u, "technician can dismiss the prompt for the current browser session");
+matches(logout, /technician-shift-prompt:[\s\S]*sessionStorage\.removeItem/u, "logout resets the optional shift prompt");
 
 console.log(`PASS work-shift static checks=${checks}`);

@@ -222,14 +222,13 @@ export async function createSignedDownloadUrl(input: {
   let expiresIn = 60;
   if (profile.role === "tecnico") {
     const access = await requireActiveShift();
-    const remaining = Math.floor(
-      (new Date(access.shift!.active_until).getTime()
-        - new Date(access.shift!.server_now).getTime()) / 1000,
-    ) - 2;
-    if (remaining < 1) {
-      return { success: false, message: ACTIVE_SHIFT_REQUIRED_MESSAGE };
+    if (access.shift) {
+      const remaining = Math.floor(
+        (new Date(access.shift.active_until).getTime()
+          - new Date(access.shift.server_now).getTime()) / 1000,
+      ) - 2;
+      if (remaining > 0) expiresIn = Math.min(expiresIn, remaining);
     }
-    expiresIn = Math.min(expiresIn, remaining);
   }
   return authorizeDownload(await createClient(), { ...input, expiresIn });
 }

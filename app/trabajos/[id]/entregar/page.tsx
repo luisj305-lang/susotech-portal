@@ -14,7 +14,7 @@ export default async function DeliverJobPage({ params }: { params: Promise<{ id:
   await requireActiveShiftPage();
   const { id } = await params;
   const detail = await getTechnicianJob(id);
-  if (!detail || detail.job.main_status !== "en_progreso" || detail.job.archived_at || !detail.job.project_pdf_url) notFound();
+  if (!detail || !["en_progreso", "enviado_revision"].includes(detail.job.main_status) || detail.job.archived_at || !detail.job.project_pdf_url) notFound();
   const sourceDocuments = await ensureVerifiedDocumentManifest(
     createServiceClient(), id, detail.job.project_pdf_url,
   );

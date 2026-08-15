@@ -30,12 +30,11 @@ export function WorkerOperationsTable({ rows }: { rows: WorkerOperationsRow[] })
       <p className="text-sm">{start && end ? `${dateTime.format(new Date(start))} — ${dateTime.format(new Date(new Date(end).getTime() - 1))}` : "Viernes — jueves · America/New_York"}</p>
     </div>
     <div className="overflow-x-auto">
-      <table className="min-w-[980px] w-full border-collapse text-left text-sm">
-        <thead><tr>{["Técnico", "Crew(s)", "Estado", "Inicio", "Finaliza", "Producción", "Distribución", "Trabajos", "Gasolina"].map((label) => <th key={label} className="border border-current p-3">{label}</th>)}</tr></thead>
+      <table className="min-w-[880px] w-full border-collapse text-left text-sm">
+        <thead><tr>{["Técnico", "Estado", "Inicio", "Finaliza", "Producción", "Distribución", "Trabajos", "Gasolina"].map((label) => <th key={label} className="border border-current p-3">{label}</th>)}</tr></thead>
         <tbody>
           {rows.map((row) => <tr key={row.technician_id}>
             <td className="border border-current p-3 font-semibold">{row.technician_name}</td>
-            <td className="border border-current p-3">{row.crew_names.join(", ") || "Sin crew"}</td>
             <td className="border border-current p-3"><strong>{row.is_shift_active ? "Activo" : "Inactivo"}</strong>{row.is_shift_active && row.shift_active_until && <span className="block text-xs">Activo hasta {time.format(new Date(row.shift_active_until))}</span>}</td>
             <td className="border border-current p-3">{row.shift_started_at ? dateTime.format(new Date(row.shift_started_at)) : "—"}</td>
             <td className="border border-current p-3">{row.shift_active_until ? dateTime.format(new Date(row.shift_active_until)) : "—"}</td>
