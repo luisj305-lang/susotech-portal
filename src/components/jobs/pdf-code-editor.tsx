@@ -14,9 +14,32 @@ import {
 import { movePdfTextNote, resizePdfTextNote, validatePdfTextNotes, type PdfTextNote } from "@/lib/jobs/pdf-text-note-core";
 import type { JobPdfDraft, ProductionCatalogOption } from "@/lib/jobs/types";
 import { Button, buttonClasses } from "@/components/ui/button";
+import { IconX } from "@/components/ui/icons";
 
 type SourcePage = { page: number; documentId: string; sourcePage: number };
 type EditorNote = PdfTextNote & { editorId: string };
+
+const NOTE_FONT_RATIO = 0.018;
+const NOTE_PAD_X = 0.01;
+const NOTE_PAD_Y = 0.006;
+const NOTE_LINE_EM = 1.2;
+
+function textWidthEm(text: string): number {
+  if (typeof document === "undefined") return Array.from(text).length * 0.62;
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return Array.from(text).length * 0.62;
+  context.font = "100px Arial, Helvetica, sans-serif";
+  return context.measureText(text).width / 100;
+}
+
+function measureNoteSize(text: string, fontSizeRatio: number): { width: number; height: number } {
+  const lines = text.split("\n");
+  const maxLineEm = Math.max(0, ...lines.map((line) => textWidthEm(line)));
+  const width = Math.min(0.8, Math.max(0.08, maxLineEm * fontSizeRatio + NOTE_PAD_X * 2));
+  const height = Math.min(0.6, Math.max(0.04, lines.length * NOTE_LINE_EM * fontSizeRatio + NOTE_PAD_Y * 2));
+  return { width, height };
+}
 
 type PageProps = {
   jobId: string;
@@ -98,8 +121,8 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
         {/* This authenticated blob URL cannot use the Next image optimizer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt={`PDF original, página ${page}`} className="block h-auto w-full" />
-        {notes.filter((note) => note.page === page).map((note) => <div key={note.editorId} role="button" tabIndex={0} aria-label={`Nota de texto en página ${page}`} onClick={(event) => { event.stopPropagation(); onSelectNote(note.editorId); }} onPointerDown={(event) => { event.stopPropagation(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${note.x * 100}%`, top: `${note.y * 100}%`, width: `${note.width * 100}%`, height: `${note.height * 100}%`, fontSize: `${note.fontSizeRatio * 100}cqw` }} className={`absolute z-[5] touch-none cursor-move overflow-hidden whitespace-pre-wrap border bg-white/85 p-1 text-ink ${selectedId === note.editorId ? "border-blue-700 ring-2 ring-blue-300" : "border-line-strong"}`}>
-          {note.text}<button type="button" aria-label="Redimensionar nota" onPointerDown={(event) => { event.stopPropagation(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-resize", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} className="absolute bottom-0 right-0 h-6 w-6 touch-none cursor-nwse-resize border-l border-t border-line bg-blue-600" />
+        {notes.filter((note) => note.page === page).map((note) => <div key={note.editorId} role="button" tabIndex={0} aria-label={`Nota de texto en página ${page}`} onClick={(event) => { event.stopPropagation(); onSelectNote(note.editorId); }} onPointerDown={(event) => { event.stopPropagation(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${note.x * 100}%`, top: `${note.y * 100}%`, width: `${note.width * 100}%`, height: `${note.height * 100}%`, fontSize: `${note.fontSizeRatio * 100}cqw` }} className={`absolute z-[5] touch-none cursor-move overflow-hidden whitespace-pre-wrap border bg-white p-1 text-ink ${selectedId === note.editorId ? "border-blue-700 ring-2 ring-blue-300" : "border-black"}`}>
+          {note.text}{selectedId === note.editorId && <button type="button" aria-label="Redimensionar nota" onPointerDown={(event) => { event.stopPropagation(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-resize", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} className="absolute bottom-0 right-0 h-6 w-6 touch-none cursor-nwse-resize border-l border-t border-line bg-blue-600" />}
         </div>)}
         <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
           <defs><marker id={`arrow-${page}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" /></marker></defs>
@@ -157,6 +180,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const [selectedCatalogId, setSelectedCatalogId] = useState(catalog[0]?.id ?? "");
   const [newQuantity, setNewQuantity] = useState("1");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const hasLegacyPlacements = placements.some((placement) => placement.quantity <= 0);
   const [message, setMessage] = useState(hasLegacyPlacements ? "Completa la cantidad de cada código antes de entregar." : "Preparando los PDFs fuente…");
   const [dirty, setDirty] = useState(hasLegacyPlacements);
@@ -268,15 +292,15 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       if (!text) { setMessage("Escribí el texto de la nota antes de colocarla."); return; }
       const source = sourcePages.find((item) => item.page === page);
       if (!source) { setMessage("No se pudo identificar la página fuente."); return; }
-      const width = 0.28; const height = 0.12;
+      const { width, height } = measureNoteSize(text, NOTE_FONT_RATIO);
       const note: EditorNote = {
         editorId: crypto.randomUUID(), page, sourceDocumentId: source.documentId,
         sourcePage: source.sourcePage, text,
         x: Math.min(1 - width, Math.max(0, x - width / 2)),
         y: Math.min(1 - height, Math.max(0, y - height / 2)),
-        width, height, fontSizeRatio: 0.018,
+        width, height, fontSizeRatio: NOTE_FONT_RATIO,
       };
-      changeNotes([...notes, note]); setSelectedId(note.editorId); return;
+      changeNotes([...notes, note]); setSelectedId(note.editorId); setSheetOpen(false); return;
     }
     if (!selectedCatalogId) return;
     if (catalog.find((entry) => entry.id === selectedCatalogId)?.unit_rate == null) {
@@ -304,7 +328,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     });
     const next = [...placements, item]; const error = validatePlacements(next, pageCount);
     if (error) { setMessage(error); return; }
-    change(next); setSelectedId(item.id);
+    change(next); setSelectedId(item.id); setSheetOpen(false);
   };
   const update = (id: string, patch: Partial<PdfCodePlacement>) => {
     if (submitting) return;
@@ -312,6 +336,14 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     const next = placements.map((item) => item.id === id ? clampPlacement({ ...current, ...patch }) : item);
     const error = validatePlacements(next, pageCount); if (error) { setMessage(error); return; }
     change(next);
+  };
+  const editNoteText = (id: string, text: string) => {
+    if (submitting) return;
+    changeNotes(notes.map((note) => {
+      if (note.editorId !== id) return note;
+      const { width, height } = measureNoteSize(text, note.fontSizeRatio);
+      return { ...note, text, width, height };
+    }));
   };
   const confirm = async () => {
     const requestedAllocations = allocations.map((item) => ({
@@ -350,24 +382,58 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     router.replace(`/trabajos/${jobId}`);
   };
 
-  return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-ink sm:px-6 ${stage === "edit" ? "pb-64 sm:pb-52" : "pb-[28rem] sm:pb-80"}`}>
+  return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-ink sm:px-6 ${stage === "edit" ? "pb-40 sm:pb-36" : "pb-[28rem] sm:pb-80"}`}>
     <header className="mx-auto mb-5 max-w-5xl"><p className="text-sm font-semibold uppercase tracking-widest">Entrega del trabajo</p><h1 className="text-2xl font-bold sm:text-3xl">Marcá los códigos sobre el PDF</h1><p className="mt-2 text-sm text-ink-soft">El original permanece intacto. Todas las páginas están en orden y se cargan al acercarte.</p></header>
-    <div className="grid gap-8">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={setSelectedId} onSelectNote={setSelectedId} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
+    <div className="grid gap-8">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => { setSelectedId(id); setSheetOpen(true); }} onSelectNote={(id) => { setSelectedId(id); setSheetOpen(true); }} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
       const item = placements.find((entry) => entry.id === id); if (!item) return;
       const dx = Math.min(1 - item.x - item.width, 1 - item.arrowTipX, Math.max(-item.x, -item.arrowTipX, requestedDx));
       const dy = Math.min(1 - item.y - item.height, 1 - item.arrowTipY, Math.max(-item.y, -item.arrowTipY, requestedDy));
       update(id, { x: item.x + dx, y: item.y + dy, arrowTipX: item.arrowTipX + dx, arrowTipY: item.arrowTipY + dy });
     }} onMoveArrow={(id, x, y) => update(id, { arrowTipX: x, arrowTipY: y })} />)}</div>
+    {stage === "edit" ? <>
+    <div className="fixed inset-x-0 bottom-0 z-40">
+      {sheetOpen && <div className="border-t border-line bg-white shadow-card">
+        <div className="mx-auto max-h-[55vh] w-full max-w-5xl overflow-y-auto p-3 sm:p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-base font-bold">{selectedNote ? "Editar nota" : selected ? "Editar código" : tool === "note" ? "Nueva nota de texto" : "Nuevo código"}</h2>
+            <button type="button" aria-label="Cerrar panel" onClick={() => { setSheetOpen(false); setSelectedId(null); }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line text-ink hover:bg-surface-muted"><IconX /></button>
+          </div>
+          {selectedNote ? <div className="grid gap-2">
+            <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={selectedNote.text} onChange={(event) => editNoteText(selectedNote.editorId, event.target.value)} rows={4} maxLength={2000} className="rounded-lg border border-line bg-white p-2" /></label>
+            <p className="text-xs text-ink-soft">Nota · pág. {selectedNote.page}. Arrastrá para mover; usá la esquina azul para redimensionar.</p>
+            <Button type="button" onClick={() => { changeNotes(notes.filter((note) => note.editorId !== selectedNote.editorId)); setSelectedId(null); }} variant="secondary" className="justify-self-start">Eliminar nota</Button>
+          </div> : selected ? <div className="grid gap-3 sm:grid-cols-[9rem_1fr_auto]">
+            <label className="grid gap-1 text-sm font-bold">Cantidad seleccionada<input aria-label="Cantidad del código seleccionado" inputMode="decimal" type="number" min="0.01" step="0.01" value={selected.quantity || ""} onChange={(event) => update(selected.id, { quantity: Number(event.target.value) })} className="min-h-11 rounded-lg border border-line bg-white p-2" /></label>
+            <label className="flex items-center gap-2 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label>
+            <div className="flex items-end gap-3"><span className="text-xs text-ink-soft">Pág. {selected.page}</span><Button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} variant="secondary">Eliminar</Button></div>
+          </div> : tool === "note" ? <div className="grid gap-2">
+            <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} rows={3} maxLength={2000} placeholder="Escribí el texto y tocá el PDF para colocarla" className="rounded-lg border border-line bg-white p-2" /></label>
+            <Button type="button" onClick={() => setSheetOpen(false)} variant="primary" className="justify-self-start">Agregar nota</Button>
+          </div> : <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
+            <label className="grid min-w-0 gap-1 text-sm font-bold">Código<select aria-label="Código para colocar" value={selectedCatalogId} onChange={(event) => setSelectedCatalogId(event.target.value)} style={{ borderColor: codeColor(catalog.find((item) => item.id === selectedCatalogId)?.code ?? selectedCatalogId) }} className="min-h-12 w-full min-w-0 rounded-lg border-4 bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id} style={{ color: codeColor(item.code) }}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select></label>
+            <label className="grid min-w-0 content-end gap-1 text-sm font-bold">Cantidad<input aria-label="Cantidad para el nuevo código" inputMode="decimal" type="number" min="0.01" step="0.01" value={newQuantity} onChange={(event) => setNewQuantity(event.target.value)} className="min-h-12 min-w-0 rounded-lg border border-line bg-white p-2" /></label>
+            <Button type="button" onClick={() => setSheetOpen(false)} className="self-end" variant="primary">Aplicar</Button>
+          </div>}
+          <p role="status" aria-live="polite" className="mt-3 min-h-4 text-xs text-ink-soft sm:hidden">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
+        </div>
+      </div>}
+      <div className="border-t border-line bg-white/95 shadow-card backdrop-blur">
+        <div className="mx-auto w-full max-w-5xl p-2 sm:p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-1 gap-2 sm:flex-none">
+              <button type="button" onClick={() => { setTool("code"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 flex-1 border px-3 text-sm font-bold sm:flex-none ${tool === "code" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Código</button>
+              <button type="button" onClick={() => { setTool("note"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 flex-1 border px-3 text-sm font-bold sm:flex-none ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Nota</button>
+            </div>
+            <p role="status" aria-live="polite" className="hidden min-w-0 flex-1 truncate text-xs text-ink-soft sm:block">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
+            <Link href={`/trabajos/${jobId}`} className={`${buttonClasses({ variant: "secondary" })} flex min-h-11 flex-1 items-center justify-center px-3 sm:flex-none`}>Volver</Link>
+            <Button type="button" disabled={submitting} onClick={() => void saveAndContinueLater()} variant="secondary" className="min-h-11 flex-1 sm:flex-none">{saving ? "Guardando…" : <><span className="sm:hidden">Guardar</span><span className="hidden sm:inline">Guardar borrador</span></>}</Button>
+            <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" className="min-h-11 flex-1 sm:flex-none">{submitting ? "Confirmando…" : <><span className="sm:hidden">Confirmar</span><span className="hidden sm:inline">Confirmar PDF</span></>}</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </> : <>
     <div className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto overflow-x-hidden border-t border-line bg-white/95 p-3 shadow-card backdrop-blur sm:p-4"><div className="mx-auto grid w-full min-w-0 max-w-5xl gap-3">
-      {stage === "edit" ? <>
-      <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => { setTool("code"); setSelectedId(null); }} className={`min-h-11 border px-3 font-bold ${tool === "code" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Código</button><button type="button" onClick={() => { setTool("note"); setSelectedId(null); }} className={`min-h-11 border px-3 font-bold ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Nota de texto</button></div>
-      {tool === "note" && <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={selectedNote?.text ?? noteText} onChange={(event) => selectedNote ? changeNotes(notes.map((note) => note.editorId === selectedNote.editorId ? { ...note, text: event.target.value } : note)) : setNoteText(event.target.value)} rows={3} maxLength={2000} placeholder="Escribí hasta 20 líneas y tocá el PDF para colocarla" className="rounded-lg border border-line bg-white p-2" /></label>}
-      <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]"><label className="grid min-w-0 gap-1 text-sm font-bold">Código<select aria-label="Código para colocar" value={selectedCatalogId} onChange={(event) => setSelectedCatalogId(event.target.value)} style={{ borderColor: codeColor(catalog.find((item) => item.id === selectedCatalogId)?.code ?? selectedCatalogId) }} className="min-h-12 w-full min-w-0 rounded-lg border-4 bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id} style={{ color: codeColor(item.code) }}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select></label><label className="grid min-w-0 content-end gap-1 text-sm font-bold">Cantidad<input aria-label="Cantidad para el nuevo código" inputMode="decimal" type="number" min="0.01" step="0.01" value={newQuantity} onChange={(event) => setNewQuantity(event.target.value)} className="min-h-12 min-w-0 rounded-lg border border-line bg-white p-2" /></label>{selected && <Button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} className="self-end" variant="secondary" size="sm">Eliminar</Button>}</div>
-      {selectedNote && <div className="flex items-center justify-between gap-3 text-sm"><span>Nota · pág. {selectedNote.page}. Arrastrá para mover; usá la esquina azul para redimensionar.</span><Button type="button" onClick={() => { changeNotes(notes.filter((note) => note.editorId !== selectedNote.editorId)); setSelectedId(null); }} variant="secondary" size="sm">Eliminar nota</Button></div>}
-      {selected && <div className="grid gap-3 sm:grid-cols-[9rem_1fr_auto]"><label className="grid gap-1 text-sm font-bold">Cantidad seleccionada<input aria-label="Cantidad del código seleccionado" inputMode="decimal" type="number" min="0.01" step="0.01" value={selected.quantity || ""} onChange={(event) => update(selected.id, { quantity: Number(event.target.value) })} className="min-h-11 rounded-lg border border-line bg-white p-2" /></label><label className="flex items-center gap-2 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label><span className="self-center text-xs text-ink-soft">Pág. {selected.page}</span></div>}
-      <p role="status" aria-live="polite" className="min-h-5 text-sm">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
-      <div className="grid gap-2 sm:grid-cols-3"><Link href={`/trabajos/${jobId}`} className={`${buttonClasses({ variant: "secondary" })} min-h-12`}>Cancelar / Volver</Link><Button type="button" disabled={submitting} onClick={() => void saveAndContinueLater()} variant="secondary">{saving ? "Guardando…" : "Guardar y continuar después"}</Button><Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary">{submitting ? "Confirmando…" : "Confirmar PDF"}</Button></div>
-      </> : <>
       <h2 className="text-lg font-bold">Distribución financiera</h2>
       <p className="text-xs text-ink-soft">Categoría aplicable: {priceCategoryName ?? "Sin categoría"}</p>
       <details open className="max-h-48 overflow-auto border border-line p-2">
@@ -389,7 +455,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       {hasUnratedPlacement && <p role="alert" className="border border-line bg-white p-2 text-sm font-bold text-ink">El borrador contiene un código sin tarifa configurada para tu categoría.</p>}
       <p role="status" aria-live="polite" className="min-h-5 text-sm">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
       <div className="grid gap-2 sm:grid-cols-2"><Button type="button" disabled={submitting} onClick={() => setStage("edit")} variant="secondary">Volver a editar el PDF</Button><Button type="button" disabled={submitting || !priceCategoryName || hasUnratedPlacement} onClick={() => void confirm()} variant="primary">{submitting ? "Enviando…" : "Entregar trabajo"}</Button></div>
-      </>}
     </div></div>
+    </>}
   </main>;
 }
