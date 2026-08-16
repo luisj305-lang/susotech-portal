@@ -37,7 +37,12 @@ function measureNoteSize(text: string, fontSizeRatio: number): { width: number; 
   const lines = text.split("\n");
   const maxLineEm = Math.max(0, ...lines.map((line) => textWidthEm(line)));
   const width = Math.min(0.8, Math.max(0.08, maxLineEm * fontSizeRatio + NOTE_PAD_X * 2));
-  const height = Math.min(0.6, Math.max(0.04, lines.length * NOTE_LINE_EM * fontSizeRatio + NOTE_PAD_Y * 2));
+  const contentWidth = Math.max(0.01, width - NOTE_PAD_X * 2);
+  const visualLines = lines.reduce((total, line) => {
+    const lineFraction = textWidthEm(line) * fontSizeRatio;
+    return total + Math.max(1, Math.ceil(lineFraction / contentWidth));
+  }, 0);
+  const height = Math.min(0.6, Math.max(0.04, visualLines * NOTE_LINE_EM * fontSizeRatio + NOTE_PAD_Y * 2));
   return { width, height };
 }
 
