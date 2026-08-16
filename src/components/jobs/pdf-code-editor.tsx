@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { saveJobPdfDraft } from "@/lib/jobs/actions";
@@ -13,7 +12,7 @@ import {
 } from "@/lib/jobs/pdf-code-editor-core";
 import { movePdfTextNote, resizePdfTextNote, validatePdfTextNotes, type PdfTextNote } from "@/lib/jobs/pdf-text-note-core";
 import type { JobPdfDraft, ProductionCatalogOption } from "@/lib/jobs/types";
-import { Button, buttonClasses } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { IconX } from "@/components/ui/icons";
 
 type SourcePage = { page: number; documentId: string; sourcePage: number };
@@ -427,10 +426,9 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex min-w-0 flex-1 gap-2 sm:flex-none">
               <button type="button" onClick={() => { setTool("code"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 flex-1 border px-3 text-sm font-bold sm:flex-none ${tool === "code" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Código</button>
-              <button type="button" onClick={() => { setTool("note"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 flex-1 border px-3 text-sm font-bold sm:flex-none ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Nota</button>
+              <button type="button" onClick={() => { setTool("note"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 flex-1 border px-3 text-sm font-bold sm:flex-none ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Nota de texto</button>
             </div>
             <p role="status" aria-live="polite" className="hidden min-w-0 flex-1 truncate text-xs text-ink-soft sm:block">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
-            <Link href={`/trabajos/${jobId}`} className={`${buttonClasses({ variant: "secondary" })} flex min-h-11 flex-1 items-center justify-center px-3 sm:flex-none`}>Volver</Link>
             <Button type="button" disabled={submitting} onClick={() => void saveAndContinueLater()} variant="secondary" className="min-h-11 flex-1 sm:flex-none">{saving ? "Guardando…" : <><span className="sm:hidden">Guardar</span><span className="hidden sm:inline">Guardar borrador</span></>}</Button>
             <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" className="min-h-11 flex-1 sm:flex-none">{submitting ? "Confirmando…" : <><span className="sm:hidden">Confirmar</span><span className="hidden sm:inline">Confirmar PDF</span></>}</Button>
           </div>
