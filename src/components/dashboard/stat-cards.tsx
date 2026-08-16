@@ -1,0 +1,59 @@
+import type { WorkerOperationsRow } from "@/lib/jobs/types";
+import { StatCard } from "@/components/ui/stat-card";
+import {
+  IconActivity,
+  IconChartBar,
+  IconFuel,
+  IconPackageCheck,
+} from "@/components/ui/icons";
+import { formatMoney, formatQuantity } from "@/lib/dashboard/format";
+
+export function StatCards({ rows }: { rows: WorkerOperationsRow[] }) {
+  const active = rows.filter((row) => row.is_shift_active).length;
+  const total = rows.length;
+  const production = rows.reduce(
+    (sum, row) => sum + Number(row.weekly_production),
+    0,
+  );
+  const delivered = rows.reduce(
+    (sum, row) => sum + Number(row.weekly_delivered_jobs),
+    0,
+  );
+  const fuel = rows.reduce(
+    (sum, row) => sum + Number(row.weekly_fuel_amount),
+    0,
+  );
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <StatCard
+        icon={IconActivity}
+        tone="green"
+        title="Trabajadores activos"
+        value={`${active} de ${total}`}
+        sub={`${total} técnicos en total`}
+      />
+      <StatCard
+        icon={IconChartBar}
+        tone="blue"
+        title="Producción semanal"
+        value={formatQuantity(production)}
+        sub="Suma de todos los técnicos"
+      />
+      <StatCard
+        icon={IconPackageCheck}
+        tone="amber"
+        title="Entregados esta semana"
+        value={`${delivered}`}
+        sub="Trabajos enviados"
+      />
+      <StatCard
+        icon={IconFuel}
+        tone="emerald"
+        title="Gasolina esta semana"
+        value={formatMoney(fuel)}
+        sub="Gasto total semanal"
+      />
+    </div>
+  );
+}

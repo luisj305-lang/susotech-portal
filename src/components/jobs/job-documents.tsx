@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   createSignedDownloadUrl,
@@ -10,14 +11,10 @@ import {
 } from "@/lib/storage/actions";
 import { supabase } from "@/lib/supabase/client";
 import type { DeliveredPdfStatus, JobStatus } from "@/lib/jobs/types";
+import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 const PDF_LIMIT = 25 * 1024 * 1024;
-
-const statusCopy: Record<DeliveredPdfStatus, string> = {
-  pending: "Pendiente",
-  current: "Vigente",
-  stale: "Desactualizado",
-};
 
 export function JobDocuments({
   jobId,
@@ -27,6 +24,7 @@ export function JobDocuments({
   jobStatus,
   canRegenerate = false,
   canDelete = false,
+  attachments,
 }: {
   jobId: string;
   originalPath: string | null;
@@ -35,6 +33,7 @@ export function JobDocuments({
   jobStatus: JobStatus;
   canRegenerate?: boolean;
   canDelete?: boolean;
+  attachments?: ReactNode;
 }) {
   const router = useRouter();
   const originalInput = useRef<HTMLInputElement>(null);
@@ -133,24 +132,25 @@ export function JobDocuments({
   };
   const editable = jobStatus === "en_progreso" || jobStatus === "enviado_revision";
 
-  return <section className="rounded-2xl border border-black bg-white p-5 text-black shadow-lg">
-    <h2 className="text-xl font-bold">Documentos</h2>
-    <div className="mt-4 grid gap-4 sm:grid-cols-2">
-      <article className="rounded-xl border border-black bg-white p-4">
-        <h3 className="font-bold">PDF original</h3>
-        <p className="mt-1 text-sm text-black">Documento recibido, sin modificaciones.</p>
-        {originalPath ? <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={pending} onClick={() => open(originalPath)} className="min-h-11 rounded-lg border border-black bg-white px-4 font-semibold text-black disabled:opacity-60">Ver PDF original</button>{canDelete && <button type="button" disabled={pending} onClick={() => remove("original")} className="min-h-11 rounded-lg border border-black bg-white px-4 font-semibold text-black disabled:opacity-60">Eliminar PDF original</button>}</div> : canDelete ? <div className="mt-4 grid gap-3"><p className="text-sm text-black">El original fue retirado. Sube un nuevo PDF para reiniciar el borrador de entrega.</p><input ref={originalInput} type="file" accept="application/pdf,.pdf" disabled={pending} className="min-h-12 rounded-lg border border-black p-3" /><button type="button" disabled={pending} onClick={uploadOriginal} className="min-h-11 w-fit rounded-lg bg-black px-4 font-bold text-white disabled:opacity-60">{pending ? "Procesando…" : "Subir nuevo PDF original"}</button></div> : <p className="mt-4 text-sm text-black">No disponible</p>}
+  return <section className="rounded-2xl border border-line bg-white p-6 text-ink shadow-card">
+    <h2 className="text-xl font-bold text-ink">Documentos</h2>
+    <div className={`mt-4 grid gap-4 sm:grid-cols-2${attachments ? " xl:grid-cols-3" : ""}`}>
+      <article className="rounded-xl border border-line bg-white p-4">
+        <h3 className="font-bold text-ink">PDF original</h3>
+        <p className="mt-1 text-sm text-ink-soft">Documento recibido, sin modificaciones.</p>
+        {originalPath ? <div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => open(originalPath)}>Ver PDF original</Button>{canDelete && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => remove("original")}>Eliminar PDF original</Button>}</div> : canDelete ? <div className="mt-4 grid gap-3"><p className="text-sm text-ink-soft">El original fue retirado. Sube un nuevo PDF para reiniciar el borrador de entrega.</p><input ref={originalInput} type="file" accept="application/pdf,.pdf" disabled={pending} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /><Button variant="primary" type="button" disabled={pending} onClick={uploadOriginal}>{pending ? "Procesando…" : "Subir nuevo PDF original"}</Button></div> : <p className="mt-4 text-sm text-ink-soft">No disponible</p>}
       </article>
-      <article className="rounded-xl border border-black bg-white p-4">
-        <div className="flex items-center justify-between gap-3"><h3 className="font-bold">PDF entregado por técnico</h3><span className={`rounded-full px-3 py-1 text-xs font-bold ${deliveredStatus === "current" ? "bg-white text-black" : deliveredStatus === "stale" ? "bg-white text-black" : "bg-white text-black"}`}>{statusCopy[deliveredStatus]}</span></div>
-        <p className="mt-1 text-sm text-black">Original más las evidencias fotográficas confirmadas.</p>
+      <article className="rounded-xl border border-line bg-white p-4">
+        <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-ink">PDF entregado por técnico</h3><StatusBadge status={`pdf_${deliveredStatus}`} /></div>
+        <p className="mt-1 text-sm text-ink-soft">Original más las evidencias fotográficas confirmadas.</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          {deliveredPath && <button type="button" disabled={pending} onClick={() => open(deliveredPath)} className="min-h-11 rounded-lg border border-black bg-white px-4 font-semibold text-black disabled:opacity-60">Ver PDF entregado</button>}
-          {canDelete && deliveredPath && <button type="button" disabled={pending} onClick={() => remove("delivered")} className="min-h-11 rounded-lg border border-black bg-white px-4 font-semibold text-black disabled:opacity-60">Eliminar PDF entregado</button>}
-          {canRegenerate && editable && originalPath && <button type="button" disabled={pending} onClick={regenerate} className="min-h-11 rounded-lg bg-black px-4 font-bold text-white disabled:opacity-60">{deliveredPath ? "Regenerar" : "Generar"}</button>}
+          {deliveredPath && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => open(deliveredPath)}>Ver PDF entregado</Button>}
+          {canDelete && deliveredPath && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => remove("delivered")}>Eliminar PDF entregado</Button>}
+          {canRegenerate && editable && originalPath && <Button variant="primary" type="button" disabled={pending} onClick={regenerate}>{deliveredPath ? "Regenerar" : "Generar"}</Button>}
         </div>
       </article>
+      {attachments}
     </div>
-    <p role="status" aria-live="polite" className="mt-3 text-sm text-black">{pending ? "Procesando…" : message}</p>
+    <p role="status" aria-live="polite" className="mt-3 text-sm text-ink-muted">{pending ? "Procesando…" : message}</p>
   </section>;
 }

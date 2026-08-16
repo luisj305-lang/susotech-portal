@@ -12,10 +12,20 @@ import {
   selectUploadTargets, type ImportRow, type ImportState,
 } from "./bulk-import-model";
 import { AssigneeSelect } from "./assignee-select";
+import { Button, buttonClasses } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 const stateLabels: Record<ImportState, string> = {
   pending: "Pendiente", processing: "Procesando", imported: "Importado",
   duplicate: "Duplicado", error: "Error",
+};
+
+const stateTone: Record<ImportState, string> = {
+  pending: "pdf_pending",
+  processing: "archivado",
+  imported: "aprobado",
+  duplicate: "archivado",
+  error: "incidencia",
 };
 
 function assigneeValue(row: ImportRow) {
@@ -192,15 +202,15 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
   }
 
   return <div className="grid gap-5">
-    <section className="rounded-2xl border border-black bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-line bg-white p-6 shadow-card">
       <div
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => { event.preventDefault(); void addFiles(Array.from(event.dataTransfer.files)); }}
-        className="rounded-xl border-2 border-dashed border-black p-8 text-center"
+        className="rounded-xl border-2 border-dashed border-line-strong p-8 text-center hover:border-accent-500"
       >
-        <p className="font-semibold">Arrastra aquí tus órdenes PDF</p>
-        <p className="mt-1 text-sm text-black">O selecciona hasta 100 archivos de 25 MB cada uno.</p>
-        <label className="mt-4 inline-block cursor-pointer rounded-lg bg-black px-5 py-3 font-semibold text-white focus-within:outline-2">
+        <p className="font-semibold text-ink">Arrastra aquí tus órdenes PDF</p>
+        <p className="mt-1 text-sm text-ink-soft">O selecciona hasta 100 archivos de 25 MB cada uno.</p>
+        <label className={`${buttonClasses({ variant: "primary" })} mt-4 cursor-pointer focus-within:outline-2`}>
           Seleccionar PDF
           <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple onChange={(event) => choose(event.target.files)} className="sr-only" />
         </label>
@@ -209,39 +219,39 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
         <div className="flex items-center justify-between gap-3 text-sm"><strong>{progress.complete} de {progress.total} finalizados</strong><span>{progress.percent}%</span></div>
         <progress value={progress.complete} max={progress.total} className="mt-2 h-3 w-full" />
       </div>}
-      <p role="status" aria-live="polite" className="mt-3 text-sm">{message}</p>
+      <p role="status" aria-live="polite" className="mt-3 text-sm text-ink-muted">{message}</p>
     </section>
 
-    {rows.length > 0 && <section className="rounded-2xl border border-black bg-white p-4 shadow-sm">
+    {rows.length > 0 && <section className="rounded-2xl border border-line bg-white p-6 shadow-card">
       <div className="grid gap-3 lg:grid-cols-[2fr_1fr_2fr_auto]">
-        <label className="grid gap-1 text-sm font-medium">Buscar<input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Archivo, orden o dirección" className="rounded-lg border p-3" /></label>
-        <label className="grid gap-1 text-sm font-medium">Estado<select value={stateFilter} onChange={(event) => { setStateFilter(event.target.value as ImportState | "all"); setPage(1); }} className="rounded-lg border p-3"><option value="all">Todos</option>{Object.entries(stateLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label className="grid gap-1 text-sm font-medium">Asignación masiva<AssigneeSelect options={options} value={bulkAssignee} onChange={setBulkAssignee} /></label>
-        <button type="button" onClick={applyBulkAssignee} disabled={!selectedAssignable} className="self-end rounded-lg border px-4 py-3 font-semibold disabled:opacity-50">Aplicar a {selectedAssignable}</button>
+        <label className="grid gap-1 text-sm font-medium text-ink-soft">Buscar<input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Archivo, orden o dirección" className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
+        <label className="grid gap-1 text-sm font-medium text-ink-soft">Estado<select value={stateFilter} onChange={(event) => { setStateFilter(event.target.value as ImportState | "all"); setPage(1); }} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="all">Todos</option>{Object.entries(stateLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label className="grid gap-1 text-sm font-medium text-ink-soft">Asignación masiva<AssigneeSelect options={options} value={bulkAssignee} onChange={setBulkAssignee} /></label>
+        <Button type="button" onClick={applyBulkAssignee} disabled={!selectedAssignable} className="self-end" variant="secondary" size="sm">Aplicar a {selectedAssignable}</Button>
       </div>
 
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[1180px] border-separate border-spacing-y-2 text-sm">
-          <thead><tr className="text-left text-black"><th className="px-2"><input type="checkbox" aria-label="Seleccionar filas visibles" checked={allVisibleSelected} onChange={toggleVisible} /></th><th>Archivo y estado</th><th>Orden y título</th><th>Dirección</th><th>Fecha y tipo</th><th>Cliente y descripción</th><th>Asignación</th></tr></thead>
+          <thead><tr className="text-left text-xs uppercase tracking-wide text-ink-muted"><th className="px-2"><input type="checkbox" aria-label="Seleccionar filas visibles" checked={allVisibleSelected} onChange={toggleVisible} /></th><th>Archivo y estado</th><th>Orden y título</th><th>Dirección</th><th>Fecha y tipo</th><th>Cliente y descripción</th><th>Asignación</th></tr></thead>
           <tbody>{visible.rows.map((row) => {
             const locked = row.state === "processing" || row.state === "imported" || row.state === "duplicate";
             const assignmentLocked = locked && row.assignmentState !== "error";
             return <tr key={row.key} className="align-top">
-              <td className="rounded-l-xl bg-white p-3"><input type="checkbox" aria-label={`Seleccionar ${row.file.name}`} checked={row.selected} disabled={locked} onChange={() => patchRow(row.key, { selected: !row.selected })} /></td>
-              <td className="bg-white p-3"><strong className="block max-w-48 break-all">{row.file.name}</strong><span className={`mt-2 inline-block rounded-full px-2 py-1 text-xs font-semibold ${row.state === "error" ? "bg-white text-black" : row.state === "imported" ? "bg-white text-black" : row.state === "duplicate" ? "bg-white text-black" : "bg-white"}`}>{stateLabels[row.state]}</span><p className="mt-2 max-w-52 text-xs text-black">{row.message}</p></td>
-              <td className="bg-white p-3"><input aria-label={`Número de orden de ${row.file.name}`} value={row.fields.orderIdentifier ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { orderIdentifier: event.target.value || null, prismNumber: event.target.value || null })} placeholder="Número de orden" className="mb-2 w-full rounded border p-2" /><input aria-label={`Título de ${row.file.name}`} value={row.fields.title} disabled={locked} onChange={(event) => updateFields(row.key, { title: event.target.value })} className="w-full rounded border p-2" /></td>
-              <td className="bg-white p-3"><input aria-label={`Dirección de ${row.file.name}`} value={row.fields.address ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { address: event.target.value || null })} placeholder="Dirección" className="mb-2 w-full rounded border p-2" /><input aria-label={`Ubicación de ${row.file.name}`} value={row.fields.location ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { location: event.target.value || null })} placeholder="Ciudad, estado, ZIP" className="w-full rounded border p-2" /></td>
-              <td className="bg-white p-3"><input type="date" aria-label={`Fecha de ${row.file.name}`} value={row.fields.requestDate ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { requestDate: event.target.value || null })} className="mb-2 w-full rounded border p-2" /><input aria-label={`Tipo de trabajo de ${row.file.name}`} value={row.fields.jobType ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { jobType: event.target.value || null })} placeholder="Tipo de trabajo" className="w-full rounded border p-2" /></td>
-              <td className="bg-white p-3"><input aria-label={`Cliente de ${row.file.name}`} value={row.fields.customerName ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { customerName: event.target.value || null })} placeholder="Cliente (si aparece)" className="mb-2 w-full rounded border p-2" /><textarea aria-label={`Descripción de ${row.file.name}`} value={row.fields.description ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { description: event.target.value || null })} rows={3} className="w-full rounded border p-2" /></td>
-              <td className="rounded-r-xl bg-white p-3"><fieldset disabled={assignmentLocked}><AssigneeSelect ariaLabel={`Asignación de ${row.file.name}`} options={options} value={assigneeValue(row)} onChange={(value) => setRowAssignee(row.key, value)} className="w-full rounded border p-2" /></fieldset>{row.responsibleSuggestion && <p className="mt-2 rounded bg-white p-2 text-xs text-black">Sugerencia: {row.responsibleSuggestion}. Confirma manualmente una opción.</p>}</td>
+              <td className="rounded-l-xl border border-line bg-white p-3"><input type="checkbox" aria-label={`Seleccionar ${row.file.name}`} checked={row.selected} disabled={locked} onChange={() => patchRow(row.key, { selected: !row.selected })} /></td>
+              <td className="border border-line bg-white p-3"><strong className="block max-w-48 break-all text-ink">{row.file.name}</strong><StatusBadge status={stateTone[row.state]} label={stateLabels[row.state]} className="mt-2" /><p className="mt-2 max-w-52 text-xs text-ink-muted">{row.message}</p></td>
+              <td className="border border-line bg-white p-3"><input aria-label={`Número de orden de ${row.file.name}`} value={row.fields.orderIdentifier ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { orderIdentifier: event.target.value || null, prismNumber: event.target.value || null })} placeholder="Número de orden" className="mb-2 w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /><input aria-label={`Título de ${row.file.name}`} value={row.fields.title} disabled={locked} onChange={(event) => updateFields(row.key, { title: event.target.value })} className="w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /></td>
+              <td className="border border-line bg-white p-3"><input aria-label={`Dirección de ${row.file.name}`} value={row.fields.address ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { address: event.target.value || null })} placeholder="Dirección" className="mb-2 w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /><input aria-label={`Ubicación de ${row.file.name}`} value={row.fields.location ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { location: event.target.value || null })} placeholder="Ciudad, estado, ZIP" className="w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /></td>
+              <td className="border border-line bg-white p-3"><input type="date" aria-label={`Fecha de ${row.file.name}`} value={row.fields.requestDate ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { requestDate: event.target.value || null })} className="mb-2 w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /><input aria-label={`Tipo de trabajo de ${row.file.name}`} value={row.fields.jobType ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { jobType: event.target.value || null })} placeholder="Tipo de trabajo" className="w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /></td>
+              <td className="border border-line bg-white p-3"><input aria-label={`Cliente de ${row.file.name}`} value={row.fields.customerName ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { customerName: event.target.value || null })} placeholder="Cliente (si aparece)" className="mb-2 w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /><textarea aria-label={`Descripción de ${row.file.name}`} value={row.fields.description ?? ""} disabled={locked} onChange={(event) => updateFields(row.key, { description: event.target.value || null })} rows={3} className="w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /></td>
+              <td className="rounded-r-xl border border-line bg-white p-3"><fieldset disabled={assignmentLocked}><AssigneeSelect ariaLabel={`Asignación de ${row.file.name}`} options={options} value={assigneeValue(row)} onChange={(value) => setRowAssignee(row.key, value)} className="w-full rounded-xl border border-line bg-white px-2.5 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /></fieldset>{row.responsibleSuggestion && <p className="mt-2 rounded-lg border border-line bg-surface-muted p-2 text-xs text-ink-soft">Sugerencia: {row.responsibleSuggestion}. Confirma manualmente una opción.</p>}</td>
             </tr>;
           })}</tbody>
         </table>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2"><button type="button" disabled={visible.page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded border px-3 py-2 disabled:opacity-50">Anterior</button><span className="px-2 py-2">Página {visible.page} de {visible.pages}</span><button type="button" disabled={visible.page >= visible.pages} onClick={() => setPage((value) => value + 1)} className="rounded border px-3 py-2 disabled:opacity-50">Siguiente</button></div>
-        <div className="flex flex-wrap gap-3"><button type="button" onClick={() => void importRows(false)} disabled={busy || !selectedPending} className="rounded-lg bg-black px-5 py-3 font-semibold text-white disabled:opacity-50">{busy ? "Procesando…" : `Importar seleccionados (${selectedPending})`}</button>{rows.some((row) => row.state === "error") && <button type="button" onClick={() => void importRows(true)} disabled={busy} className="rounded-lg border px-5 py-3 font-semibold">Reintentar fallidos</button>}{rows.some((row) => row.assignmentState === "error") && <button type="button" onClick={() => void retryAssignments()} disabled={busy} className="rounded-lg border px-5 py-3 font-semibold">Reintentar asignaciones</button>}<button type="button" onClick={startNewBatch} disabled={busy} className="rounded-lg border px-5 py-3 font-semibold">Iniciar lote nuevo</button></div>
+        <div className="flex gap-2"><Button type="button" disabled={visible.page <= 1} onClick={() => setPage((value) => value - 1)} variant="secondary" size="sm">Anterior</Button><span className="px-2 py-2 text-sm text-ink-soft">Página {visible.page} de {visible.pages}</span><Button type="button" disabled={visible.page >= visible.pages} onClick={() => setPage((value) => value + 1)} variant="secondary" size="sm">Siguiente</Button></div>
+        <div className="flex flex-wrap gap-3"><Button type="button" onClick={() => void importRows(false)} disabled={busy || !selectedPending} variant="primary">{busy ? "Procesando…" : `Importar seleccionados (${selectedPending})`}</Button>{rows.some((row) => row.state === "error") && <Button type="button" onClick={() => void importRows(true)} disabled={busy} variant="secondary">Reintentar fallidos</Button>}{rows.some((row) => row.assignmentState === "error") && <Button type="button" onClick={() => void retryAssignments()} disabled={busy} variant="secondary">Reintentar asignaciones</Button>}<Button type="button" onClick={startNewBatch} disabled={busy} variant="secondary">Iniciar lote nuevo</Button></div>
       </div>
     </section>}
   </div>;

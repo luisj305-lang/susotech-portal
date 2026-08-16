@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { recoveryClient } from "@/lib/supabase/recovery-client";
 
 export default function ResetPasswordPage() {
@@ -89,34 +90,15 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "20px",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "400px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "16px",
-        }}
-      >
-        <h1 style={{ fontSize: "32px", fontWeight: "bold" }}>SUSOTECH</h1>
-        <h2>Nueva contraseña</h2>
+    <main className="flex min-h-screen items-center justify-center p-6">
+      <div className="w-full max-w-sm rounded-2xl border border-line bg-white p-8 shadow-card">
+        <h1 className="text-2xl font-bold text-brand-900">SUSOTECH</h1>
+        <h2 className="mt-2 text-lg font-semibold text-ink">Nueva contraseña</h2>
 
         {!checked ? (
-          <p role="status">Validando enlace de recuperación...</p>
+          <p role="status" className="mt-6 text-sm text-ink-muted">Validando enlace de recuperación...</p>
         ) : isReady ? (
-          <form
-            onSubmit={handleSubmit}
-            style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-          >
+          <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
             <input
               type="password"
               placeholder="Nueva contraseña"
@@ -125,7 +107,7 @@ export default function ResetPasswordPage() {
               required
               minLength={6}
               disabled={isLoading}
-              style={{ padding: "12px" }}
+              className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
             />
 
             <input
@@ -136,23 +118,16 @@ export default function ResetPasswordPage() {
               required
               minLength={6}
               disabled={isLoading}
-              style={{ padding: "12px" }}
+              className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
             />
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              style={{
-                padding: "12px",
-                cursor: isLoading ? "not-allowed" : "pointer",
-              }}
-            >
+            <Button type="submit" variant="primary" className="w-full" disabled={isLoading}>
               {isLoading ? "Guardando..." : "Guardar contraseña"}
-            </button>
+            </Button>
           </form>
         ) : null}
 
-        {message && <p role="status">{message}</p>}
+        {message && <p role="status" className="mt-4 text-sm text-ink-muted">{message}</p>}
       </div>
     </main>
   );

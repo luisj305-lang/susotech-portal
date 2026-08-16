@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { Button } from "@/components/ui/button";
 import { StartShiftForm } from "./start-shift-form";
 
 const promptKey = (technicianId: string) => `technician-shift-prompt:${technicianId}`;
@@ -26,13 +27,13 @@ export function ShiftStartPrompt({ technicianId, active }: { technicianId: strin
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="shift-prompt-title">
-      <div className="grid w-full max-w-lg gap-3 rounded-3xl bg-white p-4 text-black shadow-2xl">
-        <h2 id="shift-prompt-title" className="px-2 pt-2 text-2xl font-bold">¿Vas a comenzar tu jornada?</h2>
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-brand-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="shift-prompt-title">
+      <div className="grid w-full max-w-lg gap-3 rounded-2xl bg-white p-6 text-ink shadow-card">
+        <h2 id="shift-prompt-title" className="px-2 pt-2 text-2xl font-bold text-ink">¿Vas a comenzar tu jornada?</h2>
         <StartShiftForm />
-        <button type="button" onClick={dismiss} className="min-h-12 rounded-xl border border-black bg-white px-5 font-bold text-black">
+        <Button type="button" variant="secondary" onClick={dismiss} className="min-h-12 w-full">
           Esta vez no estoy en jornada
-        </button>
+        </Button>
       </div>
     </div>
   );

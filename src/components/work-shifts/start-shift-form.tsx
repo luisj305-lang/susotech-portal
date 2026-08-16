@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import {
   discardFuelPhotoUpload,
   prepareFuelPhotoUpload,
@@ -109,25 +110,25 @@ export function StartShiftForm() {
   };
 
   return (
-    <section className="grid gap-6 rounded-3xl border border-black/20 bg-white p-5 shadow-2xl sm:p-7">
+    <section className="grid gap-6 rounded-2xl border border-line bg-white p-6 shadow-card sm:p-8">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/60">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-ink-muted">
           Registro de jornada
         </p>
-        <h1 className="mt-2 text-3xl font-bold">Iniciar jornada</h1>
-        <p className="mt-2 text-sm leading-6 text-black/70">
+        <h1 className="mt-2 text-3xl font-bold text-ink">Iniciar jornada</h1>
+        <p className="mt-2 text-sm leading-6 text-ink-soft">
           Registra tu jornada y la información de gasolina de hoy.
         </p>
       </div>
 
       <fieldset className="grid gap-3">
-        <legend className="mb-2 text-lg font-bold">¿Compraste gasolina hoy?</legend>
+        <legend className="mb-2 text-lg font-bold text-ink">¿Compraste gasolina hoy?</legend>
         <button
           type="button"
           aria-pressed={fuelChoice === "yes"}
           disabled={pending}
           onClick={() => chooseFuel("yes")}
-          className={`min-h-16 rounded-2xl border px-5 text-left text-lg font-bold transition disabled:opacity-60 ${fuelChoice === "yes" ? "border-black bg-black text-white" : "border-black/40 bg-white text-black"}`}
+          className={`min-h-16 rounded-2xl border px-5 text-left text-lg font-bold transition disabled:opacity-60 ${fuelChoice === "yes" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}
         >
           Sí, cargué gasolina
         </button>
@@ -136,18 +137,18 @@ export function StartShiftForm() {
           aria-pressed={fuelChoice === "no"}
           disabled={pending}
           onClick={() => chooseFuel("no")}
-          className={`min-h-16 rounded-2xl border px-5 text-left text-lg font-bold transition disabled:opacity-60 ${fuelChoice === "no" ? "border-black bg-black text-white" : "border-black/40 bg-white text-black"}`}
+          className={`min-h-16 rounded-2xl border px-5 text-left text-lg font-bold transition disabled:opacity-60 ${fuelChoice === "no" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}
         >
           No cargué gasolina
         </button>
       </fieldset>
 
       {fuelChoice === "yes" && (
-        <div className="grid gap-5 border-t border-black/20 pt-5">
-          <label className="grid gap-2 font-semibold">
+        <div className="grid gap-5 border-t border-line pt-5">
+          <label className="grid gap-2 text-sm font-medium text-ink-soft">
             Monto total gastado en USD
-            <div className="flex min-h-14 items-center rounded-xl border border-black/50 bg-white px-4 focus-within:border-black">
-              <span aria-hidden="true" className="mr-2 text-black/60">$</span>
+            <div className="flex min-h-14 items-center rounded-xl border border-line-strong bg-white px-4 focus-within:border-accent-500">
+              <span aria-hidden="true" className="mr-2 text-ink-muted">$</span>
               <input
                 type="text"
                 inputMode="decimal"
@@ -159,19 +160,19 @@ export function StartShiftForm() {
                 placeholder="0.00"
                 required
                 disabled={pending}
-                className="min-w-0 flex-1 bg-transparent py-3 text-lg outline-none"
+                className="min-w-0 flex-1 bg-transparent py-3 text-lg text-ink outline-none"
               />
             </div>
-            <span className="text-xs font-normal text-black/60">Máximo dos decimales.</span>
+            <span className="text-xs font-normal text-ink-muted">Máximo dos decimales.</span>
           </label>
 
           <div className="grid gap-3">
             <div>
-              <p className="font-semibold">Fotografía del marcador</p>
-              <p className="text-sm text-black/60">Opcional · JPG, PNG o WebP · máximo 10 MB</p>
+              <p className="font-semibold text-ink">Fotografía del marcador</p>
+              <p className="text-sm text-ink-muted">Opcional · JPG, PNG o WebP · máximo 10 MB</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-black/50 px-3 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-line-strong px-3 text-center font-semibold text-ink has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
                 Tomar foto
                 <input
                   ref={cameraInput}
@@ -183,7 +184,7 @@ export function StartShiftForm() {
                   className="sr-only"
                 />
               </label>
-              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-black/50 px-3 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+              <label aria-disabled={pending} className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-line-strong px-3 text-center font-semibold text-ink has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
                 Elegir de galería
                 <input
                   ref={galleryInput}
@@ -196,9 +197,9 @@ export function StartShiftForm() {
               </label>
             </div>
             {photo && (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-black/20 p-3 text-sm">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-sm text-ink-soft">
                 <span className="min-w-0 truncate">{photo.name}</span>
-                <button type="button" disabled={pending} onClick={clearPhoto} className="font-bold underline">
+                <button type="button" disabled={pending} onClick={clearPhoto} className="font-semibold text-accent-600 underline">
                   Quitar
                 </button>
               </div>
@@ -208,20 +209,22 @@ export function StartShiftForm() {
       )}
 
       {fuelChoice === "no" && (
-        <p className="rounded-xl border border-black/20 bg-white p-4 text-sm text-black/70">
+        <p className="rounded-xl border border-line bg-white p-4 text-sm text-ink-soft">
           Se registrará explícitamente que hoy no compraste gasolina, con monto $0.00.
         </p>
       )}
 
-      <button
+      <Button
         type="button"
+        variant="primary"
+        size="lg"
+        className="min-h-16 w-full"
         disabled={pending || !fuelChoice}
         onClick={submit}
-        className="min-h-16 rounded-2xl bg-black px-5 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
         {pending ? "Procesando…" : "Empezar jornada"}
-      </button>
-      <p role="status" aria-live="polite" className="min-h-6 text-sm text-black/80">
+      </Button>
+      <p role="status" aria-live="polite" className="min-h-6 text-sm text-ink-soft">
         {message}
       </p>
     </section>

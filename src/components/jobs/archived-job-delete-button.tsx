@@ -6,6 +6,7 @@ import {
   deleteArchivedJob,
   retryPendingJobDeletionCleanup,
 } from "@/lib/jobs/actions";
+import { buttonClasses } from "@/components/ui/button";
 
 export function ArchivedJobDeleteButton({
   jobId,
@@ -35,11 +36,11 @@ export function ArchivedJobDeleteButton({
       type="button"
       disabled={pending}
       onClick={remove}
-      className="min-h-11 w-fit rounded-lg border border-black px-5 font-bold text-white disabled:opacity-60"
+      className={`${buttonClasses({ variant: "danger" })} w-fit`}
     >
       {pending ? "Eliminando…" : "Eliminar permanentemente"}
     </button>
-    <p role="status" aria-live="polite" className="text-sm text-black">{message}</p>
+    <p role="status" aria-live="polite" className="text-sm text-ink-muted">{message}</p>
   </div>;
 }
 
@@ -55,10 +56,10 @@ export function RetryJobDeletionCleanupButton() {
         const result = await retryPendingJobDeletionCleanup();
         setMessage(result.message);
       })}
-      className="rounded-lg border border-black px-5 py-3 font-semibold disabled:opacity-60"
+      className={buttonClasses({ variant: "secondary", size: "sm" })}
     >
       {pending ? "Limpiando…" : "Reintentar limpieza pendiente"}
     </button>
-    <p role="status" aria-live="polite" className="text-sm text-black">{message}</p>
+    <p role="status" aria-live="polite" className="text-sm text-ink-muted">{message}</p>
   </div>;
 }

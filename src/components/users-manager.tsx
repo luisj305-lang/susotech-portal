@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   isWorkerSpecialty,
   WORKER_SPECIALTIES,
@@ -295,47 +296,46 @@ export function UsersManager({
   };
 
   return (
-    <main style={{ minHeight: "100vh", padding: "40px" }}>
-      <Link href="/dashboard">← Volver al dashboard</Link>
-      <h1 style={{ fontSize: "30px", fontWeight: "bold", marginTop: "24px" }}>
-        Usuarios
-      </h1>
-      <p style={{ margin: "8px 0 24px" }}>
+    <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
+      <Link href="/dashboard" className="text-sm font-medium text-accent-600 hover:underline">
+        ← Volver al dashboard
+      </Link>
+      <h1 className="mt-6 text-3xl font-bold text-ink">Usuarios</h1>
+      <p className="mb-6 mt-2 text-ink-muted">
         {canManage ? "Crea usuarios, edita sus datos y gestiona permisos." : "Consulta usuarios, crews y categorías de precio."}
       </p>
 
       {message && (
-        <p role="status" style={{ marginBottom: "16px" }}>
+        <p role="status" className="mb-4 text-sm font-medium text-ink-soft">
           {message}
         </p>
       )}
 
-      {canManage && <div style={{ marginBottom: "24px" }}>
-        <button
+      {canManage && <div className="mb-6">
+        <Button
           type="button"
           onClick={() => {
             setModal({ type: "create" });
             setMessage("");
           }}
           disabled={isLoading}
-          style={{ padding: "12px 20px", cursor: "pointer" }}
         >
           + Nuevo usuario
-        </button>
+        </Button>
       </div>}
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white">
+        <table className="w-full border-collapse text-sm">
           <thead>
-            <tr>
-              <th style={{ padding: "12px", textAlign: "left" }}>Nombre</th>
-              <th style={{ padding: "12px", textAlign: "left" }}>Correo</th>
-              <th style={{ padding: "12px", textAlign: "left" }}>Rol</th>
-              <th style={{ padding: "12px", textAlign: "left" }}>Especialidad</th>
-              <th style={{ padding: "12px", textAlign: "left" }}>Categoría de precio</th>
-              <th style={{ padding: "12px", textAlign: "left" }}>Crew / Equipos</th>
-              <th style={{ padding: "12px", textAlign: "left" }}>Estado</th>
-              <th style={{ padding: "12px", textAlign: "left" }}>Acciones</th>
+            <tr className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
+              <th className="px-4 py-3 text-left font-semibold">Nombre</th>
+              <th className="px-4 py-3 text-left font-semibold">Correo</th>
+              <th className="px-4 py-3 text-left font-semibold">Rol</th>
+              <th className="px-4 py-3 text-left font-semibold">Especialidad</th>
+              <th className="px-4 py-3 text-left font-semibold">Categoría de precio</th>
+              <th className="px-4 py-3 text-left font-semibold">Crew / Equipos</th>
+              <th className="px-4 py-3 text-left font-semibold">Estado</th>
+              <th className="px-4 py-3 text-left font-semibold">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -343,14 +343,14 @@ export function UsersManager({
               const isCurrentUser = user.id === currentUserId;
 
               return (
-                <tr key={user.id} style={{ borderTop: "1px solid #000000" }}>
-                  <td style={{ padding: "12px" }}>
+                <tr key={user.id} className="border-t border-line">
+                  <td className="px-4 py-3 text-ink-soft">
                     {user.full_name ?? "Sin nombre"}
                   </td>
-                  <td style={{ padding: "12px" }}>{user.email}</td>
-                  <td style={{ padding: "12px" }}>
+                  <td className="px-4 py-3 text-ink-soft">{user.email}</td>
+                  <td className="px-4 py-3">
                     <label>
-                      <span style={{ position: "absolute", left: "-9999px" }}>
+                      <span className="sr-only">
                         Rol de {user.full_name ?? user.email}
                       </span>
                       {canManage ? <select
@@ -362,17 +362,17 @@ export function UsersManager({
                             event.target.value as UserRole,
                           )
                         }
-                        style={{ padding: "8px" }}
+                        className="rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"
                       >
                         {Object.entries(roleLabels).map(([value, label]) => (
                           <option key={value} value={value}>
                             {label}
                           </option>
                         ))}
-                      </select> : roleLabels[user.role]}
+                      </select> : <span className="text-ink-soft">{roleLabels[user.role]}</span>}
                     </label>
                   </td>
-                  <td style={{ padding: "12px" }}>
+                  <td className="px-4 py-3">
                     {user.role === "tecnico" ? (
                       canManage ? (
                         <select
@@ -385,7 +385,7 @@ export function UsersManager({
                               void handleWorkerSpecialtyChange(user.id, specialty);
                             }
                           }}
-                          style={{ padding: "8px" }}
+                          className="rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"
                         >
                           <option value="" disabled>
                             Sin especialidad
@@ -397,54 +397,69 @@ export function UsersManager({
                           ))}
                         </select>
                       ) : (
-                        user.worker_specialty
-                          ? WORKER_SPECIALTY_LABELS[user.worker_specialty]
-                          : "Sin especialidad"
+                        <span className="text-ink-soft">
+                          {user.worker_specialty
+                            ? WORKER_SPECIALTY_LABELS[user.worker_specialty]
+                            : "Sin especialidad"}
+                        </span>
                       )
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td style={{ padding: "12px" }}>{user.role === "tecnico" ? canManage ? <select aria-label={`Categoría de precio de ${user.full_name ?? user.email}`} value={user.price_category_id ?? ""} disabled={isLoading} onChange={(event) => void handlePriceCategoryChange(user.id, event.target.value || null)}><option value="">Sin categoría</option>{priceCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select> : (user.price_category_name ?? "Sin categoría") : "—"}</td>
-                  <td style={{ padding: "12px" }}>{user.crew_names.join(", ") || "—"}</td>
-                  <td style={{ padding: "12px" }}>
-                    {canManage ? <button
+                  <td className="px-4 py-3">{user.role === "tecnico" ? canManage ? <select aria-label={`Categoría de precio de ${user.full_name ?? user.email}`} value={user.price_category_id ?? ""} disabled={isLoading} onChange={(event) => void handlePriceCategoryChange(user.id, event.target.value || null)} className="rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Sin categoría</option>{priceCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select> : (user.price_category_name ?? "Sin categoría") : "—"}</td>
+                  <td className="px-4 py-3">
+                    {user.crew_names.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {user.crew_names.map((name) => (
+                          <span
+                            key={name}
+                            className="rounded-full border border-line bg-surface-muted px-2 py-0.5 text-xs text-ink-soft"
+                          >
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {canManage ? <Button
                       type="button"
+                      variant="secondary"
+                      size="sm"
                       disabled={isCurrentUser || isLoading}
                       onClick={() => void handleStatusToggle(user.id)}
-                      style={{
-                        padding: "8px 12px",
-                        cursor: isCurrentUser ? "not-allowed" : "pointer",
-                      }}
                     >
                       {user.is_active ? "Activo" : "Inactivo"}
-                    </button> : user.is_active ? "Activo" : "Inactivo"}
-                    {isCurrentUser && <span> (tu cuenta)</span>}
+                    </Button> : user.is_active ? "Activo" : "Inactivo"}
+                    {isCurrentUser && <span className="ml-2 text-xs text-ink-muted"> (tu cuenta)</span>}
                   </td>
-                  <td style={{ padding: "12px" }}>
-                    {canManage && <><button
-                      type="button"
-                      disabled={isLoading}
-                      onClick={() => openEdit(user)}
-                      style={{ padding: "8px 12px", cursor: "pointer" }}
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isCurrentUser || isLoading}
-                      onClick={() => {
-                        setModal({ type: "delete", user });
-                        setMessage("");
-                      }}
-                      style={{
-                        padding: "8px 12px",
-                        marginLeft: "8px",
-                        cursor: isCurrentUser ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      Eliminar
-                    </button></>}
+                  <td className="px-4 py-3">
+                    {canManage && <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={isLoading}
+                        onClick={() => openEdit(user)}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        disabled={isCurrentUser || isLoading}
+                        onClick={() => {
+                          setModal({ type: "delete", user });
+                          setMessage("");
+                        }}
+                      >
+                        Eliminar
+                      </Button>
+                    </div>}
                   </td>
                 </tr>
               );
@@ -454,69 +469,43 @@ export function UsersManager({
       </div>
 
       {modal.type !== "closed" && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0,0,0,0.85)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-            zIndex: 50,
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "black",
-              color: "white",
-              border: "1px solid white",
-              padding: "24px",
-              borderRadius: "8px",
-              width: "100%",
-              maxWidth: "450px",
-              maxHeight: "90vh",
-              overflowY: "auto",
-            }}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-950/40 p-5">
+          <div className="max-h-[90vh] w-full max-w-[450px] overflow-y-auto rounded-2xl border border-line bg-white p-6 shadow-card">
             {modal.type === "delete" ? (
               <>
-                <h2 style={{ fontSize: "20px", marginBottom: "16px" }}>
+                <h2 className="mb-4 text-xl font-semibold text-ink">
                   Eliminar usuario
                 </h2>
-                <p style={{ marginBottom: "16px" }}>
+                <p className="mb-4 text-sm text-ink-soft">
                   ¿Estás seguro de que deseas eliminar a{" "}
-                  <strong>{modal.user.full_name ?? modal.user.email}</strong>?
+                  <strong className="font-semibold text-ink">{modal.user.full_name ?? modal.user.email}</strong>?
                   Esta acción no se puede deshacer.
                 </p>
-                <div style={{ display: "flex", gap: "12px" }}>
-                  <button
+                <div className="flex gap-3">
+                  <Button
                     type="button"
+                    variant="dangerSolid"
                     onClick={handleDelete}
                     disabled={isLoading}
-                    style={{ padding: "10px 16px", cursor: "pointer" }}
                   >
                     {isLoading ? "Eliminando..." : "Sí, eliminar"}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="secondary"
                     onClick={() => setModal({ type: "closed" })}
                     disabled={isLoading}
-                    style={{ padding: "10px 16px", cursor: "pointer" }}
                   >
                     Cancelar
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : modal.type === "create" ? (
               <>
-                <h2 style={{ fontSize: "20px", marginBottom: "16px" }}>
+                <h2 className="mb-4 text-xl font-semibold text-ink">
                   Nuevo usuario
                 </h2>
-                <form
-                  onSubmit={handleCreate}
-                  style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-                >
+                <form onSubmit={handleCreate} className="flex flex-col gap-3">
                   <input
                     type="text"
                     placeholder="Nombre completo"
@@ -528,7 +517,7 @@ export function UsersManager({
                       }))
                     }
                     required
-                    style={{ padding: "10px" }}
+                    className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
                   />
                   <input
                     type="email"
@@ -541,7 +530,7 @@ export function UsersManager({
                       }))
                     }
                     required
-                    style={{ padding: "10px" }}
+                    className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
                   />
                   <input
                     type="password"
@@ -555,7 +544,7 @@ export function UsersManager({
                     }
                     required
                     minLength={6}
-                    style={{ padding: "10px" }}
+                    className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
                   />
                   <select
                     value={createForm.role}
@@ -565,7 +554,7 @@ export function UsersManager({
                         role: event.target.value as UserRole,
                       }))
                     }
-                    style={{ padding: "10px" }}
+                    className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
                   >
                     {Object.entries(roleLabels).map(([value, label]) => (
                       <option key={value} value={value}>
@@ -573,7 +562,7 @@ export function UsersManager({
                       </option>
                     ))}
                   </select>
-                  <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <label className="flex items-center gap-2 text-sm text-ink-soft">
                     <input
                       type="checkbox"
                       checked={createForm.isActive}
@@ -586,34 +575,31 @@ export function UsersManager({
                     />
                     Activo
                   </label>
-                  <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
-                    <button
+                  <div className="mt-2 flex gap-3">
+                    <Button
                       type="submit"
+                      variant="primary"
                       disabled={isLoading}
-                      style={{ padding: "10px 16px", cursor: "pointer" }}
                     >
                       {isLoading ? "Guardando..." : "Crear usuario"}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="secondary"
                       onClick={() => setModal({ type: "closed" })}
                       disabled={isLoading}
-                      style={{ padding: "10px 16px", cursor: "pointer" }}
                     >
                       Cancelar
-                    </button>
+                    </Button>
                   </div>
                 </form>
               </>
             ) : (
               <>
-                <h2 style={{ fontSize: "20px", marginBottom: "16px" }}>
+                <h2 className="mb-4 text-xl font-semibold text-ink">
                   Editar usuario
                 </h2>
-                <form
-                  onSubmit={handleEdit}
-                  style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-                >
+                <form onSubmit={handleEdit} className="flex flex-col gap-3">
                   <input
                     type="text"
                     placeholder="Nombre completo"
@@ -625,7 +611,7 @@ export function UsersManager({
                       }))
                     }
                     required
-                    style={{ padding: "10px" }}
+                    className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
                   />
                   <input
                     type="email"
@@ -638,18 +624,11 @@ export function UsersManager({
                       }))
                     }
                     required
-                    style={{ padding: "10px" }}
+                    className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
                   />
                   {modal.user.email.trim().toLowerCase() !==
                     editForm.email.trim().toLowerCase() && (
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        fontSize: "14px",
-                      }}
-                    >
+                    <label className="flex items-center gap-2 text-sm text-ink-soft">
                       <input
                         type="checkbox"
                         checked={confirmEmailChange}
@@ -660,22 +639,22 @@ export function UsersManager({
                       Confirmar cambio de correo
                     </label>
                   )}
-                  <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
-                    <button
+                  <div className="mt-2 flex gap-3">
+                    <Button
                       type="submit"
+                      variant="primary"
                       disabled={isLoading}
-                      style={{ padding: "10px 16px", cursor: "pointer" }}
                     >
                       {isLoading ? "Guardando..." : "Guardar cambios"}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="secondary"
                       onClick={() => setModal({ type: "closed" })}
                       disabled={isLoading}
-                      style={{ padding: "10px 16px", cursor: "pointer" }}
                     >
                       Cancelar
-                    </button>
+                    </Button>
                   </div>
                 </form>
               </>
@@ -683,6 +662,6 @@ export function UsersManager({
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }

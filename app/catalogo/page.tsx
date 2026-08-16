@@ -1,4 +1,6 @@
 import { CatalogManager } from "@/components/catalog-manager";
+import { AppShell } from "@/components/dashboard/app-shell";
+import { displayName, initials, roleLabel } from "@/lib/dashboard/profile";
 import { requireSupervisor } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
@@ -11,10 +13,14 @@ export default async function CatalogPage() {
     supabase.from("production_code_rates").select("id,catalog_item_id,price_category_id,unit_price,effective_from,active").order("effective_from", { ascending: false }),
   ]);
   if (items.error || categories.error || rates.error) throw new Error("No se pudo cargar el catálogo de precios.");
-  return <CatalogManager
-    canManage={profile.role === "admin"}
-    initialItems={items.data ?? []}
-    categories={categories.data ?? []}
-    rates={rates.data ?? []}
-  />;
+  return (
+    <AppShell role={profile.role as "admin" | "supervisor"} userName={displayName(profile)} roleLabel={roleLabel(profile.role)} initials={initials(profile)}>
+      <CatalogManager
+        canManage={profile.role === "admin"}
+        initialItems={items.data ?? []}
+        categories={categories.data ?? []}
+        rates={rates.data ?? []}
+      />
+    </AppShell>
+  );
 }

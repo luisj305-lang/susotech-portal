@@ -10,6 +10,7 @@ import {
   reconcileJobDocumentUploads,
 } from "@/lib/storage/actions";
 import { supabase } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
 
 const PDF_LIMIT = 25 * 1024 * 1024;
 
@@ -17,10 +18,12 @@ export function JobAttachments({
   jobId,
   documents,
   canManage,
+  bare = false,
 }: {
   jobId: string;
   documents: JobDocument[];
   canManage: boolean;
+  bare?: boolean;
 }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -113,14 +116,26 @@ export function JobAttachments({
     });
   };
 
-  return <section className="rounded-2xl border border-black bg-white p-5 text-black shadow-lg">
-    <h2 className="text-xl font-bold">Adjuntos PDF</h2>
-    <p className="mt-1 text-sm text-black">Documentos adicionales; se concatenan en este orden después del original dentro del único PDF final.</p>
-    {documents.length ? <ul className="mt-4 grid gap-3">{documents.map((document) => <li key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-black p-3">
-      <div><p className="font-semibold">{document.position}. {document.display_name}</p><p className="text-sm">{(document.size_bytes / 1024 / 1024).toFixed(2)} MB · {document.page_count ?? "?"} página(s)</p></div>
-      <div className="flex gap-2"><button type="button" disabled={pending} onClick={() => open(document.storage_path)} className="min-h-11 rounded-lg border border-black px-4 font-semibold disabled:opacity-60">Ver PDF</button>{canManage && <button type="button" disabled={pending} onClick={() => remove(document)} className="min-h-11 rounded-lg border border-black px-4 font-semibold disabled:opacity-60">Eliminar</button>}</div>
-    </li>)}</ul> : <p className="mt-4 text-sm">No hay adjuntos adicionales.</p>}
-    {canManage && <div className="mt-5 grid gap-3 border-t border-black pt-4"><label className="grid gap-1 font-semibold">Añadir uno o más PDFs<input ref={input} type="file" accept="application/pdf,.pdf" multiple disabled={pending} className="min-h-12 rounded-lg border border-black p-3" /></label><div className="flex flex-wrap gap-2"><button type="button" disabled={pending} onClick={upload} className="min-h-12 w-fit rounded-lg border border-black px-5 font-bold disabled:opacity-60">{pending ? "Procesando…" : "Subir PDFs"}</button><button type="button" disabled={pending} onClick={() => startTransition(async () => { const result = await reconcileJobDocumentUploads({ jobId }); setMessage(result.message); if (result.success) router.refresh(); })} className="min-h-12 w-fit rounded-lg border border-black px-5 font-semibold disabled:opacity-60">Recuperar cargas interrumpidas</button></div></div>}
-    <p role="status" aria-live="polite" className="mt-3 text-sm">{progress || message}</p>
+  const list = documents.length ? <ul className="mt-4 grid gap-3">{documents.map((document) => <li key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-3">
+    <div><p className="font-semibold text-ink">{document.position}. {document.display_name}</p><p className="text-sm text-ink-muted">{(document.size_bytes / 1024 / 1024).toFixed(2)} MB · {document.page_count ?? "?"} página(s)</p></div>
+    <div className="flex gap-2"><Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => open(document.storage_path)}>Ver PDF</Button>{canManage && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => remove(document)}>Eliminar</Button>}</div>
+  </li>)}</ul> : <p className="mt-4 text-sm text-ink-soft">No hay adjuntos adicionales.</p>;
+
+  const status = <p role="status" aria-live="polite" className="mt-3 text-sm text-ink-muted">{progress || message}</p>;
+
+  if (bare) {
+    return <article className="rounded-xl border border-line bg-white p-4 text-ink">
+      <h3 className="font-bold text-ink">Adjuntos PDF</h3>
+      {list}
+      {status}
+    </article>;
+  }
+
+  return <section className="rounded-2xl border border-line bg-white p-6 text-ink shadow-card">
+    <h2 className="text-xl font-bold text-ink">Adjuntos PDF</h2>
+    <p className="mt-1 text-sm text-ink-soft">Documentos adicionales; se concatenan en este orden después del original dentro del único PDF final.</p>
+    {list}
+    {canManage && <div className="mt-5 grid gap-3 border-t border-line pt-4"><label className="grid gap-1 text-sm font-medium text-ink-soft">Añadir uno o más PDFs<input ref={input} type="file" accept="application/pdf,.pdf" multiple disabled={pending} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label><div className="flex flex-wrap gap-2"><Button variant="primary" type="button" disabled={pending} onClick={upload}>{pending ? "Procesando…" : "Subir PDFs"}</Button><Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => startTransition(async () => { const result = await reconcileJobDocumentUploads({ jobId }); setMessage(result.message); if (result.success) router.refresh(); })}>Recuperar cargas interrumpidas</Button></div></div>}
+    {status}
   </section>;
 }

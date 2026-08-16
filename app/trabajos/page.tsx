@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { JobList } from "@/components/jobs/job-list";
 import { ArchivedJobDeleteButton, RetryJobDeletionCleanupButton } from "@/components/jobs/archived-job-delete-button";
+import { AppShell } from "@/components/dashboard/app-shell";
+import { FieldShell } from "@/components/dashboard/field-shell";
+import { buttonClasses } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { displayName, initials, roleLabel } from "@/lib/dashboard/profile";
 import { requireProfile } from "@/lib/auth/session";
 import { listOfficeJobs, listTechnicianJobs } from "@/lib/jobs/queries";
-import { deliveredPdfStatusClasses, jobStatusBadgeClasses } from "@/lib/jobs/status-presentation";
 import { getJobMapUrl } from "@/lib/jobs/maps";
 import { requireActiveShiftPage } from "@/lib/work-shifts/access";
 
 const statusLabels: Record<string, string> = { sin_asignar: "Sin asignar", asignado: "Asignado", en_progreso: "En progreso", enviado_revision: "En revisión", aprobado: "Aprobado", listo_pagar: "Listo para pagar", pagado: "Pagado" };
-const deliveredLabels = { pending: "Pendiente", current: "Vigente", stale: "Desactualizado" } as const;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 function relevantDate(job: { submitted_at: string | null; deadline_date: string | null; assignment_date: string | null; updated_at: string }) {
@@ -20,17 +23,39 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
   const profile = await requireProfile();
   if (profile.role === "tecnico") {
     await requireActiveShiftPage();
-    return <JobList jobs={await listTechnicianJobs()} />;
+    return <FieldShell userName={displayName(profile)}><JobList jobs={await listTechnicianJobs()} /></FieldShell>;
   }
   const values = await searchParams;
   const first = (key: string) => { const value = values[key]; return Array.isArray(value) ? value[0] : value; };
   const filters = { q: first("q"), status: first("status"), category: first("category"), archived: first("archived") === "1" };
   const jobs = await listOfficeJobs({ query: filters.q, status: filters.status, category: filters.category, archived: filters.archived });
 
-  return <main className="min-h-screen bg-white px-4 py-8 text-black sm:px-8"><div className="mx-auto max-w-6xl">
-    <Link href="/dashboard" className="text-sm font-medium text-black">← Dashboard</Link>
-    <header className="my-6 flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-widest text-black">Operaciones</p><h1 className="text-3xl font-bold">{filters.archived ? "Trabajos archivados" : "Trabajos"}</h1><p className="mt-1 text-black">Identifique cada orden, su asignación, documentos y evidencias sin abrirla.</p></div><div className="flex flex-wrap gap-3">{filters.archived && profile.role === "admin" && <RetryJobDeletionCleanupButton />}<Link href={filters.archived ? "/trabajos" : "/trabajos?archived=1"} className="rounded-lg border border-black px-5 py-3 font-semibold">{filters.archived ? "Ver activos" : "Ver archivados"}</Link><Link href="/trabajos/importar" className="rounded-lg bg-black px-5 py-3 font-bold text-white">Importar PDF</Link><Link href="/trabajos/nuevo" className="rounded-lg border border-black px-5 py-3 text-sm font-semibold text-black">Creación manual</Link></div></header>
-    <form className="grid gap-3 rounded-2xl border border-black bg-white p-4 sm:grid-cols-4">{filters.archived && <input type="hidden" name="archived" value="1" />}<label className="grid gap-1 text-sm font-medium sm:col-span-2">Buscar por PRISM, título o dirección<input name="q" defaultValue={filters.q} className="rounded-lg border border-black bg-white p-3 text-black" /></label><label className="grid gap-1 text-sm font-medium">Estado<select name="status" defaultValue={filters.status} className="rounded-lg border border-black bg-white p-3"><option value="">Todos</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="grid gap-1 text-sm font-medium">Categoría<select name="category" defaultValue={filters.category} className="rounded-lg border border-black bg-white p-3"><option value="">Todas</option><option value="categoria_1">Categoría 1</option><option value="categoria_2">Categoría 2</option><option value="categoria_3">Categoría 3</option></select></label><button className="rounded-lg border border-black px-4 py-2 font-semibold text-white sm:col-start-4">Aplicar filtros</button></form>
-    {jobs.length ? <div className="mt-6 grid gap-4 sm:grid-cols-2">{jobs.map((job) => { const mapUrl = getJobMapUrl({ address: job.address, location: job.location, projectMapUrl: job.project_map_url }); return <article key={job.id} className="rounded-2xl border border-black bg-white p-5 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-black">{job.prism_number ? `PRISM ${job.prism_number}` : "Sin número PRISM"}</p>{mapUrl ? <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mt-1 block text-xl font-bold underline">{job.address || job.location || job.title}</a> : <h2 className="mt-1 text-xl font-bold">{job.title}</h2>}<p className="mt-1 text-sm text-black">{job.title}</p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${jobStatusBadgeClasses[job.main_status]}`}>{statusLabels[job.main_status]}</span></div><dl className="mt-5 grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-black">Categoría</dt><dd className="font-semibold">{job.category.replace("categoria_", "Categoría ")}</dd></div><div><dt className="text-black">Asignado</dt><dd className="font-semibold">{job.assignee_label}</dd></div><div><dt className="text-black">Fecha relevante</dt><dd className="font-semibold">{relevantDate(job)}</dd></div><div><dt className="text-black">Evidencias</dt><dd className="font-semibold">{job.photo_count} foto(s)</dd></div><div><dt className="text-black">PDF original</dt><dd className={job.project_pdf_url ? "font-semibold text-black" : "font-semibold text-black"}>{job.project_pdf_url ? "Disponible" : "No disponible"}</dd></div><div><dt className="text-black">PDF entregado</dt><dd className={`font-semibold ${deliveredPdfStatusClasses[job.delivered_pdf_status]}`}>{deliveredLabels[job.delivered_pdf_status]}</dd></div></dl>{job.incident && <p className="mt-4 rounded-lg border border-black bg-white p-3 text-sm font-semibold text-black">Incidencia: {job.incident}</p>}<Link href={`/trabajos/${job.id}`} className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-black px-5 font-bold text-white">Ver trabajo</Link>{filters.archived && profile.role === "admin" && <ArchivedJobDeleteButton jobId={job.id} label={job.prism_number ? `el trabajo PRISM ${job.prism_number}` : `el trabajo ${job.title}`} />}</article>; })}</div> : <section className="mt-6 rounded-2xl border border-dashed border-black p-10 text-center"><h2 className="font-semibold">No hay trabajos que coincidan</h2><p className="mt-2 text-sm text-black">Cambie los filtros o importe un PDF.</p></section>}
-  </div></main>;
+  return (
+    <AppShell role={profile.role as "admin" | "supervisor"} userName={displayName(profile)} roleLabel={roleLabel(profile.role)} initials={initials(profile)}>
+      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        <Link href="/dashboard" className="text-sm font-medium text-accent-600 hover:text-accent-500">← Dashboard</Link>
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-widest text-ink-muted">Operaciones</p>
+            <h1 className="text-3xl font-bold text-ink">{filters.archived ? "Trabajos archivados" : "Trabajos"}</h1>
+            <p className="mt-1 text-ink-soft">Identifique cada orden, su asignación, documentos y evidencias sin abrirla.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {filters.archived && profile.role === "admin" && <RetryJobDeletionCleanupButton />}
+            <Link href={filters.archived ? "/trabajos" : "/trabajos?archived=1"} className={buttonClasses({ variant: "secondary" })}>{filters.archived ? "Ver activos" : "Ver archivados"}</Link>
+            <Link href="/trabajos/importar" className={buttonClasses({ variant: "primary" })}>Importar PDF</Link>
+            <Link href="/trabajos/nuevo" className={buttonClasses({ variant: "secondary" })}>Creación manual</Link>
+          </div>
+        </header>
+        <form className="grid gap-3 rounded-2xl border border-line bg-white p-4 shadow-card sm:grid-cols-4">
+          {filters.archived && <input type="hidden" name="archived" value="1" />}
+          <label className="grid gap-1 text-sm font-medium text-ink-soft sm:col-span-2">Buscar por PRISM, título o dirección<input name="q" defaultValue={filters.q} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">Estado<select name="status" defaultValue={filters.status} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Todos</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">Categoría<select name="category" defaultValue={filters.category} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Todas</option><option value="categoria_1">Categoría 1</option><option value="categoria_2">Categoría 2</option><option value="categoria_3">Categoría 3</option></select></label>
+          <button className={`${buttonClasses({ variant: "primary" })} sm:col-start-4`}>Aplicar filtros</button>
+        </form>
+        {jobs.length ? <div className="grid gap-4 sm:grid-cols-2">{jobs.map((job) => { const mapUrl = getJobMapUrl({ address: job.address, location: job.location, projectMapUrl: job.project_map_url }); return <article key={job.id} className="rounded-2xl border border-line bg-white p-6 shadow-card"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-ink-muted">{job.prism_number ? `PRISM ${job.prism_number}` : "Sin número PRISM"}</p>{mapUrl ? <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mt-1 block text-xl font-bold text-ink underline">{job.address || job.location || job.title}</a> : <h2 className="mt-1 text-xl font-bold text-ink">{job.title}</h2>}<p className="mt-1 text-sm text-ink-soft">{job.title}</p></div><StatusBadge status={job.main_status} /></div><dl className="mt-5 grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-ink-muted">Categoría</dt><dd className="font-semibold">{job.category.replace("categoria_", "Categoría ")}</dd></div><div><dt className="text-ink-muted">Asignado</dt><dd className="font-semibold">{job.assignee_label}</dd></div><div><dt className="text-ink-muted">Fecha relevante</dt><dd className="font-semibold">{relevantDate(job)}</dd></div><div><dt className="text-ink-muted">Evidencias</dt><dd className="font-semibold">{job.photo_count} foto(s)</dd></div><div><dt className="text-ink-muted">PDF original</dt><dd className="font-semibold">{job.project_pdf_url ? "Disponible" : "No disponible"}</dd></div><div><dt className="text-ink-muted">PDF entregado</dt><dd><StatusBadge status={`pdf_${job.delivered_pdf_status}`} /></dd></div></dl>{job.incident && <p className="mt-4 rounded-lg border border-line bg-surface-muted p-3 text-sm font-semibold text-ink">Incidencia: {job.incident}</p>}<Link href={`/trabajos/${job.id}`} className={`${buttonClasses({ variant: "primary" })} mt-5`}>Ver trabajo</Link>{filters.archived && profile.role === "admin" && <ArchivedJobDeleteButton jobId={job.id} label={job.prism_number ? `el trabajo PRISM ${job.prism_number}` : `el trabajo ${job.title}`} />}</article>; })}</div> : <section className="rounded-2xl border border-dashed border-line p-10 text-center"><h2 className="font-semibold text-ink">No hay trabajos que coincidan</h2><p className="mt-2 text-sm text-ink-muted">Cambie los filtros o importe un PDF.</p></section>}
+      </div>
+    </AppShell>
+  );
 }

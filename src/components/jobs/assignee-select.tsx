@@ -22,7 +22,7 @@ export function AssigneeSelect({
   onChange,
   ariaLabel,
   required = false,
-  className = "rounded-lg border p-3",
+  className = "rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none",
 }: Props) {
   const [internalValue, setInternalValue] = useState(defaultValue);
   const selectedValue = value ?? internalValue;

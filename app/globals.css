@@ -1,107 +1,100 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #000000;
   color-scheme: light;
 }
 
+@theme {
+  /* Brand — dark corporate blue (Susotech) */
+  --color-brand-50: #eef4fb;
+  --color-brand-100: #dbeaf6;
+  --color-brand-200: #b7d3ec;
+  --color-brand-300: #8fb5dd;
+  --color-brand-600: #1f4a7a;
+  --color-brand-700: #1a3d66;
+  --color-brand-800: #122c49;
+  --color-brand-900: #10243d;
+  --color-brand-950: #0a1c33;
+
+  /* Accent — bright corporate blue (landing susotech-blue #0094FF) */
+  --color-accent-500: #0094ff;
+  --color-accent-600: #007dd8;
+
+  /* Neutral ink/surface */
+  --color-ink: #10243d;
+  --color-ink-soft: #263b55;
+  --color-ink-muted: #607087;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-line: #e2e8f0;
+  --color-line-strong: #ccd5df;
+
+  /* Backwards-compat shadcn-ish names some code may reference */
+  --color-background: #ffffff;
+  --color-foreground: #10243d;
+
+  /* Shadows */
+  --shadow-soft: 0 1px 2px rgb(16 36 61 / 0.04), 0 1px 3px rgb(16 36 61 / 0.06);
+  --shadow-card: 0 1px 3px rgb(16 36 61 / 0.05), 0 4px 12px rgb(16 36 61 / 0.05);
+}
+
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-html,
-body {
-  min-height: 100%;
-  background: var(--background);
-  color: var(--foreground);
-}
-
-body {
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-button {
-  background: #000000;
-  color: #ffffff;
-  border: 1px solid #000000;
-}
-
-a,
-input,
-select,
-textarea {
-  background: #ffffff;
-  color: #000000;
-  border: 1px solid #000000;
-}
-
-a {
-  display: inline-block;
-  padding: 0.625rem 0.875rem;
-  text-decoration: none;
-}
-
-input,
-select,
-textarea,
-option {
-  background: #ffffff;
-  color: #000000;
-}
-
-::file-selector-button {
-  background: #000000;
-  color: #ffffff;
-}
-
-section[class*="rounded"],
-article[class*="rounded"],
-form[class*="rounded"],
-li[class*="rounded"],
-div[class*="rounded"],
-span[class*="rounded"],
-::file-selector-button {
-  border: 1px solid #000000;
-}
-
-table {
-  border: 1px solid #000000;
-}
-
-th,
-td {
-  border-color: #000000;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: #000000;
-  opacity: 0.6;
-}
-
-input:focus,
-select:focus,
-textarea:focus,
-button:focus-visible,
-a:focus-visible {
-  outline: 2px solid #000000;
-  outline-offset: 2px;
-}
-
-input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: none;
-}
-
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus,
-textarea:-webkit-autofill,
-select:-webkit-autofill {
-  -webkit-text-fill-color: #000000;
-  box-shadow: 0 0 0 1000px #ffffff inset;
-  caret-color: #000000;
+@layer base {
+  html,
+  body {
+    min-height: 100%;
+    background: var(--color-surface);
+    color: var(--color-ink);
+  }
+  body {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button {
+    background: var(--color-brand-900);
+    color: #ffffff;
+    border: 1px solid var(--color-brand-900);
+    cursor: pointer;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  input,
+  select,
+  textarea,
+  option {
+    background: #ffffff;
+    color: var(--color-ink);
+    border: 1px solid var(--color-line-strong);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-ink-muted);
+    opacity: 1;
+  }
+  input:focus,
+  select:focus,
+  textarea:focus,
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--color-accent-500);
+    outline-offset: 2px;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: none;
+  }
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--color-ink);
+    box-shadow: 0 0 0 1000px #ffffff inset;
+    caret-color: var(--color-ink);
+  }
 }

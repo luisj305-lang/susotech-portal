@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { addPhotoComment } from "@/lib/jobs/actions";
 import {
@@ -9,6 +10,7 @@ import {
 } from "@/lib/storage/actions";
 import { supabase } from "@/lib/supabase/client";
 import { UploadFeedback } from "./upload-feedback";
+import { Button } from "@/components/ui/button";
 
 const allowedPhotoTypes = ["image/jpeg", "image/png", "image/webp"];
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
@@ -20,6 +22,14 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
   const [message, setMessage] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const previewUrl = useMemo(() => (photo ? URL.createObjectURL(photo) : null), [photo]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   const clearPhoto = () => {
     setPhoto(null);
@@ -103,19 +113,19 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
   }
 
   return (
-    <section className="grid gap-6 rounded-2xl bg-white p-5 text-black shadow-lg">
+    <section className="grid gap-6 rounded-2xl border border-line bg-white p-6 text-ink shadow-card">
       <div>
         <h2 className="text-xl font-bold">Evidencia fotográfica</h2>
         <form action={upload} className="mt-4 grid gap-3">
           <div className="grid gap-2">
             <p className="font-semibold">Foto</p>
-            <p className="text-sm text-black/70">
+            <p className="text-sm text-ink-muted">
               JPG, PNG o WebP · máximo 10 MB
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label
                 aria-disabled={pending}
-                className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border px-4 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
+                className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-line bg-white px-4 text-center font-semibold text-ink has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
               >
                 Tomar foto
                 <input
@@ -130,7 +140,7 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
               </label>
               <label
                 aria-disabled={pending}
-                className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border px-4 text-center font-semibold has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
+                className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-line bg-white px-4 text-center font-semibold text-ink has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
               >
                 Elegir de galería
                 <input
@@ -144,61 +154,75 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
               </label>
             </div>
             {photo && (
-              <div className="flex items-center justify-between gap-3 rounded-xl border p-3 text-sm">
-                <span className="min-w-0 truncate">{photo.name}</span>
+              <div className="flex items-center gap-3 rounded-xl border border-line p-3 text-sm text-ink">
+                {previewUrl && (
+                  <Image
+                    src={previewUrl}
+                    alt={`Vista previa de ${photo.name}`}
+                    width={64}
+                    height={64}
+                    className="h-16 w-16 shrink-0 rounded-lg border border-line object-cover"
+                    unoptimized
+                  />
+                )}
+                <span className="min-w-0 flex-1 truncate">{photo.name}</span>
                 <button
                   type="button"
                   disabled={pending}
                   onClick={clearPhoto}
-                  className="font-bold underline disabled:opacity-60"
+                  className="font-bold text-accent-600 underline disabled:opacity-60"
                 >
                   Quitar
                 </button>
               </div>
             )}
           </div>
-          <label className="grid gap-1 font-semibold">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             Tipo
-            <select name="photoType" className="min-h-12 rounded-xl border p-3">
+            <select name="photoType" className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none">
               <option value="before">Antes</option>
               <option value="after">Después</option>
               <option value="evidence">Evidencia</option>
             </select>
           </label>
-          <label className="grid gap-1 font-semibold">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             Comentario de esta foto{" "}
-            <span className="font-normal text-black">(opcional)</span>
+            <span className="font-normal text-ink-muted">(opcional)</span>
             <textarea
               name="photoComment"
               rows={2}
               maxLength={2000}
-              className="rounded-xl border p-3"
+              className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
             />
           </label>
-          <button
+          <Button
             disabled={pending || !photo}
-            className="min-h-14 rounded-xl bg-black px-5 text-lg font-bold text-white disabled:opacity-60"
+            variant="primary"
+            size="lg"
           >
             {pending ? "Subiendo…" : "Subir foto"}
-          </button>
+          </Button>
+          {!photo && (
+            <p className="text-sm text-ink-muted">Selecciona una foto para subir.</p>
+          )}
         </form>
       </div>
-      <form action={comment} className="grid gap-3 border-t pt-5">
-        <label className="grid gap-1 font-semibold">
+      <form action={comment} className="grid gap-3 border-t border-line pt-5">
+        <label className="grid gap-1 text-sm font-medium text-ink-soft">
           Comentario general del trabajo
           <textarea
             name="comment"
             required
             rows={3}
-            className="rounded-xl border p-3"
+            className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
           />
         </label>
-        <button
+        <Button
           disabled={pending}
-          className="min-h-14 rounded-xl border-2 border-black px-5 text-lg font-bold"
+          variant="secondary"
         >
           Guardar comentario general
-        </button>
+        </Button>
       </form>
       <UploadFeedback message={message} pendingFile={photo?.name ?? ""} />
     </section>
