@@ -5,7 +5,7 @@ import { getDeliveredPdfStatus } from "./delivered-status";
 import { requireActiveShift } from "@/lib/work-shifts/access";
 import type { AssigneeOption, CrewOfficeDto, Job, JobArchiveEvent, JobAssignment, JobCategory, JobDocument, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyProductionLine, WorkerOperationsRow } from "./types";
 
-const statuses: JobStatus[] = ["asignado", "en_progreso", "enviado_revision", "aprobado", "listo_pagar", "pagado"];
+const statuses: JobStatus[] = ["sin_asignar", "asignado", "en_revision", "aprobado", "facturado", "pagado"];
 const categories: JobCategory[] = ["categoria_1", "categoria_2", "categoria_3"];
 
 export async function listAssigneeOptions(): Promise<AssigneeOption[]> {
@@ -89,7 +89,7 @@ export async function listTechnicianJobs() {
 export async function getTechnicianJob(jobId: string) {
   await requireActiveShift();
   const supabase = await createClient();
-  const [job, history, codes, photos, documents, draft, deliveryVersion, catalog] = await Promise.all([
+  const [job, history, codes, photos, documents, draft, deliveryVersion, catalog, allocations] = await Promise.all([
     supabase.from("jobs").select("*").eq("id", jobId).maybeSingle(),
     supabase.from("job_status_history").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
     supabase.from("job_production_codes").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
@@ -98,20 +98,21 @@ export async function getTechnicianJob(jobId: string) {
     supabase.from("job_pdf_drafts").select("*").eq("job_id", jobId).maybeSingle(),
     supabase.from("job_pdf_delivery_versions").select("draft_version").eq("job_id", jobId).maybeSingle(),
     supabase.rpc("list_my_production_catalog"),
+    supabase.rpc("list_my_financial_allocations", { p_job_id: jobId }),
   ]);
-  if (job.error || history.error || codes.error || photos.error || documents.error || draft.error || deliveryVersion.error || catalog.error) throw new Error("No se pudo cargar el trabajo asignado.");
+  if (job.error || history.error || codes.error || photos.error || documents.error || draft.error || deliveryVersion.error || catalog.error || allocations.error) throw new Error("No se pudo cargar el trabajo asignado.");
   if (!job.data) return null;
-  return { job: job.data as Job, history: (history.data ?? []) as JobStatusHistoryEntry[], codes: (codes.data ?? []) as JobProductionCode[], photos: (photos.data ?? []) as JobPhoto[], documents: (documents.data ?? []) as JobDocument[], draft: draft.data as JobPdfDraft | null, deliveredDraftVersion: deliveryVersion.data?.draft_version as number | undefined, catalog: (catalog.data ?? []) as ProductionCatalogOption[] };
+  return { job: job.data as Job, history: (history.data ?? []) as JobStatusHistoryEntry[], codes: (codes.data ?? []) as JobProductionCode[], photos: (photos.data ?? []) as JobPhoto[], documents: (documents.data ?? []) as JobDocument[], draft: draft.data as JobPdfDraft | null, deliveredDraftVersion: deliveryVersion.data?.draft_version as number | undefined, catalog: (catalog.data ?? []) as ProductionCatalogOption[], allocations: (allocations.data ?? []) as import("./types").MyFinancialAllocation[] };
 }
 
-export async function getMyWeeklyProduction() {
-  const { data, error } = await (await createClient()).rpc("get_my_weekly_production", { p_reference_date: null });
+export async function getMyWeeklyProduction(referenceDate?: string | null) {
+  const { data, error } = await (await createClient()).rpc("get_my_weekly_production", { p_reference_date: referenceDate ?? null });
   if (error) throw new Error("No se pudo cargar la producción semanal.");
   return (data ?? []) as WeeklyProductionLine[];
 }
 
-export async function getMyWeeklyFinancialAllocations() {
-  const { data, error } = await (await createClient()).rpc("get_my_weekly_financial_allocations", { p_reference_date: null });
+export async function getMyWeeklyFinancialAllocations(referenceDate?: string | null) {
+  const { data, error } = await (await createClient()).rpc("get_my_weekly_financial_allocations", { p_reference_date: referenceDate ?? null });
   if (error) throw new Error("No se pudo cargar tu distribución financiera semanal.");
   return (data ?? []) as import("./types").WeeklyFinancialAllocation[];
 }

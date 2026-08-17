@@ -1,10 +1,9 @@
 export type JobStatus =
   | "sin_asignar"
   | "asignado"
-  | "en_progreso"
-  | "enviado_revision"
+  | "en_revision"
   | "aprobado"
-  | "listo_pagar"
+  | "facturado"
   | "pagado";
 
 export type IncidentType =
@@ -58,6 +57,9 @@ export interface Job {
   submitted_at: string | null;
   approved_at: string | null;
   paid_at: string | null;
+  invoice_number: string | null;
+  invoice_path: string | null;
+  invoiced_at: string | null;
   archived_at: string | null;
   archived_by: string | null;
   archive_reason: string | null;
@@ -187,6 +189,21 @@ export interface WeeklyFinancialAllocation {
   percentage_basis_points: number;
   allocated_cents: number;
   billing_state: "pending" | "confirmed";
+}
+
+export interface MyFinancialAllocation {
+  allocation_version_id: string;
+  delivery_id: string;
+  job_id: string;
+  version: number;
+  percentage_basis_points: number;
+  allocated_cents: number;
+  source_amount_cents: number;
+  participant_name: string;
+  worker_specialty: string;
+  created_at: string;
+  is_current: boolean;
+  state: "voided" | "superseded" | "current";
 }
 
 export interface FinancialAllocationReportLine {

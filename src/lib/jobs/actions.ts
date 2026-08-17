@@ -215,7 +215,7 @@ export async function transitionJob(input: { jobId: string; newStatus: JobStatus
   const shiftFailure = await requireTechnicianShift(profile.role);
   if (shiftFailure) return shiftFailure;
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");
-  if (input.newStatus === "enviado_revision") {
+  if (input.newStatus === "en_revision") {
     return failure("Para enviar el trabajo, usa el editor de entrega.");
   }
   const supabase = await createClient();
@@ -296,7 +296,7 @@ const archiveReasonCodes = [
 ] as const;
 
 export async function setJobArchived(input: { jobId: string; archived: boolean; reasonCode?: string; notes?: string }): Promise<Result> {
-  await requireAdmin();
+  await requireSupervisor();
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");
   const notes = cleanText(input.notes, "Las observaciones", 2000);
   if (input.archived && (!input.reasonCode || !archiveReasonCodes.includes(input.reasonCode as typeof archiveReasonCodes[number]))) {
@@ -316,7 +316,7 @@ export async function setJobArchived(input: { jobId: string; archived: boolean; 
 }
 
 export async function deleteArchivedJob(input: { jobId: string }): Promise<Result> {
-  await requireAdmin();
+  await requireSupervisor();
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");
 
   const supabase = await createClient();
@@ -341,6 +341,59 @@ export async function deleteArchivedJob(input: { jobId: string }): Promise<Resul
       : "Trabajo eliminado permanentemente.",
     data: null,
   };
+}
+
+export async function invoiceJob(input: { jobId: string; invoiceNumber: string; invoicePath?: string | null }): Promise<Result> {
+  await requireSupervisor();
+  if (!validId(input.jobId)) return failure("El trabajo no es válido.");
+  const invoiceNumber = cleanText(input.invoiceNumber, "El número de factura", 200);
+  if (!invoiceNumber) return failure("El número de factura es obligatorio.");
+  const invoicePath = input.invoicePath
+    ? cleanText(input.invoicePath, "La ruta de la factura", 1000)
+    : null;
+  if (invoicePath && !invoicePath.startsWith(`${input.jobId}/`)) {
+    return failure("La factura adjunta no es válida.");
+  }
+  const supabase = await createClient();
+  const { data: job, error } = await supabase.from("jobs").select("main_status").eq("id", input.jobId).single();
+  if (error || !job) return failure("Trabajo no disponible.");
+  if (job.main_status !== "aprobado") return failure("Solo se puede facturar un trabajo aprobado.");
+  const { error: updateError } = await supabase.from("jobs")
+    .update({ main_status: "facturado", invoice_number: invoiceNumber, invoice_path: invoicePath })
+    .eq("id", input.jobId)
+    .select("id")
+    .single();
+  if (updateError) return failure("No se pudo facturar el trabajo.");
+  refresh(input.jobId);
+  return { success: true, message: "Trabajo facturado.", data: null };
+}
+
+export async function correctInvoiceNumber(input: { jobId: string; invoiceNumber: string; invoicePath?: string | null }): Promise<Result> {
+  await requireSupervisor();
+  if (!validId(input.jobId)) return failure("El trabajo no es válido.");
+  const invoiceNumber = cleanText(input.invoiceNumber, "El número de factura", 200);
+  if (!invoiceNumber) return failure("El número de factura es obligatorio.");
+  const invoicePath = input.invoicePath
+    ? cleanText(input.invoicePath, "La ruta de la factura", 1000)
+    : null;
+  if (invoicePath && !invoicePath.startsWith(`${input.jobId}/`)) {
+    return failure("La factura adjunta no es válida.");
+  }
+  const supabase = await createClient();
+  const { data: job, error } = await supabase.from("jobs").select("main_status").eq("id", input.jobId).single();
+  if (error || !job) return failure("Trabajo no disponible.");
+  if (job.main_status === "pagado") return failure("La factura no se puede corregir después del pago.");
+  if (job.main_status !== "facturado") return failure("El trabajo todavía no está facturado.");
+  const payload: Record<string, unknown> = { invoice_number: invoiceNumber };
+  if (input.invoicePath !== undefined) payload.invoice_path = invoicePath;
+  const { error: updateError } = await supabase.from("jobs")
+    .update(payload)
+    .eq("id", input.jobId)
+    .select("id")
+    .single();
+  if (updateError) return failure("No se pudo corregir la factura.");
+  refresh(input.jobId);
+  return { success: true, message: "Número de factura corregido.", data: null };
 }
 
 export async function retryPendingJobDeletionCleanup(): Promise<Result<{ pending: number }>> {
@@ -423,7 +476,7 @@ export async function addPhotoComment(input: { jobId: string; storagePath?: stri
 
 export async function deleteJobPhoto(input: { jobId: string; photoId: string }): Promise<Result> {
   const profile = await requireProfile();
-  if (profile.role !== "admin" && !isOperationalFieldWorker(profile)) {
+  if (profile.role !== "admin" && profile.role !== "supervisor" && !isOperationalFieldWorker(profile)) {
     return failure(READ_ONLY_HELPER_MESSAGE);
   }
   if (!validId(input.jobId) || !validId(input.photoId)) return failure("La fotografía no es válida.");

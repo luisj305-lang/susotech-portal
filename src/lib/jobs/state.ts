@@ -4,10 +4,9 @@ import type { JobStatus, IncidentType } from "./types";
 export const JOB_STATUS_ORDER: JobStatus[] = [
   "sin_asignar",
   "asignado",
-  "en_progreso",
-  "enviado_revision",
+  "en_revision",
   "aprobado",
-  "listo_pagar",
+  "facturado",
   "pagado",
 ];
 
@@ -35,6 +34,14 @@ export interface TransitionInput {
   reason?: string | null;
 }
 
+const OFFICE_TRANSITIONS: ReadonlyArray<readonly [JobStatus, JobStatus]> = [
+  ["asignado", "en_revision"],
+  ["en_revision", "aprobado"],
+  ["en_revision", "asignado"],
+  ["aprobado", "facturado"],
+  ["facturado", "pagado"],
+];
+
 export function canTransition(input: TransitionInput): {
   allowed: boolean;
   reason?: string;
@@ -55,58 +62,24 @@ export function canTransition(input: TransitionInput): {
     return { allowed: false, reason: "No hay cambios que aplicar." };
   }
 
-  // Técnicos solo pueden avanzar estados en flujo normal y gestionar incidencias.
+  // Técnicos solo gestionan incidencias; el estado avanza exclusivamente a
+  // través del editor de entrega.
   if (role === "tecnico") {
     if (statusChanged) {
-      const currentIndex = JOB_STATUS_ORDER.indexOf(currentStatus);
-      const newIndex = JOB_STATUS_ORDER.indexOf(newStatus);
-
-      if (newIndex !== currentIndex + 1) {
-        return {
-          allowed: false,
-          reason: "Solo puedes avanzar al siguiente estado del flujo.",
-        };
-      }
-
-      // Técnico puede pasar asignado -> en_progreso y en_progreso -> enviado_revision.
-      if (
-        !(
-          (currentStatus === "asignado" && newStatus === "en_progreso") ||
-          (currentStatus === "en_progreso" && newStatus === "enviado_revision")
-        )
-      ) {
-        return {
-          allowed: false,
-          reason: "No tienes permiso para realizar esta transición de estado.",
-        };
-      }
+      return {
+        allowed: false,
+        reason: "Para enviar el trabajo a revisión, usa el editor de entrega.",
+      };
     }
-
-    if (incidentChanged) {
-      // Técnico puede añadir o quitar incidencias.
-      if (statusChanged) {
-        return {
-          allowed: false,
-          reason: "No puedes cambiar el estado y la incidencia al mismo tiempo.",
-        };
-      }
-    }
-
     return { allowed: true };
   }
 
-  // Admin y supervisor pueden realizar cualquier transición de estado válida.
+  // Admin y supervisor ejecutan la máquina de estados de oficina.
   if (statusChanged) {
-    const currentIndex = JOB_STATUS_ORDER.indexOf(currentStatus);
-    const newIndex = JOB_STATUS_ORDER.indexOf(newStatus);
-
-    // Permiten retroceder de enviado_revision a en_progreso.
-    if (
-      !(
-        newIndex === currentIndex + 1 ||
-        (currentStatus === "enviado_revision" && newStatus === "en_progreso")
-      )
-    ) {
+    const allowedTransition = OFFICE_TRANSITIONS.some(
+      ([from, to]) => from === currentStatus && to === newStatus,
+    );
+    if (!allowedTransition) {
       return {
         allowed: false,
         reason: "Transición de estado no permitida.",
@@ -114,8 +87,8 @@ export function canTransition(input: TransitionInput): {
     }
 
     if (
-      currentStatus === "enviado_revision" &&
-      newStatus === "en_progreso" &&
+      currentStatus === "en_revision" &&
+      newStatus === "asignado" &&
       !reason?.trim()
     ) {
       return {
@@ -125,7 +98,6 @@ export function canTransition(input: TransitionInput): {
     }
   }
 
-  // Admin y supervisor pueden gestionar incidencias sin cambiar estado.
   if (incidentChanged && statusChanged) {
     return {
       allowed: false,

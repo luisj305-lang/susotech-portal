@@ -7,6 +7,7 @@ export type CoreResult<T> = { success: true; message: string; data: T } | { succ
 type PhotoType = "before" | "after" | "evidence";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const imageTypes = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const;
+const invoiceTypes = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const;
 const PDF_LIMIT = 25 * 1024 * 1024;
 const PHOTO_LIMIT = 10 * 1024 * 1024;
 const ACTIVE_SHIFT_REQUIRED_MESSAGE =
@@ -26,10 +27,10 @@ async function readableJob(supabase: SupabaseClient, jobId: string): Promise<Cor
 }
 
 async function editableEvidenceJob(supabase: SupabaseClient, jobId: string): Promise<CoreResult<true>> {
-  const unavailableMessage = "Solo se puede agregar evidencia mientras el trabajo está en progreso o en revisión.";
+  const unavailableMessage = "Solo se puede agregar evidencia mientras el trabajo está asignado o en revisión.";
   if (!uuidPattern.test(jobId)) return fail(unavailableMessage);
   const { data, error } = await supabase.from("jobs").select("id").eq("id", jobId)
-    .in("main_status", ["en_progreso", "enviado_revision"])
+    .in("main_status", ["asignado", "en_revision"])
     .is("archived_at", null)
     .maybeSingle();
   if (error) return fail(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
@@ -59,6 +60,17 @@ export async function prepareProjectUpload(supabase: SupabaseClient, input: { jo
   const path = `${input.jobId}/${fileName}`;
   const { data, error } = await supabase.storage.from("project-files").createSignedUploadUrl(path);
   if (error || !data) return fail("No se pudo preparar la carga del PDF.");
+  return { success: true, message: "Carga preparada.", data: { path, token: data.token, signedUrl: data.signedUrl } };
+}
+
+export async function prepareInvoiceUpload(supabase: SupabaseClient, input: { jobId: string; fileName: string; mimeType: string; size: number }): Promise<CoreResult<{ path: string; token: string; signedUrl: string }>> {
+  const extension = invoiceTypes[input.mimeType as keyof typeof invoiceTypes];
+  if (!uuidPattern.test(input.jobId) || !extension || input.size <= 0 || input.size > PDF_LIMIT) return fail("El archivo de factura no es válido o supera 25 MB.");
+  const readable = await readableJob(supabase, input.jobId);
+  if (!readable.success) return readable;
+  const path = `${input.jobId}/invoice/${randomUUID()}.${extension}`;
+  const { data, error } = await supabase.storage.from("project-files").createSignedUploadUrl(path);
+  if (error || !data) return fail("No se pudo preparar la carga de la factura.");
   return { success: true, message: "Carga preparada.", data: { path, token: data.token, signedUrl: data.signedUrl } };
 }
 

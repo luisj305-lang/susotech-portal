@@ -4,7 +4,7 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { requireAdmin, requireProfile, requireSupervisor } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { authorizeDownload, preparePhotoUpload, prepareProjectUpload } from "./core";
+import { authorizeDownload, prepareInvoiceUpload, preparePhotoUpload, prepareProjectUpload } from "./core";
 import { confirmBulkProjectUploadCore, prepareBulkProjectUploadCore, type BulkPrepareInput } from "./bulk-import-core";
 import { cleanupJobDeletionQueue, type JobDeletionCleanupRow } from "@/lib/jobs/deletion-core";
 import { validJobDocumentMetadata } from "./job-document-core";
@@ -39,7 +39,7 @@ export async function createPhotoUploadUrl(input: {
   jobId: string; mimeType: "image/jpeg" | "image/png" | "image/webp"; size: number;
 }): Promise<Result<{ path: string; token: string; signedUrl: string }>> {
   const profile = await requireProfile();
-  if (profile.role !== "admin" && !isOperationalFieldWorker(profile)) {
+  if (profile.role !== "admin" && profile.role !== "supervisor" && !isOperationalFieldWorker(profile)) {
     return { success: false, message: READ_ONLY_HELPER_MESSAGE };
   }
   const shiftFailure = await requireTechnicianShift(profile.role);
@@ -52,7 +52,7 @@ export async function discardUnconfirmedPhotoUpload(input: {
   path: string;
 }): Promise<Result<null>> {
   const profile = await requireProfile();
-  if ((profile.role !== "admin" && !isOperationalFieldWorker(profile))
+  if ((profile.role !== "admin" && profile.role !== "supervisor" && !isOperationalFieldWorker(profile))
     || !uuidPattern.test(input.jobId)
     || !input.path.startsWith(`${input.jobId}/`)
     || input.path.slice(input.jobId.length + 1).includes("/")) {
@@ -73,6 +73,13 @@ export async function createProjectUploadUrl(input: {
   return prepareProjectUpload(await createClient(), input);
 }
 
+export async function createInvoiceUploadUrl(input: {
+  jobId: string; fileName: string; mimeType: string; size: number;
+}): Promise<Result<{ path: string; token: string; signedUrl: string }>> {
+  await requireSupervisor();
+  return prepareInvoiceUpload(await createClient(), input);
+}
+
 export async function prepareJobDocumentUpload(input: {
   jobId: string;
   fileName: string;
@@ -80,7 +87,7 @@ export async function prepareJobDocumentUpload(input: {
   size: number;
   fileHash: string;
 }): Promise<Result<{ documentId: string; path: string; token: string; signedUrl: string }>> {
-  await requireAdmin();
+  await requireSupervisor();
   if (!validJobDocumentMetadata(input)) {
     return { success: false, message: "El PDF no es válido o supera 25 MB." };
   }
@@ -176,7 +183,7 @@ export async function discardJobOriginalReplacementUpload(input: {
 }
 
 export async function deleteJobDocument(input: { documentId: string; jobId: string }): Promise<Result<null>> {
-  await requireAdmin();
+  await requireSupervisor();
   const validId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
   if (!validId.test(input.documentId) || !validId.test(input.jobId)) return { success: false, message: "El adjunto no es válido." };
   const supabase = await createClient();
@@ -192,7 +199,7 @@ export async function deleteJobDocument(input: { documentId: string; jobId: stri
 }
 
 export async function reconcileJobDocumentUploads(input: { jobId: string }): Promise<Result<null>> {
-  await requireAdmin();
+  await requireSupervisor();
   const validId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
   if (!validId.test(input.jobId)) return { success: false, message: "El trabajo no es válido." };
   const supabase = await createClient();
