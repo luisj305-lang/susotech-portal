@@ -11,7 +11,7 @@ const roleLabels = {
   tecnico: "Técnico",
 };
 
-export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancial = [], workerOperations = [] }: { profile: CurrentProfile; weeklyProduction?: WeeklyProductionLine[]; weeklyFinancial?: WeeklyFinancialAllocation[]; workerOperations?: WorkerOperationsRow[] }) {
+export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancial = [], workerOperations = [], weekOffset = 0 }: { profile: CurrentProfile; weeklyProduction?: WeeklyProductionLine[]; weeklyFinancial?: WeeklyFinancialAllocation[]; workerOperations?: WorkerOperationsRow[]; weekOffset?: number }) {
   const canCreateJobs =
     profile.role === "admin" || profile.role === "supervisor";
   const confirmed = weeklyFinancial.filter((line) => line.billing_state === "confirmed").reduce((sum, line) => sum + Number(line.allocated_cents), 0) / 100;
@@ -94,6 +94,10 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
 
       {profile.role === "tecnico" && <section style={{ border: "1px solid currentColor", padding: "20px", marginBottom: "30px" }}>
         <h2 style={{ fontSize: "20px", fontWeight: "bold" }}>Producción semanal</h2>
+        <nav aria-label="Navegación de semana" style={{ margin: "12px 0", fontSize: "14px" }}>
+          <Link href={`/dashboard?week=${weekOffset - 1}`} style={{ marginRight: "12px", textDecoration: "underline" }}>← Semana anterior</Link>
+          {weekOffset !== 0 ? <Link href="/dashboard" style={{ textDecoration: "underline" }}>Semana actual</Link> : null}
+        </nav>
         <p>{weeklyProduction[0] ? `${weeklyProduction[0].week_start} — ${weeklyProduction[0].week_end}` : "Viernes — jueves"}</p>
         <p style={{ marginTop: "12px" }}>Confirmado: <strong>${confirmed.toFixed(2)}</strong></p>
         <p>Pendiente: <strong>${pendingAmount.toFixed(2)}</strong></p>

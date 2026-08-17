@@ -46,7 +46,7 @@ export function Sidebar({
     { href: "/trabajos", label: "Trabajos", icon: IconBriefcase },
     { href: "/trabajos/importar", label: "Importar PDFs", icon: IconUpload },
     {
-      href: "/trabajos?status=enviado_revision",
+      href: "/trabajos?status=en_revision",
       label: "Revisión",
       icon: IconClipboardCheck,
     },

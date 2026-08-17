@@ -25,7 +25,7 @@ export function QuickActions({ role }: { role: "admin" | "supervisor" }) {
       primary: false,
     },
     {
-      href: "/trabajos?status=enviado_revision",
+      href: "/trabajos?status=en_revision",
       label: "Revisar trabajos enviados",
       icon: IconClipboardCheck,
       primary: false,

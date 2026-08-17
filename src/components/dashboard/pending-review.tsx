@@ -28,7 +28,7 @@ export function PendingReview({ jobs }: { jobs: OfficeJobPreview[] }) {
         <div className="flex items-center justify-between gap-3">
           <CardTitle>Pendientes de revisión</CardTitle>
           <Link
-            href="/trabajos?status=enviado_revision"
+            href="/trabajos?status=en_revision"
             className="text-sm font-medium text-accent-600 hover:text-accent-500"
           >
             Ver todos los trabajos pendientes →
@@ -67,7 +67,7 @@ export function PendingReview({ jobs }: { jobs: OfficeJobPreview[] }) {
                     new Date(job.submitted_at ?? job.updated_at),
                   )}
                 </span>
-                <StatusBadge status="enviado_revision" />
+                <StatusBadge status="en_revision" />
                 <span className="flex items-center gap-1 text-xs text-ink-muted">
                   <IconCamera className="h-4 w-4" />
                   {job.photo_count} fotos
