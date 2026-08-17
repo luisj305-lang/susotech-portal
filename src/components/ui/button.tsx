@@ -5,12 +5,12 @@ type Variant = "primary" | "secondary" | "danger" | "dangerSolid" | "ghost";
 type Size = "sm" | "md" | "lg";
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
 
 const sizes: Record<Size, string> = {
-  sm: "min-h-10 px-4 text-sm",
-  md: "min-h-12 px-5 text-sm",
-  lg: "min-h-[52px] px-6 text-base",
+  sm: "min-h-9 px-3 text-sm",
+  md: "min-h-10 px-4 text-sm",
+  lg: "min-h-11 px-5 text-base",
 };
 
 const variants: Record<Variant, string> = {
