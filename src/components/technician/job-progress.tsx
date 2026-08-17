@@ -9,8 +9,7 @@ type Step = {
 
 const STEPS: Step[] = [
   { status: "asignado", label: "Asignado" },
-  { status: "en_progreso", label: "En progreso" },
-  { status: "enviado_revision", label: "En revisión" },
+  { status: "en_revision", label: "En revisión" },
   { status: "aprobado", label: "Aprobado" },
 ];
 
@@ -18,14 +17,12 @@ function currentIndex(status: JobStatus): number {
   switch (status) {
     case "asignado":
       return 0;
-    case "en_progreso":
+    case "en_revision":
       return 1;
-    case "enviado_revision":
-      return 2;
     case "aprobado":
-    case "listo_pagar":
+    case "facturado":
     case "pagado":
-      return 3;
+      return 2;
     default:
       return -1;
   }

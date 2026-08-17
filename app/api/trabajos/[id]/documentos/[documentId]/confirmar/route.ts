@@ -23,7 +23,7 @@ export async function POST(
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return json("Debes iniciar sesión.", 401);
   const { data: profile } = await supabase.from("profiles").select("role,is_active").eq("id", auth.user.id).maybeSingle();
-  if (!profile?.is_active || profile.role !== "admin") return json("Acceso denegado.", 403);
+  if (!profile?.is_active || (profile.role !== "admin" && profile.role !== "supervisor")) return json("Acceso denegado.", 403);
 
   const service = createServiceClient();
   const { data: document, error: documentError } = await service.from("job_documents")
@@ -33,6 +33,8 @@ export async function POST(
   if (documentError || !document?.file_hash
     || !["original", "additional"].includes(document.document_type)
     || document.status !== "pending") return json("No se pudo consultar el PDF preparado.", 404);
+
+  if (document.document_type === "original" && profile.role !== "admin") return json("Acceso denegado.", 403);
   const downloaded = await service.storage.from("project-files").download(document.storage_path);
   if (downloaded.error || !downloaded.data) return json("No se pudo verificar el PDF privado.", 409);
   const bytes = new Uint8Array(await downloaded.data.arrayBuffer());

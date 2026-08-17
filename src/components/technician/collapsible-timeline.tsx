@@ -8,10 +8,9 @@ import { cn } from "@/lib/utils";
 const statusLabels: Record<string, string> = {
   sin_asignar: "Sin asignar",
   asignado: "Asignado",
-  en_progreso: "En progreso",
-  enviado_revision: "En revisión",
+  en_revision: "En revisión",
   aprobado: "Aprobado",
-  listo_pagar: "Listo para pagar",
+  facturado: "Facturado",
   pagado: "Pagado",
 };
 

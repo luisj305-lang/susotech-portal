@@ -8,10 +8,9 @@ export type StatusTone = {
 export const STATUS_META: Record<string, StatusTone> = {
   sin_asignar: { bg: "#f1f5f9", text: "#475569", dot: "#94a3b8", label: "Sin asignar" },
   asignado: { bg: "#fff7ed", text: "#9a3412", dot: "#f97316", label: "Asignado" },
-  en_progreso: { bg: "#eff6ff", text: "#1d4ed8", dot: "#3b82f6", label: "En progreso" },
-  enviado_revision: { bg: "#fefce8", text: "#854d0e", dot: "#eab308", label: "Enviado a revisión" },
+  en_revision: { bg: "#fefce8", text: "#854d0e", dot: "#eab308", label: "En revisión" },
   aprobado: { bg: "#f0fdf4", text: "#166534", dot: "#22c55e", label: "Aprobado" },
-  listo_pagar: { bg: "#f0fdfa", text: "#115e59", dot: "#14b8a6", label: "Listo para pagar" },
+  facturado: { bg: "#f0fdfa", text: "#115e59", dot: "#14b8a6", label: "Facturado" },
   pagado: { bg: "#ecfdf5", text: "#065f46", dot: "#10b981", label: "Pagado" },
   archivado: { bg: "#f1f5f9", text: "#475569", dot: "#94a3b8", label: "Archivado" },
   incidencia: { bg: "#fef2f2", text: "#991b1b", dot: "#ef4444", label: "Incidencia" },

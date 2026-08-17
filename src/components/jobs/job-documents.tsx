@@ -130,7 +130,7 @@ export function JobDocuments({
       }
     });
   };
-  const editable = jobStatus === "en_progreso" || jobStatus === "enviado_revision";
+  const editable = jobStatus === "asignado" || jobStatus === "en_revision";
 
   return <section className="rounded-2xl border border-line bg-white p-6 text-ink shadow-card">
     <h2 className="text-xl font-bold text-ink">Documentos</h2>

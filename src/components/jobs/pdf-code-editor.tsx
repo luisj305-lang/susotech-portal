@@ -200,6 +200,12 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const selectedNote = notes.find((item) => item.editorId === selectedId) ?? null;
   const priceCategoryName = catalog.find((item) => item.price_category_name)?.price_category_name ?? null;
   const hasUnratedPlacement = placements.some((placement) => catalog.find((item) => item.id === placement.catalogId)?.unit_rate == null);
+  const estimatedTotal = placements.reduce((sum, placement) => {
+    const rate = catalog.find((item) => item.id === placement.catalogId)?.unit_rate;
+    if (rate == null) return sum;
+    return sum + placement.quantity * Number(rate);
+  }, 0);
+  const estimatedAmountFor = (percentage: string) => (estimatedTotal * (Number(percentage) || 0)) / 100;
 
   const onMetadata = useCallback((count: number, draftVersion: number) => {
     if (count > 0) setPageCount(count);
@@ -439,17 +445,25 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     <div className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto overflow-x-hidden border-t border-line bg-white/95 p-3 shadow-card backdrop-blur sm:p-4"><div className="mx-auto grid w-full min-w-0 max-w-5xl gap-3">
       <h2 className="text-lg font-bold">Distribución financiera</h2>
       <p className="text-xs text-ink-soft">Categoría aplicable: {priceCategoryName ?? "Sin categoría"}</p>
+      <p className="text-xs text-ink-soft">Total estimado: ${estimatedTotal.toFixed(2)} · Los montos por participante son estimados; el servidor confirma los centavos exactos al entregar.</p>
       <details open className="max-h-48 overflow-auto border border-line p-2">
         <summary className="cursor-pointer text-sm font-bold">Distribución financiera ({allocations.reduce((sum, item) => sum + (Number(item.percentage) || 0), 0).toFixed(2)}%)</summary>
-        <div className="mt-2 grid gap-2">
+        <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_6rem_6rem] items-center gap-2 text-xs font-bold text-ink-soft">
+          <span />
+          <span>Participante</span>
+          <span>Porcentaje</span>
+          <span className="text-right">Monto estimado</span>
+        </div>
+        <div className="mt-1 grid gap-2">
           {participants.map((participant) => {
             const selectedAllocation = allocations.find((item) => item.participantId === participant.id);
-            return <div key={participant.id} className="grid grid-cols-[auto_minmax(0,1fr)_7rem] items-center gap-2 text-sm">
+            return <div key={participant.id} className="grid grid-cols-[auto_minmax(0,1fr)_6rem_6rem] items-center gap-2 text-sm">
               <input aria-label={`Incluir a ${participant.label}`} type="checkbox" checked={Boolean(selectedAllocation)} onChange={(event) => setAllocations((current) => event.target.checked
                 ? [...current, { participantId: participant.id, percentage: "0.00" }]
                 : current.filter((item) => item.participantId !== participant.id))} />
               <span>{participant.label} · {participant.worker_specialty}</span>
               <input aria-label={`Porcentaje de ${participant.label}`} disabled={!selectedAllocation} inputMode="decimal" type="number" min="0.01" max="100" step="0.01" value={selectedAllocation?.percentage ?? ""} onChange={(event) => setAllocations((current) => current.map((item) => item.participantId === participant.id ? { ...item, percentage: event.target.value } : item))} className="min-h-10 border border-line bg-white p-2" />
+              <span className="text-right font-semibold">{selectedAllocation ? `$${estimatedAmountFor(selectedAllocation.percentage).toFixed(2)}` : "—"}</span>
             </div>;
           })}
         </div>
