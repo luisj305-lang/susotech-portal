@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { composeDeliveredPdf } from "@/lib/jobs/delivered-pdf";
 import { ensureVerifiedDocumentManifest } from "@/lib/jobs/document-manifest";
-import { codeColor, validatePlacements, type PdfCodePlacement } from "@/lib/jobs/pdf-code-editor-core";
+import { DEFAULT_CODE_COLOR, validatePlacements, type PdfCodePlacement } from "@/lib/jobs/pdf-code-editor-core";
 import { validatePdfTextNotes, type PdfTextNote } from "@/lib/jobs/pdf-text-note-core";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
@@ -218,7 +218,7 @@ export async function POST(
         technicianName: uploaderNames.get(photo.uploaded_by) ?? null,
         comment: photo.comment,
       })),
-      placements.map((item) => ({ ...item, code: catalogById.get(item.catalogId)!, color: codeColor(catalogById.get(item.catalogId)!) })),
+      placements.map((item) => ({ ...item, code: catalogById.get(item.catalogId)!, color: item.color ?? DEFAULT_CODE_COLOR })),
       textNotes,
     );
 

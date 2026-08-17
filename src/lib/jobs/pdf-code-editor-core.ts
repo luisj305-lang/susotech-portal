@@ -11,18 +11,14 @@ export type PdfCodePlacement = {
   height: number;
   arrowTipX: number;
   arrowTipY: number;
+  color?: string;
 };
 
 export type PdfCodeDraft = { version: number; sourcePageCount: number; placements: PdfCodePlacement[] };
 
-const palette = ["#dc2626", "#2563eb", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#be123c", "#4f46e5"];
+export const CODE_COLOR_OPTIONS = ["#dc2626", "#d946ef", "#eab308", "#000000", "#f97316", "#2563eb"] as const;
+export const DEFAULT_CODE_COLOR = "#000000";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-
-export function codeColor(code: string) {
-  let hash = 2166136261;
-  for (const character of code.toUpperCase()) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-  return palette[(hash >>> 0) % palette.length];
-}
 
 export function placementsOverlap(a: PdfCodePlacement, b: PdfCodePlacement) {
   return a.page === b.page && a.x < b.x + b.width && a.x + a.width > b.x
@@ -42,7 +38,8 @@ export function validatePlacements(placements: PdfCodePlacement[], pageCount: nu
       || ![item.x, item.y, item.width, item.height, item.arrowTipX, item.arrowTipY].every(Number.isFinite)
       || item.x < 0 || item.y < 0 || item.width < 0.04 || item.width > 0.35
       || item.height < 0.025 || item.height > 0.2 || item.x + item.width > 1 || item.y + item.height > 1
-      || item.arrowTipX < 0 || item.arrowTipX > 1 || item.arrowTipY < 0 || item.arrowTipY > 1) {
+      || item.arrowTipX < 0 || item.arrowTipX > 1 || item.arrowTipY < 0 || item.arrowTipY > 1
+      || (item.color !== undefined && !CODE_COLOR_OPTIONS.includes(item.color as (typeof CODE_COLOR_OPTIONS)[number]))) {
       return "Hay un código fuera de los bordes permitidos.";
     }
     ids.add(item.id);

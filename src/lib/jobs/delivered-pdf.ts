@@ -229,6 +229,8 @@ async function composeUnlocked(
   const codeFont = await output.embedFont(StandardFonts.HelveticaBold);
   const noteFont = await output.embedFont(StandardFonts.Helvetica);
   let originalPageCount = 0;
+  let originalPageWidth = 0;
+  let originalPageHeight = 0;
   for (const sourceDocument of sourceDocuments) {
     const source = openDocument(pdfium, sourceDocument.bytes);
     try {
@@ -239,6 +241,10 @@ async function composeUnlocked(
       for (let index = 0; index < sourcePageCount; index += 1) {
         const combinedPage = originalPageCount + index + 1;
         const rendered = renderPage(pdfium, source.document, index);
+        if (originalPageWidth === 0) {
+          originalPageWidth = rendered.pointsWidth;
+          originalPageHeight = rendered.pointsHeight;
+        }
       const jpeg = await sharp(rendered.rgba, {
         raw: { width: rendered.width, height: rendered.height, channels: 4 },
       }).flatten({ background: "#ffffff" }).jpeg({
@@ -260,6 +266,7 @@ async function composeUnlocked(
         if (lines.length * lineHeight > height || lines.some((line) => noteFont.widthOfTextAtSize(line, size) > width)) {
           throw new Error("Una nota de texto no cabe dentro de su cuadro.");
         }
+        page.drawRectangle({ x, y, width, height, color: rgb(1, 1, 1), borderColor: rgb(0, 0, 0), borderWidth: 1, opacity: 1, borderOpacity: 1 });
         lines.forEach((line, lineIndex) => {
           if (line) page.drawText(line, { x, y: y + height - size - lineIndex * lineHeight, size, font: noteFont, color: rgb(0.05, 0.05, 0.05) });
         });
@@ -302,7 +309,7 @@ async function composeUnlocked(
         });
         const placementText = `${asciiText(placement.code)} × ${placement.quantity}`.slice(0, 36);
         const horizontalPadding = Math.min(3, width * 0.08);
-        const heightBoundSize = Math.max(1, Math.min(18, height * 0.48));
+        const heightBoundSize = Math.max(1, height * 0.48);
         const availableTextWidth = Math.max(1, width - horizontalPadding * 2);
         const naturalTextWidth = codeFont.widthOfTextAtSize(placementText, heightBoundSize);
         const fittedTextSize = Math.max(1, Math.min(
@@ -352,8 +359,7 @@ async function composeUnlocked(
       .toBuffer();
     const metadata = await sharp(normalized).metadata();
     if (!metadata.width || !metadata.height) throw new Error(`La evidencia ${index + 1} no es una imagen válida.`);
-    const landscape = metadata.width > metadata.height * 1.15;
-    const page = output.addPage(landscape ? [792, 612] : [612, 792]);
+    const page = output.addPage([originalPageWidth || 612, originalPageHeight || 792]);
     const image = await output.embedJpg(normalized);
     const margin = 36;
     const captionHeight = drawCaption(page, font, photo, index, margin);

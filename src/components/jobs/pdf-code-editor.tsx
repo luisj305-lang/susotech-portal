@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { saveJobPdfDraft } from "@/lib/jobs/actions";
 import {
   clampPlacement,
-  codeColor,
+  CODE_COLOR_OPTIONS,
+  DEFAULT_CODE_COLOR,
   placementLabel,
   validatePlacements,
   type PdfCodePlacement,
@@ -131,19 +132,18 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
         <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
           <defs><marker id={`arrow-${page}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" /></marker></defs>
           {pagePlacements.map((item) => {
-            const catalogItem = catalog.find((entry) => entry.id === item.catalogId);
-            const color = codeColor(catalogItem?.code ?? item.catalogId);
+            const color = item.color ?? DEFAULT_CODE_COLOR;
             return <line key={item.id} x1={`${(item.x + item.width / 2) * 100}%`} y1={`${(item.y + item.height / 2) * 100}%`} x2={`${item.arrowTipX * 100}%`} y2={`${item.arrowTipY * 100}%`} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" markerEnd={`url(#arrow-${page})`} />;
           })}
         </svg>
         {pagePlacements.map((item) => {
           const catalogItem = catalog.find((entry) => entry.id === item.catalogId);
           const label = placementLabel(item, catalogItem?.code ?? "Código");
-          const color = codeColor(catalogItem?.code ?? item.catalogId);
+          const color = item.color ?? DEFAULT_CODE_COLOR;
           const fittedFontSize = Math.max(0.1, (item.width * 100 - 0.8) / Math.max(1, label.length * 0.62));
-          return <span key={item.id} role="button" tabIndex={0} aria-label={`${label} en página ${page}`} onClick={(event) => { event.stopPropagation(); onSelect(item.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(item.id); } }} onPointerDown={(event) => { event.stopPropagation(); onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `min(12px, ${fittedFontSize}cqw)` }} className={`absolute z-10 flex cursor-move items-center overflow-hidden whitespace-nowrap border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{label}</span>;
+          return <span key={item.id} role="button" tabIndex={0} aria-label={`${label} en página ${page}`} onClick={(event) => { event.stopPropagation(); onSelect(item.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(item.id); } }} onPointerDown={(event) => { event.stopPropagation(); onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex cursor-move items-center overflow-hidden whitespace-nowrap border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{label}</span>;
         })}
-        {pagePlacements.map((item) => <button key={`tip-${item.id}`} type="button" aria-label={`Mover extremo de la flecha de ${catalog.find((entry) => entry.id === item.catalogId)?.code ?? "código"}`} onClick={(event) => { event.stopPropagation(); onSelect(item.id); }} onPointerDown={(event) => { event.stopPropagation(); onSelect(item.id); drag.current = { id: item.id, kind: "arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `calc(${item.arrowTipX * 100}% - 12px)`, top: `calc(${item.arrowTipY * 100}% - 12px)`, backgroundColor: codeColor(catalog.find((entry) => entry.id === item.catalogId)?.code ?? item.catalogId) }} className={`absolute z-20 h-6 w-6 touch-none rounded-full border-2 ${selectedId === item.id ? "border-black ring-2 ring-white" : "border-white"}`} />)}
+        {pagePlacements.map((item) => <button key={`tip-${item.id}`} type="button" aria-label={`Mover extremo de la flecha de ${catalog.find((entry) => entry.id === item.catalogId)?.code ?? "código"}`} onClick={(event) => { event.stopPropagation(); onSelect(item.id); }} onPointerDown={(event) => { event.stopPropagation(); onSelect(item.id); drag.current = { id: item.id, kind: "arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }}           style={{ left: `calc(${item.arrowTipX * 100}% - 12px)`, top: `calc(${item.arrowTipY * 100}% - 12px)`, backgroundColor: item.color ?? DEFAULT_CODE_COLOR }} className={`absolute z-20 h-6 w-6 touch-none rounded-full border-2 ${selectedId === item.id ? "border-black ring-2 ring-white" : "border-white"}`} />)}
       </div>}
     </div>
   </section>;
@@ -416,11 +416,15 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
             <label className="grid gap-1 text-sm font-bold">Cantidad seleccionada<input aria-label="Cantidad del código seleccionado" inputMode="decimal" type="number" min="0.01" step="0.01" value={selected.quantity || ""} onChange={(event) => update(selected.id, { quantity: Number(event.target.value) })} className="min-h-11 rounded-lg border border-line bg-white p-2" /></label>
             <label className="flex items-center gap-2 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label>
             <div className="flex items-end gap-3"><span className="text-xs text-ink-soft">Pág. {selected.page}</span><Button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} variant="secondary">Eliminar</Button></div>
+            <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
+              <span className="text-sm font-bold">Color</span>
+              {CODE_COLOR_OPTIONS.map((option) => <button key={option} type="button" aria-label={`Color ${option}`} onClick={() => update(selected.id, { color: option })} className={`h-8 w-8 rounded-full border-2 ${(selected.color ?? DEFAULT_CODE_COLOR) === option ? "border-black ring-2 ring-black" : "border-line"}`} style={{ backgroundColor: option }} />)}
+            </div>
           </div> : tool === "note" ? <div className="grid gap-2">
             <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} rows={3} maxLength={2000} placeholder="Escribí el texto y tocá el PDF para colocarla" className="rounded-lg border border-line bg-white p-2" /></label>
             <Button type="button" onClick={() => setSheetOpen(false)} variant="primary" className="justify-self-start">Agregar nota</Button>
           </div> : <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
-            <label className="grid min-w-0 gap-1 text-sm font-bold">Código<select aria-label="Código para colocar" value={selectedCatalogId} onChange={(event) => setSelectedCatalogId(event.target.value)} style={{ borderColor: codeColor(catalog.find((item) => item.id === selectedCatalogId)?.code ?? selectedCatalogId) }} className="min-h-12 w-full min-w-0 rounded-lg border-4 bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id} style={{ color: codeColor(item.code) }}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select></label>
+            <label className="grid min-w-0 gap-1 text-sm font-bold">Código<select aria-label="Código para colocar" value={selectedCatalogId} onChange={(event) => setSelectedCatalogId(event.target.value)} style={{ borderColor: DEFAULT_CODE_COLOR }} className="min-h-12 w-full min-w-0 rounded-lg border-4 bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id} style={{ color: DEFAULT_CODE_COLOR }}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select></label>
             <label className="grid min-w-0 content-end gap-1 text-sm font-bold">Cantidad<input aria-label="Cantidad para el nuevo código" inputMode="decimal" type="number" min="0.01" step="0.01" value={newQuantity} onChange={(event) => setNewQuantity(event.target.value)} className="min-h-12 min-w-0 rounded-lg border border-line bg-white p-2" /></label>
             <Button type="button" onClick={() => setSheetOpen(false)} className="self-end" variant="primary">Aplicar</Button>
           </div>}
