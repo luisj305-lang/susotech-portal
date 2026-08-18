@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { listActiveTechniciansCore } from "./crew-core";
 import { getDeliveredPdfStatus } from "./delivered-status";
 import { requireActiveShift } from "@/lib/work-shifts/access";
-import type { AssigneeOption, CrewOfficeDto, Job, JobArchiveEvent, JobAssignment, JobCategory, JobDocument, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyProductionLine, WorkerOperationsRow } from "./types";
+import type { AssigneeOption, CrewOfficeDto, Job, JobArchiveEvent, JobAssignment, JobCategory, JobDocument, JobFinancialAllocation, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyProductionLine, WorkerOperationsRow } from "./types";
 
 const statuses: JobStatus[] = ["sin_asignar", "asignado", "en_revision", "aprobado", "facturado", "pagado"];
 const categories: JobCategory[] = ["categoria_1", "categoria_2", "categoria_3"];
@@ -151,7 +151,7 @@ export async function getFinancialAllocationReport(startDate: string, endDate: s
 
 export async function getOfficeJob(jobId: string) {
   const supabase = await createClient();
-  const [jobResult, assignmentResult, historyResult, archiveResult, photosResult, codesResult, documentsResult, draftResult, deliveryVersionResult, crewData] = await Promise.all([
+  const [jobResult, assignmentResult, historyResult, archiveResult, photosResult, codesResult, documentsResult, draftResult, deliveryVersionResult, allocationsResult, crewData] = await Promise.all([
     supabase.from("jobs").select("*").eq("id", jobId).maybeSingle(),
     supabase.from("job_assignments").select("*").eq("job_id", jobId).eq("active", true).eq("is_primary", true).maybeSingle(),
     supabase.from("job_status_history").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
@@ -161,10 +161,11 @@ export async function getOfficeJob(jobId: string) {
     supabase.from("job_documents").select("*").eq("job_id", jobId).order("position", { ascending: true }).order("created_at", { ascending: true }),
     supabase.from("job_pdf_drafts").select("*").eq("job_id", jobId).maybeSingle(),
     supabase.from("job_pdf_delivery_versions").select("draft_version").eq("job_id", jobId).maybeSingle(),
+    supabase.rpc("list_job_financial_allocations", { p_job_id: jobId }),
     listCrewManagementData(),
   ]);
   if (jobResult.error) throw new Error("No se pudo cargar el trabajo.");
-  for (const result of [assignmentResult, historyResult, archiveResult, photosResult, codesResult, documentsResult, draftResult, deliveryVersionResult]) {
+  for (const result of [assignmentResult, historyResult, archiveResult, photosResult, codesResult, documentsResult, draftResult, deliveryVersionResult, allocationsResult]) {
     if (result.error) throw new Error("No se pudieron cargar los datos relacionados.");
   }
   if (!jobResult.data) return null;
@@ -184,6 +185,7 @@ export async function getOfficeJob(jobId: string) {
     documents: (documentsResult.data ?? []) as JobDocument[],
     draft: draftResult.data as JobPdfDraft | null,
     deliveredDraftVersion: deliveryVersionResult.data?.draft_version as number | undefined,
+    allocations: (allocationsResult.data ?? []) as JobFinancialAllocation[],
     options,
   };
 }

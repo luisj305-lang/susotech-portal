@@ -206,6 +206,22 @@ export interface MyFinancialAllocation {
   state: "voided" | "superseded" | "current";
 }
 
+export interface JobFinancialAllocation {
+  allocation_version_id: string;
+  delivery_id: string;
+  job_id: string;
+  version: number;
+  participant_id: string;
+  percentage_basis_points: number;
+  allocated_cents: number;
+  source_amount_cents: number;
+  participant_name: string;
+  worker_specialty: string;
+  created_at: string;
+  is_current: boolean;
+  state: "voided" | "superseded" | "current";
+}
+
 export interface FinancialAllocationReportLine {
   allocation_date: string;
   job_id: string;
