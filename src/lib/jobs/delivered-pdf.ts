@@ -104,6 +104,9 @@ function renderPage(pdfium: WrappedPdfiumModule, document: number, pageIndex: nu
   const page = pdfium.FPDF_LoadPage(document, pageIndex);
   if (!page) throw new Error(`PDFium no pudo leer la página ${pageIndex + 1}.`);
   try {
+    // Flatten annotations into the page content so they render reliably in the
+    // raster; the FPDF_ANNOT flag alone misses annotations without appearance streams.
+    pdfium.FPDFPage_Flatten(page, 0);
     const pointsWidth = pdfium.FPDF_GetPageWidthF(page);
     const pointsHeight = pdfium.FPDF_GetPageHeightF(page);
     if (!Number.isFinite(pointsWidth) || !Number.isFinite(pointsHeight) || pointsWidth <= 0 || pointsHeight <= 0) {
@@ -120,7 +123,7 @@ function renderPage(pdfium: WrappedPdfiumModule, document: number, pageIndex: nu
     if (!bitmap) throw new Error(`PDFium no pudo rasterizar la página ${pageIndex + 1}.`);
     try {
       pdfium.FPDFBitmap_FillRect(bitmap, 0, 0, width, height, 0xffffffff);
-      pdfium.FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, 0, 0x01);
+      pdfium.FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, 0, 0x00);
       const stride = pdfium.FPDFBitmap_GetStride(bitmap);
       const bufferPointer = pdfium.FPDFBitmap_GetBuffer(bitmap);
       const heap = (pdfium.pdfium as unknown as { HEAPU8: Uint8Array }).HEAPU8;
