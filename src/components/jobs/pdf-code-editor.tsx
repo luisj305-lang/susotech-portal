@@ -124,7 +124,7 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
         } else if (drag.current.kind === "note") onMoveNote(drag.current.id, (event.clientX - drag.current.x) / rect.width, (event.clientY - drag.current.y) / rect.height);
         else onResizeNote(drag.current.id, (event.clientX - drag.current.x) / rect.width, (event.clientY - drag.current.y) / rect.height);
         drag.current = { ...drag.current, x: event.clientX, y: event.clientY };
-      }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }} className="relative block w-full touch-pan-y cursor-crosshair text-left">
+      }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }} className={`relative block w-full ${zoom > 1 ? "touch-pan-x touch-pan-y" : "touch-pan-y"} cursor-crosshair text-left`}>
         {/* This authenticated blob URL cannot use the Next image optimizer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt={`PDF original, página ${page}`} className="block h-auto w-full" />
@@ -143,7 +143,7 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
           const label = placementLabel(item, catalogItem?.code ?? "Código");
           const color = item.color ?? DEFAULT_CODE_COLOR;
           const fittedFontSize = Math.max(0.1, (item.width * 100 - 0.8) / Math.max(1, label.length * 0.62));
-          return <span key={item.id} role="button" tabIndex={0} aria-label={`${label} en página ${page}`} onClick={(event) => { event.stopPropagation(); onSelect(item.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(item.id); } }} onPointerDown={(event) => { event.stopPropagation(); onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex cursor-move items-center overflow-hidden whitespace-nowrap border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{label}</span>;
+          return <span key={item.id} role="button" tabIndex={0} aria-label={`${label} en página ${page}`} onClick={(event) => { event.stopPropagation(); onSelect(item.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(item.id); } }} onPointerDown={(event) => { event.stopPropagation(); onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex touch-none cursor-move items-center overflow-hidden whitespace-nowrap border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{label}</span>;
         })}
         {pagePlacements.map((item) => <button key={`tip-${item.id}`} type="button" aria-label={`Mover extremo de la flecha de ${catalog.find((entry) => entry.id === item.catalogId)?.code ?? "código"}`} onClick={(event) => { event.stopPropagation(); onSelect(item.id); }} onPointerDown={(event) => { event.stopPropagation(); onSelect(item.id); drag.current = { id: item.id, kind: "arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }}           style={{ left: `calc(${item.arrowTipX * 100}% - 12px)`, top: `calc(${item.arrowTipY * 100}% - 12px)`, backgroundColor: item.color ?? DEFAULT_CODE_COLOR }} className={`absolute z-20 h-6 w-6 touch-none rounded-full border-2 ${selectedId === item.id ? "border-black ring-2 ring-white" : "border-white"}`} />)}
       </div>}
@@ -430,18 +430,18 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       </div>}
       <div className="border-t border-line bg-white/95 shadow-card backdrop-blur">
         <div className="mx-auto w-full max-w-5xl p-2 sm:p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-w-0 flex-1 gap-2 sm:flex-none">
-              <button type="button" onClick={() => { setTool("code"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 flex-1 border px-3 text-sm font-bold sm:flex-none ${tool === "code" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Código</button>
-              <button type="button" onClick={() => { setTool("note"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 flex-1 border px-3 text-sm font-bold sm:flex-none ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Nota de texto</button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-none">
+              <button type="button" onClick={() => { setTool("code"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 w-full border px-3 text-sm font-bold sm:w-auto ${tool === "code" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Código</button>
+              <button type="button" onClick={() => { setTool("note"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 w-full border px-3 text-sm font-bold sm:w-auto ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Notas</button>
             </div>
-            <div className="flex items-center gap-1">
-              <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.25).toFixed(2)))} className="min-h-11 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted">−</button>
-              <button type="button" aria-label="Restablecer zoom" title="Restablecer zoom" onClick={() => setZoom(1)} className="min-h-11 min-w-[3.5rem] border border-line bg-white px-2 text-center text-xs font-bold text-ink hover:bg-surface-muted">{Math.round(zoom * 100)}%</button>
-              <button type="button" aria-label="Acercar" onClick={() => setZoom((value) => Math.min(3, +(value + 0.25).toFixed(2)))} className="min-h-11 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted">+</button>
+            <div className="flex w-full items-center gap-1 sm:w-auto">
+              <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.25).toFixed(2)))} className="min-h-11 flex-1 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted sm:flex-none">−</button>
+              <button type="button" aria-label="Restablecer zoom" title="Restablecer zoom" onClick={() => setZoom(1)} className="min-h-11 flex-1 border border-line bg-white px-2 text-center text-xs font-bold text-ink hover:bg-surface-muted sm:min-w-[3.5rem] sm:flex-none">{Math.round(zoom * 100)}%</button>
+              <button type="button" aria-label="Acercar" onClick={() => setZoom((value) => Math.min(3, +(value + 0.25).toFixed(2)))} className="min-h-11 flex-1 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted sm:flex-none">+</button>
             </div>
             <p role="status" aria-live="polite" className="hidden min-w-0 flex-1 truncate text-xs text-ink-soft sm:block">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
-            <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" className="min-h-11 flex-1 sm:flex-none">{submitting ? "Confirmando…" : <><span className="sm:hidden">Confirmar</span><span className="hidden sm:inline">Confirmar PDF</span></>}</Button>
+            <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" className="min-h-11 w-full sm:w-auto sm:flex-none">{submitting ? "Confirmando…" : <><span className="sm:hidden">Confirmar</span><span className="hidden sm:inline">Confirmar PDF</span></>}</Button>
           </div>
         </div>
       </div>
