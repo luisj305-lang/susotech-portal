@@ -291,7 +291,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                       <button
                         type="button"
                         onClick={() => showJobs(row.technician_id, row.technician_name)}
-                        className="truncate border-0 bg-transparent p-0 text-left font-semibold text-accent-600 hover:text-accent-500 hover:underline"
+                        className="truncate border-0 bg-transparent p-0 text-left font-semibold text-ink hover:underline"
                       >
                         {row.technician_name}
                       </button>
@@ -413,7 +413,7 @@ function RowGroup({
           <button
             type="button"
             onClick={() => onShowJobs(row.technician_id, row.technician_name)}
-            className="max-w-[180px] truncate border-0 bg-transparent p-0 text-left font-semibold text-accent-600 hover:text-accent-500 hover:underline"
+            className="max-w-[180px] truncate border-0 bg-transparent p-0 text-left font-semibold text-ink hover:underline"
             title={`Ver trabajos de ${row.technician_name}`}
           >
             {row.technician_name}
