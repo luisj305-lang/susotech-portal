@@ -230,6 +230,7 @@ export interface TechnicianJobSummary {
   main_status: string;
   deadline_date: string | null;
   updated_at: string;
+  archived_at: string | null;
 }
 
 export interface FinancialAllocationReportLine {

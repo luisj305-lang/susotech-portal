@@ -380,7 +380,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                     <Link href={`/trabajos/${job.id}`} onClick={() => setJobsModal(null)} className="block rounded-lg border border-line bg-surface-muted p-3 hover:bg-surface-muted/60">
                       <span className="flex items-center justify-between gap-3">
                         <span className="font-semibold text-ink">{job.prism_number || job.title}</span>
-                        <StatusBadge status={job.main_status} />
+                        <StatusBadge status={job.archived_at ? "archivado" : job.main_status} />
                       </span>
                       <span className="mt-1 block text-sm text-ink-soft">{job.title}{job.address ? ` · ${job.address}` : ""}</span>
                     </Link>
