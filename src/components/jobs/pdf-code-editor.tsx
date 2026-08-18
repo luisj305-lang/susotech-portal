@@ -23,6 +23,7 @@ const NOTE_FONT_RATIO = 0.018;
 const NOTE_PAD_X = 0.01;
 const NOTE_PAD_Y = 0.006;
 const NOTE_LINE_EM = 1.2;
+const BASE_PAGE_WIDTH = 64;
 
 function textWidthEm(text: string): number {
   if (typeof document === "undefined") return Array.from(text).length * 0.62;
@@ -64,9 +65,10 @@ type PageProps = {
   onMoveNote: (id: string, dx: number, dy: number) => void;
   onResizeNote: (id: string, dx: number, dy: number) => void;
   sourcePage: SourcePage;
+  zoom: number;
 };
 
-function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onMoveNote, onResizeNote, sourcePage }: PageProps) {
+function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onMoveNote, onResizeNote, sourcePage, zoom }: PageProps) {
   const host = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: string; kind: "box" | "arrow" | "note" | "note-resize"; x: number; y: number } | null>(null);
   const [visible, setVisible] = useState(page === 1);
@@ -100,7 +102,7 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
   }, [jobId, onMetadata, page, visible]);
 
   const pagePlacements = placements.filter((item) => item.page === page);
-  return <section aria-labelledby={`pdf-page-${page}`} className="mx-auto w-full max-w-5xl">
+  return <section aria-labelledby={`pdf-page-${page}`} className="mx-auto" style={zoom >= 1 ? { width: `${BASE_PAGE_WIDTH * zoom}rem` } : { width: "100%", maxWidth: `${BASE_PAGE_WIDTH * zoom}rem` }}>
     <h2 id={`pdf-page-${page}`} className="mb-2 text-sm font-bold text-ink">Página {page}</h2>
     <div ref={host} className="relative min-h-[55vh] w-full overflow-hidden border border-line bg-white shadow-card [container-type:inline-size]">
       {!imageUrl && <div className="flex min-h-[55vh] items-center justify-center bg-surface-muted p-6 text-center text-ink-muted">{error || (visible ? "Cargando página…" : "La página se cargará al acercarte")}</div>}
@@ -185,6 +187,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const [newQuantity, setNewQuantity] = useState("1");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const hasLegacyPlacements = placements.some((placement) => placement.quantity <= 0);
   const [message, setMessage] = useState(hasLegacyPlacements ? "Completa la cantidad de cada código antes de entregar." : "Preparando los PDFs fuente…");
   const [dirty, setDirty] = useState(hasLegacyPlacements);
@@ -281,7 +284,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
 
   useEffect(() => {
     if (!dirty || saving || submitting) return;
-    const timeout = setTimeout(() => void save(placements, notes), 900);
+    const timeout = setTimeout(() => void save(placements, notes), 15000);
     return () => clearTimeout(timeout);
   }, [dirty, notes, placements, save, saving, submitting]);
 
@@ -386,15 +389,9 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     setStage("allocation");
     setMessage("PDF confirmado. Completa la distribución financiera para entregar.");
   };
-  const saveAndContinueLater = async () => {
-    setSubmitting(true);
-    if (!await persistStableDraft()) { setSubmitting(false); return; }
-    router.replace(`/trabajos/${jobId}`);
-  };
-
-  return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-ink sm:px-6 ${stage === "edit" ? "pb-40 sm:pb-36" : "pb-[28rem] sm:pb-80"}`}>
+  return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-ink sm:px-6 ${stage === "edit" ? (sheetOpen ? "pb-[calc(40vh+8rem)]" : "pb-40 sm:pb-36") : "pb-[28rem] sm:pb-80"}`}>
     <header className="mx-auto mb-5 max-w-5xl"><p className="text-sm font-semibold uppercase tracking-widest">Entrega del trabajo</p><h1 className="text-2xl font-bold sm:text-3xl">Marcá los códigos sobre el PDF</h1><p className="mt-2 text-sm text-ink-soft">El original permanece intacto. Todas las páginas están en orden y se cargan al acercarte.</p></header>
-    <div className="grid gap-8">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => { setSelectedId(id); setSheetOpen(true); }} onSelectNote={(id) => { setSelectedId(id); setSheetOpen(true); }} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
+    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => { setSelectedId(id); setSheetOpen(true); }} onSelectNote={(id) => { setSelectedId(id); setSheetOpen(true); }} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
       const item = placements.find((entry) => entry.id === id); if (!item) return;
       const dx = Math.min(1 - item.x - item.width, 1 - item.arrowTipX, Math.max(-item.x, -item.arrowTipX, requestedDx));
       const dy = Math.min(1 - item.y - item.height, 1 - item.arrowTipY, Math.max(-item.y, -item.arrowTipY, requestedDy));
@@ -403,7 +400,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     {stage === "edit" ? <>
     <div className="fixed inset-x-0 bottom-0 z-40">
       {sheetOpen && <div className="border-t border-line bg-white shadow-card">
-        <div className="mx-auto max-h-[55vh] w-full max-w-5xl overflow-y-auto p-3 sm:p-4">
+        <div className="mx-auto max-h-[40vh] w-full max-w-5xl overflow-y-auto p-3 sm:p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-base font-bold">{selectedNote ? "Editar nota" : selected ? "Editar código" : tool === "note" ? "Nueva nota de texto" : "Nuevo código"}</h2>
             <button type="button" aria-label="Cerrar panel" onClick={() => { setSheetOpen(false); setSelectedId(null); }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line text-ink hover:bg-surface-muted"><IconX /></button>
@@ -438,8 +435,12 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
               <button type="button" onClick={() => { setTool("code"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 flex-1 border px-3 text-sm font-bold sm:flex-none ${tool === "code" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Código</button>
               <button type="button" onClick={() => { setTool("note"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 flex-1 border px-3 text-sm font-bold sm:flex-none ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Nota de texto</button>
             </div>
+            <div className="flex items-center gap-1">
+              <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.25).toFixed(2)))} className="min-h-11 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted">−</button>
+              <button type="button" aria-label="Restablecer zoom" title="Restablecer zoom" onClick={() => setZoom(1)} className="min-h-11 min-w-[3.5rem] border border-line bg-white px-2 text-center text-xs font-bold text-ink hover:bg-surface-muted">{Math.round(zoom * 100)}%</button>
+              <button type="button" aria-label="Acercar" onClick={() => setZoom((value) => Math.min(3, +(value + 0.25).toFixed(2)))} className="min-h-11 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted">+</button>
+            </div>
             <p role="status" aria-live="polite" className="hidden min-w-0 flex-1 truncate text-xs text-ink-soft sm:block">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
-            <Button type="button" disabled={submitting} onClick={() => void saveAndContinueLater()} variant="secondary" className="min-h-11 flex-1 sm:flex-none">{saving ? "Guardando…" : <><span className="sm:hidden">Guardar</span><span className="hidden sm:inline">Guardar borrador</span></>}</Button>
             <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" className="min-h-11 flex-1 sm:flex-none">{submitting ? "Confirmando…" : <><span className="sm:hidden">Confirmar</span><span className="hidden sm:inline">Confirmar PDF</span></>}</Button>
           </div>
         </div>
