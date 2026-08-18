@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { TechnicianJobSummary, WorkerOperationsRow } from "@/lib/jobs/types";
-import { listTechnicianJobs } from "@/lib/jobs/actions";
+import { supabase } from "@/lib/supabase/client";
 import {
   Card,
   CardContent,
@@ -72,16 +72,15 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState("");
 
-  const showJobs = (technicianId: string, technicianName: string) => {
+  const showJobs = async (technicianId: string, technicianName: string) => {
     setJobsModal({ technicianId, technicianName });
     setJobs([]);
     setJobsError("");
     setJobsLoading(true);
-    void listTechnicianJobs(technicianId).then((result) => {
-      setJobsLoading(false);
-      if (result.success) setJobs(result.data);
-      else setJobsError(result.message);
-    });
+    const { data, error } = await supabase.rpc("list_technician_assigned_jobs", { p_technician_id: technicianId });
+    setJobsLoading(false);
+    if (error) setJobsError(`No se pudieron cargar los trabajos asignados. ${error.message}`);
+    else setJobs((data ?? []) as TechnicianJobSummary[]);
   };
 
   const crewOptions = useMemo(() => {
