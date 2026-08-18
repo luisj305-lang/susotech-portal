@@ -222,6 +222,16 @@ export interface JobFinancialAllocation {
   state: "voided" | "superseded" | "current";
 }
 
+export interface TechnicianJobSummary {
+  id: string;
+  prism_number: string | null;
+  title: string;
+  address: string | null;
+  main_status: string;
+  deadline_date: string | null;
+  updated_at: string;
+}
+
 export interface FinancialAllocationReportLine {
   allocation_date: string;
   job_id: string;

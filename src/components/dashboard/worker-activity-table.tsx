@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { WorkerOperationsRow } from "@/lib/jobs/types";
+import Link from "next/link";
+import type { TechnicianJobSummary, WorkerOperationsRow } from "@/lib/jobs/types";
+import { listTechnicianJobs } from "@/lib/jobs/actions";
 import {
   Card,
   CardContent,
@@ -12,7 +14,7 @@ import {
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonClasses } from "@/components/ui/button";
-import { IconSearch, IconUsers } from "@/components/ui/icons";
+import { IconSearch, IconUsers, IconX } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import {
   formatMoney,
@@ -65,6 +67,22 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
   const [crew, setCrew] = useState("");
   const [status, setStatus] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [jobsModal, setJobsModal] = useState<{ technicianId: string; technicianName: string } | null>(null);
+  const [jobs, setJobs] = useState<TechnicianJobSummary[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobsError, setJobsError] = useState("");
+
+  const showJobs = (technicianId: string, technicianName: string) => {
+    setJobsModal({ technicianId, technicianName });
+    setJobs([]);
+    setJobsError("");
+    setJobsLoading(true);
+    void listTechnicianJobs(technicianId).then((result) => {
+      setJobsLoading(false);
+      if (result.success) setJobs(result.data);
+      else setJobsError(result.message);
+    });
+  };
 
   const crewOptions = useMemo(() => {
     const set = new Set<string>();
@@ -240,6 +258,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                           onToggle={() =>
                             setExpandedId(expanded ? null : row.technician_id)
                           }
+                          onShowJobs={showJobs}
                         />
                       );
                     })}
@@ -269,9 +288,13 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                 return (
                   <div key={row.technician_id} className="rounded-2xl border border-line p-4 shadow-soft">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="truncate font-semibold text-ink">
+                      <button
+                        type="button"
+                        onClick={() => showJobs(row.technician_id, row.technician_name)}
+                        className="truncate border-0 bg-transparent p-0 text-left font-semibold text-accent-600 hover:text-accent-500 hover:underline"
+                      >
                         {row.technician_name}
-                      </p>
+                      </button>
                       <StatusBadge status={row.is_shift_active ? "activo" : "inactivo"} />
                     </div>
                     {row.crew_names.length > 0 ? (
@@ -337,6 +360,37 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
           </>
         )}
       </CardContent>
+      {jobsModal && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-brand-950/40 p-4" onClick={() => setJobsModal(null)}>
+          <div className="w-full max-w-lg rounded-2xl border border-line bg-white p-6 text-ink shadow-card" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold">Trabajos de {jobsModal.technicianName}</h2>
+              <button type="button" aria-label="Cerrar" onClick={() => setJobsModal(null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line text-ink hover:bg-surface-muted"><IconX /></button>
+            </div>
+            {jobsLoading ? (
+              <p className="py-8 text-center text-sm text-ink-muted">Cargando…</p>
+            ) : jobsError ? (
+              <p className="py-8 text-center text-sm text-ink">{jobsError}</p>
+            ) : jobs.length === 0 ? (
+              <p className="py-8 text-center text-sm text-ink-muted">No tiene trabajos asignados.</p>
+            ) : (
+              <ul className="grid max-h-[60vh] gap-2 overflow-y-auto">
+                {jobs.map((job) => (
+                  <li key={job.id}>
+                    <Link href={`/trabajos/${job.id}`} onClick={() => setJobsModal(null)} className="block rounded-lg border border-line bg-surface-muted p-3 hover:bg-surface-muted/60">
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-ink">{job.prism_number || job.title}</span>
+                        <StatusBadge status={job.main_status} />
+                      </span>
+                      <span className="mt-1 block text-sm text-ink-soft">{job.title}{job.address ? ` · ${job.address}` : ""}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
@@ -345,19 +399,25 @@ function RowGroup({
   row,
   expanded,
   onToggle,
+  onShowJobs,
 }: {
   row: WorkerOperationsRow;
   expanded: boolean;
   onToggle: () => void;
+  onShowJobs: (technicianId: string, technicianName: string) => void;
 }) {
   return (
     <>
       <tr className="border-b border-line hover:bg-surface-muted/60">
-        <td
-          className="max-w-[180px] truncate px-4 py-3 font-semibold text-ink"
-          title={row.technician_name}
-        >
-          {row.technician_name}
+        <td className="px-4 py-3">
+          <button
+            type="button"
+            onClick={() => onShowJobs(row.technician_id, row.technician_name)}
+            className="max-w-[180px] truncate border-0 bg-transparent p-0 text-left font-semibold text-accent-600 hover:text-accent-500 hover:underline"
+            title={`Ver trabajos de ${row.technician_name}`}
+          >
+            {row.technician_name}
+          </button>
         </td>
         <td className="px-4 py-3">
           {row.crew_names.length > 0 ? (

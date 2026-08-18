@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { canTransition, INCIDENT_TYPES } from "./state";
 import { cleanupJobDeletionQueue, type JobDeletionCleanupRow } from "./deletion-core";
 import { validatePlacements, type PdfCodePlacement } from "./pdf-code-editor-core";
-import type { AssigneeType, IncidentType, JobCategory, JobStatus } from "./types";
+import type { AssigneeType, IncidentType, JobCategory, JobStatus, TechnicianJobSummary } from "./types";
 import {
   isActiveShiftRequiredError,
   requireActiveShift,
@@ -341,6 +341,15 @@ export async function deleteArchivedJob(input: { jobId: string }): Promise<Resul
       : "Trabajo eliminado permanentemente.",
     data: null,
   };
+}
+
+export async function listTechnicianJobs(technicianId: string): Promise<Result<TechnicianJobSummary[]>> {
+  await requireSupervisor();
+  if (!uuidPattern.test(technicianId)) return failure("El técnico no es válido.");
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("list_technician_assigned_jobs", { p_technician_id: technicianId });
+  if (error) return failure("No se pudieron cargar los trabajos asignados.");
+  return { success: true, message: "Trabajos cargados.", data: (data ?? []) as TechnicianJobSummary[] };
 }
 
 export async function invoiceJob(input: { jobId: string; invoiceNumber: string; invoicePath?: string | null }): Promise<Result> {
