@@ -110,6 +110,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
         0,
       ),
       fuel: rows.reduce((sum, row) => sum + Number(row.weekly_fuel_amount), 0),
+      earnings: rows.reduce((sum, row) => sum + Number(row.weekly_allocated_cents ?? 0), 0),
     }),
     [rows],
   );
@@ -217,6 +218,9 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                         Gasolina semanal
                       </th>
                       <th className="px-4 py-3 text-right font-medium">
+                        Ganancia
+                      </th>
+                      <th className="px-4 py-3 text-right font-medium">
                         Acción
                       </th>
                     </tr>
@@ -237,7 +241,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                       );
                     })}
                     <tr className="border-t-2 border-brand-200 bg-brand-50 font-bold text-brand-900">
-                      <td className="px-4 py-3" colSpan={4}>
+                      <td className="px-4 py-3" colSpan={5}>
                         TOTAL
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
@@ -248,6 +252,9 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {formatMoney(totals.fuel)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {formatMoney(totals.earnings / 100)}
                       </td>
                       <td className="px-4 py-3" />
                     </tr>
@@ -300,6 +307,12 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                         <dt className="text-xs text-ink-muted">Gasolina</dt>
                         <dd className="font-medium text-ink">
                           {formatMoney(row.weekly_fuel_amount)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-ink-muted">Ganancia</dt>
+                        <dd className="font-medium text-ink">
+                          {formatMoney((row.weekly_allocated_cents ?? 0) / 100)}
                         </dd>
                       </div>
                     </dl>
@@ -399,6 +412,9 @@ function RowGroup({
         <td className="px-4 py-3 text-right tabular-nums text-ink">
           {formatMoney(row.weekly_fuel_amount)}
         </td>
+        <td className="px-4 py-3 text-right tabular-nums text-ink">
+          {formatMoney((row.weekly_allocated_cents ?? 0) / 100)}
+        </td>
         <td className="px-4 py-3 text-right">
           <button
             type="button"
@@ -411,7 +427,7 @@ function RowGroup({
       </tr>
       {expanded ? (
         <tr className="border-b border-line bg-surface-muted/40">
-          <td colSpan={8} className="px-4 py-3">
+          <td colSpan={9} className="px-4 py-3">
             <BreakdownPanel row={row} />
           </td>
         </tr>

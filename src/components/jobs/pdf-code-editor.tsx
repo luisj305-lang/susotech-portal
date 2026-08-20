@@ -64,14 +64,15 @@ type PageProps = {
   onSelectNote: (id: string) => void;
   onOpen: () => void;
   onMoveNote: (id: string, dx: number, dy: number) => void;
+  onMoveNoteArrow: (id: string, x: number, y: number) => void;
   onResizeNote: (id: string, dx: number, dy: number) => void;
   sourcePage: SourcePage;
   zoom: number;
 };
 
-function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onOpen, onMoveNote, onResizeNote, sourcePage, zoom }: PageProps) {
+function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onOpen, onMoveNote, onMoveNoteArrow, onResizeNote, sourcePage, zoom }: PageProps) {
   const host = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ id: string; kind: "box" | "arrow" | "note" | "note-resize"; x: number; y: number } | null>(null);
+  const drag = useRef<{ id: string; kind: "box" | "arrow" | "note" | "note-arrow" | "note-resize"; x: number; y: number } | null>(null);
   const wasSelectedRef = useRef<string | null>(null);
   const [visible, setVisible] = useState(page === 1);
   const [imageUrl, setImageUrl] = useState("");
@@ -137,6 +138,7 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
             (event.clientY - rect.top) / rect.height,
           );
         } else if (drag.current.kind === "note") onMoveNote(drag.current.id, (event.clientX - drag.current.x) / rect.width, (event.clientY - drag.current.y) / rect.height);
+        else if (drag.current.kind === "note-arrow") onMoveNoteArrow(drag.current.id, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
         else onResizeNote(drag.current.id, (event.clientX - drag.current.x) / rect.width, (event.clientY - drag.current.y) / rect.height);
         drag.current = { ...drag.current, x: event.clientX, y: event.clientY };
       }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }} className={`relative block w-full ${zoom > 0.75 ? "touch-pan-x touch-pan-y" : "touch-pan-y"} cursor-crosshair text-left`}>
@@ -146,12 +148,14 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
         {notes.filter((note) => note.page === page).map((note) => <div key={note.editorId} role="button" tabIndex={0} aria-label={`Nota de texto en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === note.editorId) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${note.x * 100}%`, top: `${note.y * 100}%`, width: `${note.width * 100}%`, height: `${note.height * 100}%`, fontSize: `${note.fontSizeRatio * 100}cqw` }} className={`absolute z-[5] touch-none cursor-move overflow-hidden whitespace-pre-wrap border bg-white p-1 text-ink ${selectedId === note.editorId ? "border-blue-700 ring-2 ring-blue-300" : "border-black"}`}>
           {note.text}{selectedId === note.editorId && <button type="button" aria-label="Redimensionar nota" onPointerDown={(event) => { event.stopPropagation(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-resize", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} className="absolute bottom-0 right-0 h-6 w-6 touch-none cursor-nwse-resize border-l border-t border-line bg-blue-600" />}
         </div>)}
+        {notes.filter((note) => note.page === page).map((note) => <button key={`note-tip-${note.editorId}`} type="button" aria-label="Mover extremo de la flecha de la nota" onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === note.editorId) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `calc(${note.arrowTipX * 100}% - 10px)`, top: `calc(${note.arrowTipY * 100}% - 10px)`, backgroundColor: "#000000" }} className={`absolute z-20 h-5 w-5 touch-none rounded-full border-2 ${selectedId === note.editorId ? "border-black ring-2 ring-white" : "border-white"}`} />)}
         <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
-          <defs><marker id={`arrow-${page}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" /></marker></defs>
+          <defs><marker id={`arrow-${page}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" /></marker><marker id={`note-arrow-${page}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#000000" /></marker></defs>
           {pagePlacements.map((item) => {
             const color = item.color ?? DEFAULT_CODE_COLOR;
             return <line key={item.id} x1={`${(item.x + item.width / 2) * 100}%`} y1={`${(item.y + item.height / 2) * 100}%`} x2={`${item.arrowTipX * 100}%`} y2={`${item.arrowTipY * 100}%`} stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" markerEnd={`url(#arrow-${page})`} />;
           })}
+          {notes.filter((note) => note.page === page).map((note) => <line key={`note-arrow-${note.editorId}`} x1={`${(note.x + note.width / 2) * 100}%`} y1={`${(note.y + note.height / 2) * 100}%`} x2={`${note.arrowTipX * 100}%`} y2={`${note.arrowTipY * 100}%`} stroke="#000000" strokeWidth="2.5" vectorEffect="non-scaling-stroke" markerEnd={`url(#note-arrow-${page})`} />)}
         </svg>
         {pagePlacements.map((item) => {
           const catalogItem = catalog.find((entry) => entry.id === item.catalogId);
@@ -196,7 +200,12 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       arrowTipY: Number.isFinite(placement.arrowTipY) ? placement.arrowTipY : placement.y + placement.height / 2,
     };
   }));
-  const [notes, setNotes] = useState<EditorNote[]>(() => (initialDraft?.text_notes ?? []).map((note) => ({ ...note, editorId: crypto.randomUUID() })));
+  const [notes, setNotes] = useState<EditorNote[]>(() => (initialDraft?.text_notes ?? []).map((note) => ({
+    ...note,
+    editorId: crypto.randomUUID(),
+    arrowTipX: Number.isFinite(note.arrowTipX) ? note.arrowTipX : Math.min(1, note.x + note.width / 2 + 0.14),
+    arrowTipY: Number.isFinite(note.arrowTipY) ? note.arrowTipY : note.y + note.height / 2,
+  })));
   const [tool, setTool] = useState<"code" | "note">("code");
   const [stage, setStage] = useState<"edit" | "allocation">("edit");
   const [noteText, setNoteText] = useState("");
@@ -264,6 +273,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
           page: note.page, sourceDocumentId: note.sourceDocumentId, sourcePage: note.sourcePage,
           text: note.text, x: note.x, y: note.y, width: note.width, height: note.height,
           fontSizeRatio: note.fontSizeRatio,
+          arrowTipX: note.arrowTipX, arrowTipY: note.arrowTipY,
         }));
         const noteValidation = validatePdfTextNotes(persistedNotes, sourceDocuments);
         if (noteValidation) { setMessage("Hay una nota inválida. Revisá el texto y sus límites."); return false; }
@@ -327,12 +337,14 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       const source = sourcePages.find((item) => item.page === page);
       if (!source) { setMessage("No se pudo identificar la página fuente."); return; }
       const { width, height } = measureNoteSize(text, NOTE_FONT_RATIO);
+      const boxX = Math.min(1 - width, Math.max(0, x - width / 2));
+      const boxY = Math.min(1 - height, Math.max(0, y - height / 2));
       const note: EditorNote = {
         editorId: crypto.randomUUID(), page, sourceDocumentId: source.documentId,
         sourcePage: source.sourcePage, text,
-        x: Math.min(1 - width, Math.max(0, x - width / 2)),
-        y: Math.min(1 - height, Math.max(0, y - height / 2)),
+        x: boxX, y: boxY,
         width, height, fontSizeRatio: NOTE_FONT_RATIO,
+        arrowTipX: Math.min(1, boxX + width / 2 + 0.14), arrowTipY: boxY + height / 2,
       };
       changeNotes([...notes, note]); setSelectedId(note.editorId); setSheetOpen(false); return;
     }
@@ -412,7 +424,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   };
   return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-ink sm:px-6 ${stage === "edit" ? (sheetOpen ? "pb-[calc(40vh+8rem)]" : "pb-40 sm:pb-36") : "pb-[28rem] sm:pb-80"}`}>
     <header className="mx-auto mb-5 max-w-5xl"><p className="text-sm font-semibold uppercase tracking-widest">Entrega del trabajo</p><h1 className="text-2xl font-bold sm:text-3xl">Marcá los códigos sobre el PDF</h1><p className="mt-2 text-sm text-ink-soft">El original permanece intacto. Todas las páginas están en orden y se cargan al acercarte.</p></header>
-    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => setSelectedId(id)} onSelectNote={(id) => setSelectedId(id)} onOpen={() => setSheetOpen(true)} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
+    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => setSelectedId(id)} onSelectNote={(id) => setSelectedId(id)} onOpen={() => setSheetOpen(true)} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMoveNoteArrow={(id, x, y) => changeNotes(notes.map((note) => note.editorId === id ? { ...note, arrowTipX: x, arrowTipY: y } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
       const item = placements.find((entry) => entry.id === id); if (!item) return;
       const dx = Math.min(1 - item.x - item.width, 1 - item.arrowTipX, Math.max(-item.x, -item.arrowTipX, requestedDx));
       const dy = Math.min(1 - item.y - item.height, 1 - item.arrowTipY, Math.max(-item.y, -item.arrowTipY, requestedDy));

@@ -21,6 +21,8 @@ export type PdfTextNote = {
   width: number;
   height: number;
   fontSizeRatio: number;
+  arrowTipX: number;
+  arrowTipY: number;
 };
 
 export type PdfTextNoteSource = {
@@ -31,10 +33,11 @@ export type PdfTextNoteSource = {
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const controlCharacterPattern = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/u;
 const unsupportedWinAnsiPattern = /[^\n\u0020-\u007e\u00a0-\u00ff\u20ac\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u017d\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u017e\u0178]/u;
-const exactKeys = [
+const requiredKeys = [
   "fontSizeRatio", "height", "page", "sourceDocumentId", "sourcePage",
   "text", "width", "x", "y",
-].sort();
+];
+const allowedKeys = [...requiredKeys, "arrowTipX", "arrowTipY"];
 
 function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -60,7 +63,9 @@ export function validatePdfTextNotes(
   for (const raw of value) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "A text note is invalid.";
     const note = raw as Record<string, unknown>;
-    if (JSON.stringify(Object.keys(note).sort()) !== JSON.stringify(exactKeys)) return "A text note has invalid fields.";
+    const noteKeys = Object.keys(note);
+    if (!requiredKeys.every((key) => noteKeys.includes(key))) return "A text note is missing required fields.";
+    if (!noteKeys.every((key) => allowedKeys.includes(key))) return "A text note has invalid fields.";
     if (!Number.isInteger(note.page) || !Number.isInteger(note.sourcePage)
       || typeof note.sourceDocumentId !== "string" || !uuidPattern.test(note.sourceDocumentId)
       || typeof note.text !== "string"
@@ -94,6 +99,12 @@ export function validatePdfTextNotes(
       || (note.y as number) + (note.height as number) > 1) {
       return "A text note has invalid geometry.";
     }
+    if (note.arrowTipX !== undefined && (!finite(note.arrowTipX) || (note.arrowTipX as number) < 0 || (note.arrowTipX as number) > 1)) {
+      return "A text note has an invalid arrow tip.";
+    }
+    if (note.arrowTipY !== undefined && (!finite(note.arrowTipY) || (note.arrowTipY as number) < 0 || (note.arrowTipY as number) > 1)) {
+      return "A text note has an invalid arrow tip.";
+    }
   }
   return null;
 }
@@ -112,7 +123,13 @@ function clamp(value: number, minimum: number, maximum: number) {
 }
 
 export function movePdfTextNote(note: PdfTextNote, dx: number, dy: number): PdfTextNote {
-  return { ...note, x: clamp(note.x + dx, 0, 1 - note.width), y: clamp(note.y + dy, 0, 1 - note.height) };
+  return {
+    ...note,
+    x: clamp(note.x + dx, 0, 1 - note.width),
+    y: clamp(note.y + dy, 0, 1 - note.height),
+    arrowTipX: clamp(note.arrowTipX + dx, 0, 1),
+    arrowTipY: clamp(note.arrowTipY + dy, 0, 1),
+  };
 }
 
 export function resizePdfTextNote(note: PdfTextNote, dx: number, dy: number): PdfTextNote {

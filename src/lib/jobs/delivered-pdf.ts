@@ -45,6 +45,8 @@ export type DeliveredPdfTextNote = {
   width: number;
   height: number;
   fontSizeRatio: number;
+  arrowTipX?: number;
+  arrowTipY?: number;
 };
 
 export type DeliveredPdfSource = {
@@ -268,6 +270,29 @@ async function composeUnlocked(
         const lines = note.text.split("\n").map((line) => assertWinAnsiText(line, noteFont));
         if (lines.length * lineHeight > height || lines.some((line) => noteFont.widthOfTextAtSize(line, size) > width)) {
           throw new Error("Una nota de texto no cabe dentro de su cuadro.");
+        }
+        const noteTipX = note.arrowTipX;
+        const noteTipY = note.arrowTipY;
+        if (typeof noteTipX === "number" && Number.isFinite(noteTipX) && typeof noteTipY === "number" && Number.isFinite(noteTipY)) {
+          const startX = (note.x + note.width / 2) * rendered.pointsWidth;
+          const startY = rendered.pointsHeight - ((note.y + note.height / 2) * rendered.pointsHeight);
+          const tipX = noteTipX * rendered.pointsWidth;
+          const tipY = rendered.pointsHeight - (noteTipY * rendered.pointsHeight);
+          const noteColor = rgb(0, 0, 0);
+          page.drawLine({ start: { x: startX, y: startY }, end: { x: tipX, y: tipY }, thickness: 2, color: noteColor });
+          const angle = Math.atan2(tipY - startY, tipX - startX);
+          const arrowLength = Math.max(8, Math.min(18, rendered.pointsWidth * 0.018));
+          for (const offset of [-Math.PI / 7, Math.PI / 7]) {
+            page.drawLine({
+              start: { x: tipX, y: tipY },
+              end: {
+                x: tipX - arrowLength * Math.cos(angle + offset),
+                y: tipY - arrowLength * Math.sin(angle + offset),
+              },
+              thickness: 2,
+              color: noteColor,
+            });
+          }
         }
         page.drawRectangle({ x, y, width, height, color: rgb(1, 1, 1), borderColor: rgb(0, 0, 0), borderWidth: 1, opacity: 1, borderOpacity: 1 });
         lines.forEach((line, lineIndex) => {
