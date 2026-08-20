@@ -1,11 +1,11 @@
 import { CatalogManager } from "@/components/catalog-manager";
 import { AppShell } from "@/components/dashboard/app-shell";
 import { displayName, initials, roleLabel } from "@/lib/dashboard/profile";
-import { requireSupervisor } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function CatalogPage() {
-  const profile = await requireSupervisor();
+  const profile = await requireAdmin();
   const supabase = await createClient();
   const [items, categories, rates] = await Promise.all([
     supabase.from("production_code_catalog").select("id,code,description,unit,is_active,sort_order").order("sort_order").order("code"),

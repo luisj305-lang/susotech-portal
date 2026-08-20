@@ -79,12 +79,10 @@ function validId(value: unknown): value is string {
   return typeof value === "string" && uuidPattern.test(value);
 }
 
-function jobPayload(input: JobInput, requireTitle: boolean): Record<string, unknown> {
+function jobPayload(input: JobInput): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
-  if (requireTitle || input.title !== undefined) {
-    const title = cleanText(input.title, "El título", 200);
-    if (!title) throw new Error("El título es obligatorio.");
-    payload.title = title;
+  if (input.title !== undefined) {
+    payload.title = cleanText(input.title, "El título", 200);
   }
   if (input.category !== undefined) {
     if (!categories.includes(input.category)) throw new Error("La categoría no es válida.");
@@ -157,7 +155,7 @@ export async function createJob(input: JobInput): Promise<Result<{ id: string }>
   await requireSupervisor();
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.from("jobs").insert(jobPayload(input, true)).select("id").single();
+    const { data, error } = await supabase.from("jobs").insert(jobPayload(input)).select("id").single();
     if (error || !data) return failure("No se pudo crear el trabajo.");
     refresh(data.id);
     return { success: true, message: "Trabajo creado.", data };
@@ -170,7 +168,7 @@ export async function updateJob(input: JobInput & { jobId: string }): Promise<Re
   await requireSupervisor();
   if (!validId(input.jobId)) return failure("El trabajo no es válido.");
   try {
-    const payload = jobPayload(input, false);
+    const payload = jobPayload(input);
     if (!Object.keys(payload).length) return failure("No hay cambios que guardar.");
     const supabase = await createClient();
     const { error } = await supabase.from("jobs").update(payload).eq("id", input.jobId).select("id").single();
@@ -442,6 +440,23 @@ export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: n
       : "No se pudo guardar el borrador.");
   revalidatePath(`/trabajos/${input.jobId}`);
   return { success: true, message: "Borrador guardado.", data: { version: Number(data) } };
+}
+
+export async function saveJobPdfAllocations(input: { jobId: string; allocations: Array<{ participantId: string; percentage: string }> }): Promise<Result> {
+  const profile = await requireProfile();
+  const capabilityFailure = technicianMutationFailure(profile);
+  if (capabilityFailure) return capabilityFailure;
+  const shiftFailure = await requireTechnicianShift(profile.role);
+  if (shiftFailure) return shiftFailure;
+  if (!validId(input.jobId)) return failure("El trabajo no es válido.");
+  const invalid = !Array.isArray(input.allocations) || input.allocations.some((item) => !validId(item.participantId) || !Number.isFinite(Number(item.percentage)) || Number(item.percentage) < 0 || Number(item.percentage) > 100);
+  if (invalid) return failure("La distribución no es válida.");
+  const { error } = await (await createClient()).rpc("save_job_pdf_allocations", {
+    p_job_id: input.jobId,
+    p_allocations: input.allocations.map((item) => ({ participantId: item.participantId, percentage: item.percentage })),
+  });
+  if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE) ? ACTIVE_SHIFT_REQUIRED_MESSAGE : "No se pudo guardar la distribución.");
+  return { success: true, message: "Distribución guardada.", data: null };
 }
 
 export async function addPhotoComment(input: { jobId: string; storagePath?: string; photoType?: typeof photoTypes[number]; comment?: string }): Promise<Result> {

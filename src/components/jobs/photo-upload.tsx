@@ -20,84 +20,99 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
   const cameraInput = useRef<HTMLInputElement>(null);
   const galleryInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
   const [pending, startTransition] = useTransition();
 
-  const previewUrl = useMemo(() => (photo ? URL.createObjectURL(photo) : null), [photo]);
+  const previewUrls = useMemo(
+    () => photos.map((photo) => URL.createObjectURL(photo)),
+    [photos],
+  );
 
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      for (const url of previewUrls) URL.revokeObjectURL(url);
     };
-  }, [previewUrl]);
+  }, [previewUrls]);
 
-  const clearPhoto = () => {
-    setPhoto(null);
-    if (cameraInput.current) cameraInput.current.value = "";
-    if (galleryInput.current) galleryInput.current.value = "";
+  const selectPhotos = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    if (files.length === 0) return;
+    const valid = files.filter(
+      (file) =>
+        allowedPhotoTypes.includes(file.type) &&
+        file.size >= 1 &&
+        file.size <= MAX_PHOTO_BYTES,
+    );
+    if (valid.length !== files.length) {
+      setMessage("Algunas fotos no son JPG, PNG o WebP, o superan 10 MB.");
+    } else {
+      setMessage("");
+    }
+    setPhotos((current) => [...current, ...valid]);
   };
 
-  const selectPhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = "";
-    if (!file) return;
-    if (
-      !allowedPhotoTypes.includes(file.type) ||
-      file.size < 1 ||
-      file.size > MAX_PHOTO_BYTES
-    ) {
-      clearPhoto();
-      setMessage("La foto debe ser JPG, PNG o WebP y no superar 10 MB.");
-      return;
-    }
-    setPhoto(file);
-    setMessage("");
+  const removePhoto = (index: number) => {
+    setPhotos((current) => current.filter((_, i) => i !== index));
   };
 
   function upload(data: FormData) {
-    if (!photo) {
-      setMessage("Selecciona una imagen JPG, PNG o WebP.");
+    if (photos.length === 0) {
+      setMessage("Selecciona al menos una imagen JPG, PNG o WebP.");
       return;
     }
+    const photoType = String(data.get("photoType")) as
+      | "before"
+      | "after"
+      | "evidence";
+    const comment = String(data.get("photoComment") ?? "");
     startTransition(async () => {
-      const prepared = await createPhotoUploadUrl({
-        jobId,
-        mimeType: photo.type as "image/jpeg" | "image/png" | "image/webp",
-        size: photo.size,
-      });
-      if (!prepared.success) {
-        setMessage(prepared.message);
-        return;
-      }
-      const { error } = await supabase.storage
-        .from("job-evidence")
-        .uploadToSignedUrl(prepared.data.path, prepared.data.token, photo, {
-          contentType: photo.type,
-        });
-      if (error) {
-        setMessage("No se pudo subir la foto. Puedes reintentar.");
-        return;
-      }
-      const confirmed = await addPhotoComment({
-        jobId,
-        storagePath: prepared.data.path,
-        photoType: String(data.get("photoType")) as
-          | "before"
-          | "after"
-          | "evidence",
-        comment: String(data.get("photoComment") ?? ""),
-      });
-      if (!confirmed.success) {
-        await discardUnconfirmedPhotoUpload({
+      const remaining: File[] = [];
+      let uploaded = 0;
+      for (const photo of photos) {
+        const prepared = await createPhotoUploadUrl({
           jobId,
-          path: prepared.data.path,
+          mimeType: photo.type as "image/jpeg" | "image/png" | "image/webp",
+          size: photo.size,
         });
+        if (!prepared.success) {
+          remaining.push(photo);
+          continue;
+        }
+        const { error } = await supabase.storage
+          .from("job-evidence")
+          .uploadToSignedUrl(prepared.data.path, prepared.data.token, photo, {
+            contentType: photo.type,
+          });
+        if (error) {
+          remaining.push(photo);
+          continue;
+        }
+        const confirmed = await addPhotoComment({
+          jobId,
+          storagePath: prepared.data.path,
+          photoType,
+          comment,
+        });
+        if (!confirmed.success) {
+          await discardUnconfirmedPhotoUpload({
+            jobId,
+            path: prepared.data.path,
+          });
+          remaining.push(photo);
+          continue;
+        }
+        uploaded += 1;
       }
-      setMessage(confirmed.message);
-      if (confirmed.success) {
-        clearPhoto();
-        router.refresh();
+      setPhotos(remaining);
+      if (remaining.length === 0) {
+        setMessage(`Se subieron ${uploaded} foto(s) correctamente.`);
+      } else {
+        setMessage(
+          `Se subieron ${uploaded} de ${photos.length} foto(s). Las que quedan en la lista no se subieron; reintentá.`,
+        );
       }
+      router.refresh();
     });
   }
 
@@ -118,23 +133,24 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
         <h2 className="text-xl font-bold">Evidencia fotográfica</h2>
         <form action={upload} className="mt-4 grid gap-3">
           <div className="grid gap-2">
-            <p className="font-semibold">Foto</p>
+            <p className="font-semibold">Fotos</p>
             <p className="text-sm text-ink-muted">
-              JPG, PNG o WebP · máximo 10 MB
+              JPG, PNG o WebP · máximo 10 MB cada una · podés subir varias a la vez
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label
                 aria-disabled={pending}
                 className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border border-line bg-white px-4 text-center font-semibold text-ink has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
               >
-                Tomar foto
+                Tomar fotos
                 <input
                   ref={cameraInput}
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   capture="environment"
+                  multiple
                   disabled={pending}
-                  onChange={selectPhoto}
+                  onChange={selectPhotos}
                   className="sr-only"
                 />
               </label>
@@ -147,34 +163,42 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
                   ref={galleryInput}
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
+                  multiple
                   disabled={pending}
-                  onChange={selectPhoto}
+                  onChange={selectPhotos}
                   className="sr-only"
                 />
               </label>
             </div>
-            {photo && (
-              <div className="flex items-center gap-3 rounded-xl border border-line p-3 text-sm text-ink">
-                {previewUrl && (
-                  <Image
-                    src={previewUrl}
-                    alt={`Vista previa de ${photo.name}`}
-                    width={64}
-                    height={64}
-                    className="h-16 w-16 shrink-0 rounded-lg border border-line object-cover"
-                    unoptimized
-                  />
-                )}
-                <span className="min-w-0 flex-1 truncate">{photo.name}</span>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={clearPhoto}
-                  className="font-bold text-accent-600 underline disabled:opacity-60"
-                >
-                  Quitar
-                </button>
-              </div>
+            {photos.length > 0 && (
+              <ul className="grid gap-2">
+                {photos.map((photo, index) => (
+                  <li
+                    key={`${photo.name}-${index}`}
+                    className="flex items-center gap-3 rounded-xl border border-line p-3 text-sm text-ink"
+                  >
+                    {previewUrls[index] && (
+                      <Image
+                        src={previewUrls[index]}
+                        alt={`Vista previa de ${photo.name}`}
+                        width={64}
+                        height={64}
+                        className="h-14 w-14 shrink-0 rounded-lg border border-line object-cover"
+                        unoptimized
+                      />
+                    )}
+                    <span className="min-w-0 flex-1 truncate">{photo.name}</span>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => removePhoto(index)}
+                      className="font-bold text-accent-600 underline disabled:opacity-60"
+                    >
+                      Quitar
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
           <label className="grid gap-1 text-sm font-medium text-ink-soft">
@@ -186,7 +210,7 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
             </select>
           </label>
           <label className="grid gap-1 text-sm font-medium text-ink-soft">
-            Comentario de esta foto{" "}
+            Comentario de estas fotos{" "}
             <span className="font-normal text-ink-muted">(opcional)</span>
             <textarea
               name="photoComment"
@@ -196,14 +220,14 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
             />
           </label>
           <Button
-            disabled={pending || !photo}
+            disabled={pending || photos.length === 0}
             variant="primary"
             size="lg"
           >
-            {pending ? "Subiendo…" : "Subir foto"}
+            {pending ? "Subiendo…" : "Subir fotos"}
           </Button>
-          {!photo && (
-            <p className="text-sm text-ink-muted">Selecciona una foto para subir.</p>
+          {photos.length === 0 && (
+            <p className="text-sm text-ink-muted">Selecciona una o más fotos para subir.</p>
           )}
         </form>
       </div>
@@ -224,7 +248,10 @@ export function PhotoUpload({ jobId }: { jobId: string }) {
           Guardar comentario general
         </Button>
       </form>
-      <UploadFeedback message={message} pendingFile={photo?.name ?? ""} />
+      <UploadFeedback
+        message={message}
+        pendingFile={photos.length ? `${photos.length} foto(s)` : ""}
+      />
     </section>
   );
 }

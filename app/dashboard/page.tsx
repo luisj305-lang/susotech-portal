@@ -1,7 +1,7 @@
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { DashboardClient } from "@/components/dashboard-client";
 import { requireProfile } from "@/lib/auth/session";
-import { getMyWeeklyFinancialAllocations, getMyWeeklyProduction, getWorkerOperationsDashboard, listOfficeJobs } from "@/lib/jobs/queries";
+import { getMyWeeklyFinancialAllocations, getMyWeeklyProduction, getWeeklyInvoicedTotal, getWorkerOperationsDashboard, listOfficeJobs } from "@/lib/jobs/queries";
 import { getWorkShiftAccess } from "@/lib/work-shifts/access";
 import { ShiftStartPrompt } from "@/components/work-shifts/shift-start-prompt";
 
@@ -36,10 +36,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
 
   const referenceAt = referenceAtForWeek(weekOffset);
 
-  const [workerOperations, pendingReview] = await Promise.all([
+  const [workerOperations, pendingReview, weeklyInvoiced] = await Promise.all([
     getWorkerOperationsDashboard(referenceAt),
     listOfficeJobs({ status: "en_revision" }),
+    getWeeklyInvoicedTotal(referenceAt),
   ]);
 
-  return <AdminDashboard profile={profile} workerOperations={workerOperations} pendingReview={pendingReview} weekOffset={weekOffset} />;
+  return <AdminDashboard profile={profile} workerOperations={workerOperations} pendingReview={pendingReview} weeklyInvoiced={weeklyInvoiced} weekOffset={weekOffset} />;
 }

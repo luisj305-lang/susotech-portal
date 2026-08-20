@@ -33,6 +33,7 @@ export default async function DeliverJobPage({ params }: { params: Promise<{ id:
     source_document_ids: initialized.data[0].source_document_ids,
     placements: initialized.data[0].placements,
     text_notes: initialized.data[0].text_notes,
+    allocations: initialized.data[0].allocations ?? detail.draft?.allocations ?? [],
     updated_at: detail.draft?.updated_at ?? new Date().toISOString(),
   }} sourcePages={sourcePages} />;
 }

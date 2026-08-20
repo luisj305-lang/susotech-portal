@@ -8,15 +8,11 @@ import {
 } from "@/components/ui/icons";
 import { formatMoney, formatQuantity } from "@/lib/dashboard/format";
 
-export function StatCards({ rows }: { rows: WorkerOperationsRow[] }) {
+export function StatCards({ rows, invoicedCents }: { rows: WorkerOperationsRow[]; invoicedCents: number }) {
   const active = rows.filter((row) => row.is_shift_active).length;
   const total = rows.length;
   const production = rows.reduce(
     (sum, row) => sum + Number(row.weekly_production),
-    0,
-  );
-  const delivered = rows.reduce(
-    (sum, row) => sum + Number(row.weekly_delivered_jobs),
     0,
   );
   const fuel = rows.reduce(
@@ -43,9 +39,9 @@ export function StatCards({ rows }: { rows: WorkerOperationsRow[] }) {
       <StatCard
         icon={IconPackageCheck}
         tone="amber"
-        title="Entregados esta semana"
-        value={`${delivered}`}
-        sub="Trabajos enviados"
+        title="Facturado esta semana"
+        value={formatMoney(invoicedCents / 100)}
+        sub="Total facturado de todos los técnicos"
       />
       <StatCard
         icon={IconFuel}

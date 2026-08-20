@@ -11,6 +11,7 @@ import {
   IconClipboardCheck,
   IconDashboard,
   IconLogout,
+  IconTag,
   IconUpload,
   IconUserCog,
   IconUsers,
@@ -52,7 +53,10 @@ export function Sidebar({
     },
     { href: "/equipos", label: "Equipos", icon: IconUsers },
     ...(role === "admin"
-      ? [{ href: "/usuarios", label: "Usuarios", icon: IconUserCog }]
+      ? [
+          { href: "/catalogo", label: "Lista de precios", icon: IconTag },
+          { href: "/usuarios", label: "Usuarios", icon: IconUserCog },
+        ]
       : []),
   ];
 

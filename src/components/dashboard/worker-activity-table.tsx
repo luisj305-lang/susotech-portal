@@ -64,7 +64,6 @@ const inputClass =
 
 export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
   const [query, setQuery] = useState("");
-  const [crew, setCrew] = useState("");
   const [status, setStatus] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [jobsModal, setJobsModal] = useState<{ technicianId: string; technicianName: string } | null>(null);
@@ -83,21 +82,12 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
     else setJobs((data ?? []) as TechnicianJobSummary[]);
   };
 
-  const crewOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const row of rows) {
-      for (const name of row.crew_names) set.add(name);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
-  }, [rows]);
-
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("es");
     const list = rows
       .filter(
         (row) => !q || row.technician_name.toLocaleLowerCase("es").includes(q),
       )
-      .filter((row) => !crew || row.crew_names.includes(crew))
       .filter(
         (row) =>
           status === "" ||
@@ -110,7 +100,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
       ...list.filter((row) => row.is_shift_active).sort(byName),
       ...list.filter((row) => !row.is_shift_active).sort(byName),
     ];
-  }, [rows, query, crew, status]);
+  }, [rows, query, status]);
 
   const totals = useMemo(
     () => ({
@@ -130,7 +120,6 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
 
   const resetFilters = () => {
     setQuery("");
-    setCrew("");
     setStatus("");
   };
 
@@ -162,19 +151,6 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
               className={cn(inputClass, "pl-9")}
             />
           </div>
-          <select
-            value={crew}
-            onChange={(event) => setCrew(event.target.value)}
-            aria-label="Filtrar por equipo"
-            className={inputClass}
-          >
-            <option value="">Todos los equipos</option>
-            {crewOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value)}
@@ -224,7 +200,6 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                       <th className="px-4 py-3 text-left font-medium">
                         Trabajador
                       </th>
-                      <th className="px-4 py-3 text-left font-medium">Crew(s)</th>
                       <th className="px-4 py-3 text-left font-medium">Estado</th>
                       <th className="px-4 py-3 text-left font-medium">
                         Inicio de jornada
@@ -262,7 +237,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                       );
                     })}
                     <tr className="border-t-2 border-brand-200 bg-brand-50 font-bold text-brand-900">
-                      <td className="px-4 py-3" colSpan={5}>
+                      <td className="px-4 py-3" colSpan={4}>
                         TOTAL
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
@@ -296,18 +271,6 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                       </button>
                       <StatusBadge status={row.is_shift_active ? "activo" : "inactivo"} />
                     </div>
-                    {row.crew_names.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {row.crew_names.map((name) => (
-                          <span
-                            key={name}
-                            className="rounded-full border border-line bg-surface-muted px-2 py-0.5 text-xs text-ink-soft"
-                          >
-                            {name}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
                     <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <dt className="text-xs text-ink-muted">Inicio</dt>
@@ -378,10 +341,10 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                   <li key={job.id}>
                     <Link href={`/trabajos/${job.id}`} onClick={() => setJobsModal(null)} className="block rounded-lg border border-line bg-surface-muted p-3 hover:bg-surface-muted/60">
                       <span className="flex items-center justify-between gap-3">
-                        <span className="font-semibold text-ink">{job.prism_number || job.title}</span>
+                        <span className="font-semibold text-ink">{job.prism_number || job.address || "Sin PRISM"}</span>
                         <StatusBadge status={job.archived_at ? "archivado" : job.main_status} />
                       </span>
-                      <span className="mt-1 block text-sm text-ink-soft">{job.title}{job.address ? ` · ${job.address}` : ""}</span>
+                      <span className="mt-1 block text-sm text-ink-soft">{job.address || ""}</span>
                     </Link>
                   </li>
                 ))}
@@ -419,22 +382,6 @@ function RowGroup({
           </button>
         </td>
         <td className="px-4 py-3">
-          {row.crew_names.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {row.crew_names.map((name) => (
-                <span
-                  key={name}
-                  className="rounded-full border border-line bg-surface-muted px-2 py-0.5 text-xs text-ink-soft"
-                >
-                  {name}
-                </span>
-              ))}
-            </div>
-          ) : (
-            "—"
-          )}
-        </td>
-        <td className="px-4 py-3">
           <StatusBadge status={row.is_shift_active ? "activo" : "inactivo"} />
         </td>
         <td className="px-4 py-3 text-ink-soft">
@@ -464,7 +411,7 @@ function RowGroup({
       </tr>
       {expanded ? (
         <tr className="border-b border-line bg-surface-muted/40">
-          <td colSpan={9} className="px-4 py-3">
+          <td colSpan={8} className="px-4 py-3">
             <BreakdownPanel row={row} />
           </td>
         </tr>
@@ -512,6 +459,27 @@ function BreakdownPanel({ row }: { row: WorkerOperationsRow }) {
           </ul>
         ) : (
           <p className="text-xs text-ink-muted">Sin producción registrada.</p>
+        )}
+      </div>
+      <div>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          Gasolina por día
+        </p>
+        {row.fuel_daily && row.fuel_daily.length > 0 ? (
+          <ul className="flex flex-wrap gap-2">
+            {row.fuel_daily.map((item, index) => (
+              <li
+                key={`${item.date}-${index}`}
+                className="rounded-full border border-line bg-white px-2 py-0.5 text-xs text-ink-soft"
+              >
+                {item.no_fuel
+                  ? "Sin gasolina"
+                  : formatMoney(Number(item.amount))}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-ink-muted">Sin gasolina registrada.</p>
         )}
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { saveJobPdfDraft } from "@/lib/jobs/actions";
+import { saveJobPdfAllocations, saveJobPdfDraft } from "@/lib/jobs/actions";
 import {
   clampPlacement,
   CODE_COLOR_OPTIONS,
@@ -62,15 +62,17 @@ type PageProps = {
   onMove: (id: string, dx: number, dy: number) => void;
   onMoveArrow: (id: string, x: number, y: number) => void;
   onSelectNote: (id: string) => void;
+  onOpen: () => void;
   onMoveNote: (id: string, dx: number, dy: number) => void;
   onResizeNote: (id: string, dx: number, dy: number) => void;
   sourcePage: SourcePage;
   zoom: number;
 };
 
-function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onMoveNote, onResizeNote, sourcePage, zoom }: PageProps) {
+function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onOpen, onMoveNote, onResizeNote, sourcePage, zoom }: PageProps) {
   const host = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: string; kind: "box" | "arrow" | "note" | "note-resize"; x: number; y: number } | null>(null);
+  const wasSelectedRef = useRef<string | null>(null);
   const [visible, setVisible] = useState(page === 1);
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
@@ -88,16 +90,29 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
   useEffect(() => {
     if (!visible) return;
     let active = true; let objectUrl = "";
-    void fetch(`/api/trabajos/${jobId}/pdf-original-preview?page=${page}`, { method: "POST", cache: "no-store" }).then(async (response) => {
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "No se pudo cargar esta página.");
+    let attempts = 0;
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/trabajos/${jobId}/pdf-original-preview?page=${page}`, { method: "POST", cache: "no-store" });
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "No se pudo cargar esta página.");
+        }
+        objectUrl = URL.createObjectURL(await response.blob());
+        if (!active) return URL.revokeObjectURL(objectUrl);
+        setImageUrl(objectUrl);
+        onMetadata(Number(response.headers.get("x-page-count") ?? 0), Number(response.headers.get("x-draft-version") ?? 0));
+      } catch (cause) {
+        if (!active) return;
+        attempts += 1;
+        if (attempts < 3) {
+          setTimeout(() => void load(), 1500);
+        } else {
+          setError(cause instanceof Error ? cause.message : "No se pudo cargar esta página.");
+        }
       }
-      objectUrl = URL.createObjectURL(await response.blob());
-      if (!active) return URL.revokeObjectURL(objectUrl);
-      setImageUrl(objectUrl);
-      onMetadata(Number(response.headers.get("x-page-count") ?? 0), Number(response.headers.get("x-draft-version") ?? 0));
-    }).catch((cause) => active && setError(cause instanceof Error ? cause.message : "No se pudo cargar esta página."));
+    };
+    void load();
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [jobId, onMetadata, page, visible]);
 
@@ -128,7 +143,7 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
         {/* This authenticated blob URL cannot use the Next image optimizer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt={`PDF original, página ${page}`} className="block h-auto w-full" />
-        {notes.filter((note) => note.page === page).map((note) => <div key={note.editorId} role="button" tabIndex={0} aria-label={`Nota de texto en página ${page}`} onClick={(event) => { event.stopPropagation(); onSelectNote(note.editorId); }} onPointerDown={(event) => { event.stopPropagation(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${note.x * 100}%`, top: `${note.y * 100}%`, width: `${note.width * 100}%`, height: `${note.height * 100}%`, fontSize: `${note.fontSizeRatio * 100}cqw` }} className={`absolute z-[5] touch-none cursor-move overflow-hidden whitespace-pre-wrap border bg-white p-1 text-ink ${selectedId === note.editorId ? "border-blue-700 ring-2 ring-blue-300" : "border-black"}`}>
+        {notes.filter((note) => note.page === page).map((note) => <div key={note.editorId} role="button" tabIndex={0} aria-label={`Nota de texto en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === note.editorId) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${note.x * 100}%`, top: `${note.y * 100}%`, width: `${note.width * 100}%`, height: `${note.height * 100}%`, fontSize: `${note.fontSizeRatio * 100}cqw` }} className={`absolute z-[5] touch-none cursor-move overflow-hidden whitespace-pre-wrap border bg-white p-1 text-ink ${selectedId === note.editorId ? "border-blue-700 ring-2 ring-blue-300" : "border-black"}`}>
           {note.text}{selectedId === note.editorId && <button type="button" aria-label="Redimensionar nota" onPointerDown={(event) => { event.stopPropagation(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-resize", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} className="absolute bottom-0 right-0 h-6 w-6 touch-none cursor-nwse-resize border-l border-t border-line bg-blue-600" />}
         </div>)}
         <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
@@ -143,9 +158,9 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
           const label = placementLabel(item, catalogItem?.code ?? "Código");
           const color = item.color ?? DEFAULT_CODE_COLOR;
           const fittedFontSize = Math.max(0.1, (item.width * 100 - 0.8) / Math.max(1, label.length * 0.62));
-          return <span key={item.id} role="button" tabIndex={0} aria-label={`${label} en página ${page}`} onClick={(event) => { event.stopPropagation(); onSelect(item.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(item.id); } }} onPointerDown={(event) => { event.stopPropagation(); onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex touch-none cursor-move items-center overflow-hidden whitespace-nowrap border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{label}</span>;
+          return <span key={item.id} role="button" tabIndex={0} aria-label={`${label} en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex touch-none cursor-move items-center overflow-hidden whitespace-nowrap border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{label}</span>;
         })}
-        {pagePlacements.map((item) => <button key={`tip-${item.id}`} type="button" aria-label={`Mover extremo de la flecha de ${catalog.find((entry) => entry.id === item.catalogId)?.code ?? "código"}`} onClick={(event) => { event.stopPropagation(); onSelect(item.id); }} onPointerDown={(event) => { event.stopPropagation(); onSelect(item.id); drag.current = { id: item.id, kind: "arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }}           style={{ left: `calc(${item.arrowTipX * 100}% - 12px)`, top: `calc(${item.arrowTipY * 100}% - 12px)`, backgroundColor: item.color ?? DEFAULT_CODE_COLOR }} className={`absolute z-20 h-6 w-6 touch-none rounded-full border-2 ${selectedId === item.id ? "border-black ring-2 ring-white" : "border-white"}`} />)}
+        {pagePlacements.map((item) => <button key={`tip-${item.id}`} type="button" aria-label={`Mover extremo de la flecha de ${catalog.find((entry) => entry.id === item.catalogId)?.code ?? "código"}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }}           style={{ left: `calc(${item.arrowTipX * 100}% - 12px)`, top: `calc(${item.arrowTipY * 100}% - 12px)`, backgroundColor: item.color ?? DEFAULT_CODE_COLOR }} className={`absolute z-20 h-6 w-6 touch-none rounded-full border-2 ${selectedId === item.id ? "border-black ring-2 ring-white" : "border-white"}`} />)}
       </div>}
     </div>
   </section>;
@@ -162,9 +177,11 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   sourcePages: SourcePage[];
 }) {
   const router = useRouter();
-  const [allocations, setAllocations] = useState<Array<{ participantId: string; percentage: string }>>([
-    { participantId: actorId, percentage: "100.00" },
-  ]);
+  const [allocations, setAllocations] = useState<Array<{ participantId: string; percentage: string }>>(
+    initialDraft?.allocations?.length
+      ? initialDraft.allocations
+      : [{ participantId: actorId, percentage: "100.00" }],
+  );
   const [pageCount, setPageCount] = useState(sourcePages.length || initialDraft?.source_page_count || 1);
   const [version, setVersion] = useState(initialDraft?.version ?? 0);
   const versionRef = useRef(initialDraft?.version ?? 0);
@@ -199,16 +216,12 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const notesRef = useRef(notes);
   placementsRef.current = placements;
   notesRef.current = notes;
+  const allocationsRef = useRef(allocations);
+  allocationsRef.current = allocations;
   const selected = placements.find((item) => item.id === selectedId) ?? null;
   const selectedNote = notes.find((item) => item.editorId === selectedId) ?? null;
   const priceCategoryName = catalog.find((item) => item.price_category_name)?.price_category_name ?? null;
   const hasUnratedPlacement = placements.some((placement) => catalog.find((item) => item.id === placement.catalogId)?.unit_rate == null);
-  const estimatedTotal = placements.reduce((sum, placement) => {
-    const rate = catalog.find((item) => item.id === placement.catalogId)?.unit_rate;
-    if (rate == null) return sum;
-    return sum + placement.quantity * Number(rate);
-  }, 0);
-  const estimatedAmountFor = (percentage: string) => (estimatedTotal * (Number(percentage) || 0)) / 100;
 
   const onMetadata = useCallback((count: number, draftVersion: number) => {
     if (count > 0) setPageCount(count);
@@ -287,6 +300,14 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     const timeout = setTimeout(() => void save(placements, notes), 15000);
     return () => clearTimeout(timeout);
   }, [dirty, notes, placements, save, saving, submitting]);
+
+  useEffect(() => {
+    if (stage !== "allocation") return;
+    const timeout = setTimeout(() => {
+      void saveJobPdfAllocations({ jobId, allocations: allocationsRef.current });
+    }, 1500);
+    return () => clearTimeout(timeout);
+  }, [allocations, jobId, stage]);
 
   const persistStableDraft = async () => {
     const activeSave = saveInFlight.current;
@@ -391,7 +412,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   };
   return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-ink sm:px-6 ${stage === "edit" ? (sheetOpen ? "pb-[calc(40vh+8rem)]" : "pb-40 sm:pb-36") : "pb-[28rem] sm:pb-80"}`}>
     <header className="mx-auto mb-5 max-w-5xl"><p className="text-sm font-semibold uppercase tracking-widest">Entrega del trabajo</p><h1 className="text-2xl font-bold sm:text-3xl">Marcá los códigos sobre el PDF</h1><p className="mt-2 text-sm text-ink-soft">El original permanece intacto. Todas las páginas están en orden y se cargan al acercarte.</p></header>
-    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => { setSelectedId(id); setSheetOpen(true); }} onSelectNote={(id) => { setSelectedId(id); setSheetOpen(true); }} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
+    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => setSelectedId(id)} onSelectNote={(id) => setSelectedId(id)} onOpen={() => setSheetOpen(true)} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
       const item = placements.find((entry) => entry.id === id); if (!item) return;
       const dx = Math.min(1 - item.x - item.width, 1 - item.arrowTipX, Math.max(-item.x, -item.arrowTipX, requestedDx));
       const dy = Math.min(1 - item.y - item.height, 1 - item.arrowTipY, Math.max(-item.y, -item.arrowTipY, requestedDy));
@@ -436,9 +457,9 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
               <button type="button" onClick={() => { setTool("note"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 w-full border px-3 text-sm font-bold sm:w-auto ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Notas</button>
             </div>
             <div className="flex w-full items-center gap-1 sm:w-auto">
-              <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.25).toFixed(2)))} className="min-h-11 flex-1 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted sm:flex-none">−</button>
+              <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.05).toFixed(2)))} className="min-h-11 flex-1 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted sm:flex-none">−</button>
               <button type="button" aria-label="Restablecer zoom" title="Restablecer zoom" onClick={() => setZoom(1)} className="min-h-11 flex-1 border border-line bg-white px-2 text-center text-xs font-bold text-ink hover:bg-surface-muted sm:min-w-[3.5rem] sm:flex-none">{Math.round(zoom * 100)}%</button>
-              <button type="button" aria-label="Acercar" onClick={() => setZoom((value) => Math.min(3, +(value + 0.25).toFixed(2)))} className="min-h-11 flex-1 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted sm:flex-none">+</button>
+              <button type="button" aria-label="Acercar" onClick={() => setZoom((value) => Math.min(3, +(value + 0.05).toFixed(2)))} className="min-h-11 flex-1 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted sm:flex-none">+</button>
             </div>
             <p role="status" aria-live="polite" className="hidden min-w-0 flex-1 truncate text-xs text-ink-soft sm:block">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
             <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" className="min-h-11 w-full sm:w-auto sm:flex-none">{submitting ? "Confirmando…" : <><span className="sm:hidden">Confirmar</span><span className="hidden sm:inline">Confirmar PDF</span></>}</Button>
@@ -450,25 +471,22 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     <div className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto overflow-x-hidden border-t border-line bg-white/95 p-3 shadow-card backdrop-blur sm:p-4"><div className="mx-auto grid w-full min-w-0 max-w-5xl gap-3">
       <h2 className="text-lg font-bold">Distribución financiera</h2>
       <p className="text-xs text-ink-soft">Categoría aplicable: {priceCategoryName ?? "Sin categoría"}</p>
-      <p className="text-xs text-ink-soft">Total estimado: ${estimatedTotal.toFixed(2)} · Los montos por participante son estimados; el servidor confirma los centavos exactos al entregar.</p>
       <details open className="max-h-48 overflow-auto border border-line p-2">
         <summary className="cursor-pointer text-sm font-bold">Distribución financiera ({allocations.reduce((sum, item) => sum + (Number(item.percentage) || 0), 0).toFixed(2)}%)</summary>
-        <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_6rem_6rem] items-center gap-2 text-xs font-bold text-ink-soft">
+        <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_6rem] items-center gap-2 text-xs font-bold text-ink-soft">
           <span />
           <span>Participante</span>
           <span>Porcentaje</span>
-          <span className="text-right">Monto estimado</span>
         </div>
         <div className="mt-1 grid gap-2">
           {participants.map((participant) => {
             const selectedAllocation = allocations.find((item) => item.participantId === participant.id);
-            return <div key={participant.id} className="grid grid-cols-[auto_minmax(0,1fr)_6rem_6rem] items-center gap-2 text-sm">
+            return <div key={participant.id} className="grid grid-cols-[auto_minmax(0,1fr)_6rem] items-center gap-2 text-sm">
               <input aria-label={`Incluir a ${participant.label}`} type="checkbox" checked={Boolean(selectedAllocation)} onChange={(event) => setAllocations((current) => event.target.checked
                 ? [...current, { participantId: participant.id, percentage: "0.00" }]
                 : current.filter((item) => item.participantId !== participant.id))} />
               <span>{participant.label} · {participant.worker_specialty}</span>
               <input aria-label={`Porcentaje de ${participant.label}`} disabled={!selectedAllocation} inputMode="decimal" type="number" min="0.01" max="100" step="0.01" value={selectedAllocation?.percentage ?? ""} onChange={(event) => setAllocations((current) => current.map((item) => item.participantId === participant.id ? { ...item, percentage: event.target.value } : item))} className="min-h-10 border border-line bg-white p-2" />
-              <span className="text-right font-semibold">{selectedAllocation ? `$${estimatedAmountFor(selectedAllocation.percentage).toFixed(2)}` : "—"}</span>
             </div>;
           })}
         </div>

@@ -29,7 +29,7 @@ export interface Job {
   id: string;
   prism_number: string | null;
   njuns_number: string | null;
-  title: string;
+  title: string | null;
   address: string | null;
   location: string | null;
   customer_name: string | null;
@@ -274,6 +274,7 @@ export type WorkerOperationsRow = {
   weekly_production: number;
   weekly_delivered_jobs: number;
   weekly_fuel_amount: number;
+  fuel_daily: { date: string; amount: number; no_fuel: boolean }[];
   weekly_allocated_cents?: number;
   production_breakdown: WorkerProductionBreakdown[];
   server_now: string;
@@ -310,6 +311,7 @@ export interface JobPdfDraft {
   source_document_ids: string[];
   placements: import("./pdf-code-editor-core").PdfCodePlacement[];
   text_notes: import("./pdf-text-note-core").PdfTextNote[];
+  allocations: { participantId: string; percentage: string }[];
   updated_at: string;
 }
 

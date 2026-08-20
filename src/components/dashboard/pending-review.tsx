@@ -56,7 +56,7 @@ export function PendingReview({ jobs }: { jobs: OfficeJobPreview[] }) {
                       : "Sin PRISM"}
                   </p>
                   <p className="truncate text-sm font-medium text-ink">
-                    {job.address || job.title}
+                    {job.address || job.location || "Sin dirección"}
                   </p>
                   <p className="text-xs text-ink-muted">
                     Técnico: {job.assignee_label}

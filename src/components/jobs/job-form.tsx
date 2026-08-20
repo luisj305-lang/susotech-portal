@@ -22,7 +22,7 @@ export function JobForm({ job }: { job?: Job }) {
     const value = (name: string) => String(formData.get(name) ?? "");
     const total = value("estimatedTotal");
     const input = {
-      title: value("title"), category: value("category") as JobCategory,
+      category: value("category") as JobCategory,
       prismNumber: value("prismNumber"), njunsNumber: value("njunsNumber"), address: value("address"),
       location: value("location"), customerName: value("customerName"), requestDate: value("requestDate") || null,
       jobType: value("jobType"), description: value("description"),
@@ -39,7 +39,6 @@ export function JobForm({ job }: { job?: Job }) {
   }
 
   return <form action={submit} className="grid gap-4 rounded-2xl border border-line bg-white p-6 shadow-card sm:grid-cols-2">
-    <label className="grid gap-1 text-sm font-medium text-ink-soft sm:col-span-2">Título<input name="title" required maxLength={200} defaultValue={job?.title} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
     <label className="grid gap-1 text-sm font-medium text-ink-soft">Categoría<select name="category" defaultValue={job?.category ?? "categoria_1"} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="categoria_1">Categoría 1</option><option value="categoria_2">Categoría 2</option><option value="categoria_3">Categoría 3</option></select></label>
     {fields.map(([name, label, key]) => <label key={name} className="grid gap-1 text-sm font-medium text-ink-soft">{label}<input name={name} defaultValue={job?.[key] ?? ""} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>)}
     <label className="grid gap-1 text-sm font-medium text-ink-soft">Fecha de solicitud<input name="requestDate" type="date" defaultValue={job?.request_date ?? ""} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>

@@ -47,11 +47,13 @@ export function AdminDashboard({
   profile,
   workerOperations,
   pendingReview,
+  weeklyInvoiced,
   weekOffset,
 }: {
   profile: CurrentProfile;
   workerOperations: WorkerOperationsRow[];
   pendingReview: OfficeJobPreview[];
+  weeklyInvoiced: { invoiced_cents: number; delivered_jobs: number };
   weekOffset: number;
 }) {
   const role = profile.role as "admin" | "supervisor";
@@ -118,7 +120,7 @@ export function AdminDashboard({
           weekLabel={`Semana: ${weekLabel}`}
           weekControls={weekControls}
         />
-        <StatCards rows={workerOperations} />
+        <StatCards rows={workerOperations} invoicedCents={weeklyInvoiced.invoiced_cents} />
         <div className="grid gap-6 xl:grid-cols-3">
           <div className="xl:col-span-2">
             <WorkerActivityTable rows={workerOperations} />

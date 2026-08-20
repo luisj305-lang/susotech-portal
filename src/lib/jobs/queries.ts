@@ -34,10 +34,16 @@ export async function listCrewsForOffice(): Promise<CrewOfficeDto[]> {
   return (await listCrewManagementData()).crews;
 }
 
-export async function listOfficeJobs(filters: { query?: string; status?: string; category?: string; archived?: boolean }) {
+export async function listOfficeJobs(filters: { query?: string; status?: string; category?: string; archived?: boolean; facturados?: boolean }) {
   const supabase = await createClient();
   let request = supabase.from("jobs").select("*").order("updated_at", { ascending: false });
-  request = filters.archived ? request.not("archived_at", "is", null) : request.is("archived_at", null);
+  if (filters.archived) {
+    request = request.not("archived_at", "is", null);
+  } else if (filters.facturados) {
+    request = request.is("archived_at", null).in("main_status", ["facturado", "pagado"]);
+  } else {
+    request = request.is("archived_at", null).in("main_status", ["sin_asignar", "asignado", "en_revision", "aprobado"]);
+  }
   if (statuses.includes(filters.status as JobStatus)) request = request.eq("main_status", filters.status);
   if (categories.includes(filters.category as JobCategory)) request = request.eq("category", filters.category);
   const [jobsResult, assignmentsResult, photosResult, documentsResult, draftsResult, deliveryVersionsResult, options, crewsResult] = await Promise.all([
@@ -133,6 +139,13 @@ export async function getWorkerOperationsDashboard(referenceAt?: string | null) 
   return ((operations.data ?? []) as WorkerOperationsRow[]).map((row) => ({
     ...row, weekly_allocated_cents: amounts.get(row.technician_id) ?? 0,
   }));
+}
+
+export async function getWeeklyInvoicedTotal(referenceAt?: string | null) {
+  const { data, error } = await (await createClient()).rpc("get_weekly_invoiced_total", { p_reference_at: referenceAt ?? null });
+  if (error) throw new Error("No se pudo cargar el total facturado.");
+  const row = (data ?? [])[0] as { invoiced_cents: number; delivered_jobs: number } | undefined;
+  return { invoiced_cents: Number(row?.invoiced_cents ?? 0), delivered_jobs: Number(row?.delivered_jobs ?? 0) };
 }
 
 export async function getProductionReport(startDate: string, endDate: string) {

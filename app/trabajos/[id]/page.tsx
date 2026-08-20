@@ -90,10 +90,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         <header>
           <p className="text-sm font-semibold uppercase tracking-widest text-ink-muted">{job.category.replace("_", " ")}</p>
           <div className="mt-1 flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold text-ink">{job.prism_number || job.title}</h1>
+            <h1 className="text-3xl font-bold text-ink">{job.prism_number || job.address || "Sin número PRISM"}</h1>
             <StatusBadge status={job.main_status} />
           </div>
-          <p className="mt-2 text-ink-soft">{job.title}</p>
           {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-accent-600 underline">{job.address || job.location}</a>}
           <p className="mt-1 text-ink-soft">Estado: {job.main_status.replaceAll("_", " ")}{job.incident ? ` · Incidencia: ${job.incident}` : ""}{job.invoice_number ? ` · Factura: ${job.invoice_number}` : ""}</p>
           {job.archived_at && <div className="mt-2 rounded-xl border border-line bg-surface-muted p-3 font-semibold text-ink"><p>Archivado: {job.archive_reason || "Sin motivo"}</p>{job.archive_notes && <p className="mt-1 font-normal">{job.archive_notes}</p>}</div>}

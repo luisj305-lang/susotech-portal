@@ -14,8 +14,8 @@ export function JobHeader({
   job: Job;
   mapUrl: string | null;
 }) {
-  const heading = job.prism_number ? `PRISM-${job.prism_number}` : job.title;
-  const subtitle = job.prism_number ? job.title : null;
+  const heading = job.prism_number ? `PRISM-${job.prism_number}` : job.address || job.location || "Sin dirección";
+  const subtitle = job.prism_number ? job.address || job.location : null;
   const relevantDate = job.submitted_at ?? job.deadline_date ?? job.assignment_date ?? job.updated_at;
   const tags: string[] = [
     job.category.replace("categoria_", "Categoría "),
