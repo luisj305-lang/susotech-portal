@@ -49,6 +49,12 @@ export type DeliveredPdfTextNote = {
   arrowTipY?: number;
 };
 
+export type DeliveredPdfLine = {
+  page: number;
+  points: { x: number; y: number }[];
+  color: string;
+};
+
 export type DeliveredPdfSource = {
   id: string;
   bytes: Uint8Array;
@@ -219,6 +225,7 @@ async function composeUnlocked(
   evidence: DeliveredPdfEvidence[],
   codes: DeliveredPdfCodePlacement[] = [],
   textNotes: DeliveredPdfTextNote[] = [],
+  lines: DeliveredPdfLine[] = [],
 ): Promise<DeliveredPdfResult> {
   if (!sourceDocuments.length || sourceDocuments.some((source) => !source.bytes.length || source.bytes.length > MAX_ORIGINAL_BYTES)) {
     throw new Error("Cada PDF fuente debe existir y no superar 25 MB.");
@@ -260,6 +267,20 @@ async function composeUnlocked(
       const image = await output.embedJpg(jpeg);
       const page = output.addPage([rendered.pointsWidth, rendered.pointsHeight]);
       page.drawImage(image, { x: 0, y: 0, width: rendered.pointsWidth, height: rendered.pointsHeight });
+      for (const line of lines.filter((item) => item.page === combinedPage)) {
+        const hex = line.color.replace("#", "");
+        const color = rgb(parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255);
+        for (let index = 0; index < line.points.length - 1; index += 1) {
+          const start = line.points[index];
+          const end = line.points[index + 1];
+          page.drawLine({
+            start: { x: start.x * rendered.pointsWidth, y: rendered.pointsHeight - start.y * rendered.pointsHeight },
+            end: { x: end.x * rendered.pointsWidth, y: rendered.pointsHeight - end.y * rendered.pointsHeight },
+            thickness: 3,
+            color,
+          });
+        }
+      }
       for (const note of textNotes.filter((item) => item.page === combinedPage)) {
         const x = note.x * rendered.pointsWidth;
         const width = note.width * rendered.pointsWidth;
@@ -371,6 +392,12 @@ async function composeUnlocked(
     || item.fontSizeRatio < 0.012 || item.fontSizeRatio > 0.05)) {
     throw new Error("El borrador contiene notas fuera de las páginas o bordes del PDF.");
   }
+  if (lines.some((item) => !Number.isInteger(item.page) || item.page < 1 || item.page > originalPageCount
+    || !Array.isArray(item.points) || item.points.length < 2 || item.points.length > 50
+    || item.points.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y)
+      || point.x < 0 || point.x > 1 || point.y < 0 || point.y > 1))) {
+    throw new Error("El borrador contiene líneas fuera de las páginas o bordes del PDF.");
+  }
 
   const font = await output.embedFont(StandardFonts.Helvetica);
   for (const [index, photo] of evidence.entries()) {
@@ -433,13 +460,14 @@ export async function composeDeliveredPdf(
   evidence: DeliveredPdfEvidence[],
   codes: DeliveredPdfCodePlacement[] = [],
   textNotes: DeliveredPdfTextNote[] = [],
+  lines: DeliveredPdfLine[] = [],
 ) {
   const previous = compositionTail;
   let release!: () => void;
   compositionTail = new Promise<void>((resolve) => { release = resolve; });
   await previous;
   try {
-    return await composeUnlocked(sourceDocuments, evidence, codes, textNotes);
+    return await composeUnlocked(sourceDocuments, evidence, codes, textNotes, lines);
   } finally {
     release();
   }

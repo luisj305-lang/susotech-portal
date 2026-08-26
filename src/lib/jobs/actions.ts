@@ -415,7 +415,7 @@ export async function retryPendingJobDeletionCleanup(): Promise<Result<{ pending
   };
 }
 
-export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: number; pageCount: number; placements: PdfCodePlacement[]; textNotes: import("./pdf-text-note-core").PdfTextNote[]; sourceDocuments: import("./pdf-text-note-core").PdfTextNoteSource[] }): Promise<Result<{ version: number }>> {
+export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: number; pageCount: number; placements: PdfCodePlacement[]; textNotes: import("./pdf-text-note-core").PdfTextNote[]; lines: import("./pdf-line-core").PdfLineAnnotation[]; sourceDocuments: import("./pdf-text-note-core").PdfTextNoteSource[] }): Promise<Result<{ version: number }>> {
   const profile = await requireProfile();
   const capabilityFailure = technicianMutationFailure(profile);
   if (capabilityFailure) return capabilityFailure;
@@ -427,9 +427,13 @@ export async function saveJobPdfDraft(input: { jobId: string; expectedVersion: n
   const { validatePdfTextNotes } = await import("./pdf-text-note-core");
   const noteValidation = validatePdfTextNotes(input.textNotes, input.sourceDocuments);
   if (noteValidation) return failure(noteValidation);
-  const { data, error } = await (await createClient()).rpc("save_job_pdf_draft_v3", {
+  const { validatePdfLines } = await import("./pdf-line-core");
+  const lineValidation = validatePdfLines(input.lines, input.sourceDocuments);
+  if (lineValidation) return failure(lineValidation);
+  const { data, error } = await (await createClient()).rpc("save_job_pdf_draft_v4", {
     p_job_id: input.jobId, p_expected_version: input.expectedVersion,
     p_placements: input.placements, p_text_notes: input.textNotes,
+    p_lines: input.lines,
   });
   if (error) return failure(error.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
     ? ACTIVE_SHIFT_REQUIRED_MESSAGE

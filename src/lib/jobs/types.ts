@@ -311,6 +311,7 @@ export interface JobPdfDraft {
   source_document_ids: string[];
   placements: import("./pdf-code-editor-core").PdfCodePlacement[];
   text_notes: import("./pdf-text-note-core").PdfTextNote[];
+  lines: import("./pdf-line-core").PdfLineAnnotation[];
   allocations: { participantId: string; percentage: string }[];
   updated_at: string;
 }

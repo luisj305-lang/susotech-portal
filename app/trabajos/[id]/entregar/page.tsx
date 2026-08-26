@@ -20,7 +20,7 @@ export default async function DeliverJobPage({ params }: { params: Promise<{ id:
   );
   const sourcePages = buildSourcePages(sourceDocuments);
   const supabase = await createClient();
-  const [initialized, participants] = await Promise.all([supabase.rpc("initialize_job_pdf_draft_v3", {
+  const [initialized, participants] = await Promise.all([supabase.rpc("initialize_job_pdf_draft_v4", {
     p_job_id: id,
     p_source_document_ids: sourceDocuments.map((document) => document.id),
     p_page_count: sourcePages.length,
@@ -33,6 +33,7 @@ export default async function DeliverJobPage({ params }: { params: Promise<{ id:
     source_document_ids: initialized.data[0].source_document_ids,
     placements: initialized.data[0].placements,
     text_notes: initialized.data[0].text_notes,
+    lines: initialized.data[0].lines,
     allocations: initialized.data[0].allocations ?? detail.draft?.allocations ?? [],
     updated_at: detail.draft?.updated_at ?? new Date().toISOString(),
   }} sourcePages={sourcePages} />;

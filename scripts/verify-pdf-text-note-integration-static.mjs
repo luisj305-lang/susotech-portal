@@ -13,8 +13,8 @@ const ambiguityFix = read("supabase/migrations/20260813046000_pdf_text_note_conf
 
 for (const token of ["textarea", "note-resize", "onMoveNote", "onResizeNote", "touch-pan-y", "onPointerCancel", "onLostPointerCapture", "fontSizeRatio", "textNotes: persistedNotes"])
   assert.ok(editor.includes(token), `editor missing ${token}`);
-assert.ok(actions.includes('rpc("save_job_pdf_draft_v3"'), "draft save must use v3");
-assert.ok(page.includes('rpc("initialize_job_pdf_draft_v3"'), "delivery page must initialize v3");
+assert.ok(actions.includes('rpc("save_job_pdf_draft_v4"'), "draft save must use v4");
+assert.ok(page.includes('rpc("initialize_job_pdf_draft_v4"'), "delivery page must initialize v4");
 assert.ok(preview.includes('rpc("initialize_job_pdf_draft_v3"'), "preview must initialize v3");
 for (const token of ["placements,text_notes", "validatePdfTextNotes", "text_note_snapshot_hash", "confirm_delivered_job_pdf_with_allocations_v3", "confirm_delivered_job_pdf_complete_v3", "p_text_note_snapshot: textNotes"])
   assert.ok(route.includes(token), `delivery route missing ${token}`);

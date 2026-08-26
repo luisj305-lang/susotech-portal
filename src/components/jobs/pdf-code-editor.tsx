@@ -12,14 +12,23 @@ import {
   type PdfCodePlacement,
 } from "@/lib/jobs/pdf-code-editor-core";
 import { movePdfTextNote, resizePdfTextNote, validatePdfTextNotes, type PdfTextNote } from "@/lib/jobs/pdf-text-note-core";
+import { simplifyLine, validatePdfLines, type PdfLineAnnotation, type PdfLinePoint } from "@/lib/jobs/pdf-line-core";
 import type { JobPdfDraft, ProductionCatalogOption } from "@/lib/jobs/types";
 import { Button } from "@/components/ui/button";
 import { IconX } from "@/components/ui/icons";
 
 type SourcePage = { page: number; documentId: string; sourcePage: number };
 type EditorNote = PdfTextNote & { editorId: string };
+type EditorLine = PdfLineAnnotation & { editorId: string };
 
-const NOTE_FONT_RATIO = 0.018;
+const NOTE_FONT_SIZES: ReadonlyArray<{ ratio: number; label: string }> = [
+  { ratio: 0.018, label: "Normal" },
+  { ratio: 0.014, label: "Pequeña" },
+  { ratio: 0.012, label: "Muy pequeña" },
+];
+const NOTE_FONT_RATIO: number = NOTE_FONT_SIZES[0].ratio;
+const LINE_MIN_DISTANCE = 0.008;
+const LINE_STROKE_WIDTH = 3;
 const NOTE_PAD_X = 0.01;
 const NOTE_PAD_Y = 0.006;
 const NOTE_LINE_EM = 1.2;
@@ -47,6 +56,28 @@ function measureNoteSize(text: string, fontSizeRatio: number): { width: number; 
   return { width, height };
 }
 
+function nearestNoteFontSize(ratio: number): number {
+  return NOTE_FONT_SIZES.reduce(
+    (best, option) => (Math.abs(option.ratio - ratio) < Math.abs(best - ratio) ? option.ratio : best),
+    NOTE_FONT_SIZES[0].ratio,
+  );
+}
+
+function NoteFontSizePicker({ value, onChange }: { value: number; onChange: (ratio: number) => void }) {
+  const current = nearestNoteFontSize(value);
+  return <div className="flex flex-wrap items-center gap-2">
+    <span className="text-sm font-bold">Tamaño de fuente</span>
+    {NOTE_FONT_SIZES.map((option) => <button key={option.ratio} type="button" aria-pressed={current === option.ratio} onClick={() => onChange(option.ratio)} className={`min-h-9 rounded-lg border px-3 text-sm font-bold ${current === option.ratio ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink hover:bg-surface-muted"}`}>{option.label}</button>)}
+  </div>;
+}
+
+function LineColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  return <div className="flex flex-wrap items-center gap-2">
+    <span className="text-sm font-bold">Color</span>
+    {CODE_COLOR_OPTIONS.map((option) => <button key={option} type="button" aria-label={`Color ${option}`} onClick={() => onChange(option)} className={`h-8 w-8 rounded-full border-2 ${value === option ? "border-black ring-2 ring-black" : "border-line"}`} style={{ backgroundColor: option }} />)}
+  </div>;
+}
+
 type PageProps = {
   jobId: string;
   page: number;
@@ -66,13 +97,21 @@ type PageProps = {
   onMoveNote: (id: string, dx: number, dy: number) => void;
   onMoveNoteArrow: (id: string, x: number, y: number) => void;
   onResizeNote: (id: string, dx: number, dy: number) => void;
+  tool: "code" | "note" | "line";
+  lineColor: string;
+  lines: EditorLine[];
+  onCommitLine: (sourcePage: SourcePage, points: PdfLinePoint[]) => void;
+  onSelectLine: (id: string) => void;
+  onMoveLine: (id: string, dx: number, dy: number) => void;
   sourcePage: SourcePage;
   zoom: number;
 };
 
-function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onOpen, onMoveNote, onMoveNoteArrow, onResizeNote, sourcePage, zoom }: PageProps) {
+function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onOpen, onMoveNote, onMoveNoteArrow, onResizeNote, tool, lineColor, lines, onCommitLine, onSelectLine, onMoveLine, sourcePage, zoom }: PageProps) {
   const host = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ id: string; kind: "box" | "arrow" | "note" | "note-arrow" | "note-resize"; x: number; y: number } | null>(null);
+  const drag = useRef<{ id: string; kind: "box" | "arrow" | "note" | "note-arrow" | "note-resize" | "line"; x: number; y: number } | null>(null);
+  const drawRef = useRef<{ points: PdfLinePoint[] } | null>(null);
+  const [preview, setPreview] = useState<PdfLinePoint[]>([]);
   const wasSelectedRef = useRef<string | null>(null);
   const [visible, setVisible] = useState(page === 1);
   const [imageUrl, setImageUrl] = useState("");
@@ -123,10 +162,24 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
     <div ref={host} className="relative min-h-[55vh] w-full overflow-hidden border border-line bg-white shadow-card [container-type:inline-size]">
       {!imageUrl && <div className="flex min-h-[55vh] items-center justify-center bg-surface-muted p-6 text-center text-ink-muted">{error || (visible ? "Cargando página…" : "La página se cargará al acercarte")}</div>}
       {imageUrl && <div role="application" aria-label={`Colocar código en la página ${page}`} onClick={(event) => {
-        if ((!selectedCatalogId && !addingNote) || drag.current) return;
+        if (tool === "line" || (!selectedCatalogId && !addingNote) || drag.current) return;
         const rect = event.currentTarget.getBoundingClientRect();
         onAdd(sourcePage.page, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+      }} onPointerDown={(event) => {
+        if (tool !== "line") return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const point = { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
+        drawRef.current = { points: [point] };
+        setPreview([point]);
+        event.currentTarget.setPointerCapture(event.pointerId);
       }} onPointerMove={(event) => {
+        if (drawRef.current) {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const point = { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
+          drawRef.current.points.push(point);
+          setPreview([...drawRef.current.points]);
+          return;
+        }
         if (!drag.current) return;
         const rect = event.currentTarget.getBoundingClientRect();
         if (drag.current.kind === "box") {
@@ -139,12 +192,37 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
           );
         } else if (drag.current.kind === "note") onMoveNote(drag.current.id, (event.clientX - drag.current.x) / rect.width, (event.clientY - drag.current.y) / rect.height);
         else if (drag.current.kind === "note-arrow") onMoveNoteArrow(drag.current.id, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+        else if (drag.current.kind === "line") onMoveLine(drag.current.id, (event.clientX - drag.current.x) / rect.width, (event.clientY - drag.current.y) / rect.height);
         else onResizeNote(drag.current.id, (event.clientX - drag.current.x) / rect.width, (event.clientY - drag.current.y) / rect.height);
         drag.current = { ...drag.current, x: event.clientX, y: event.clientY };
-      }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }} className={`relative block w-full ${zoom > 0.75 ? "touch-pan-x touch-pan-y" : "touch-pan-y"} cursor-crosshair text-left`}>
+      }} onPointerUp={() => {
+        if (drawRef.current) {
+          const points = drawRef.current.points;
+          drawRef.current = null;
+          setPreview([]);
+          onCommitLine(sourcePage, points);
+        }
+        drag.current = null;
+      }} onPointerCancel={() => { drawRef.current = null; setPreview([]); drag.current = null; }} onLostPointerCapture={() => { drawRef.current = null; setPreview([]); drag.current = null; }} className={`relative block w-full ${tool === "line" ? "touch-none" : zoom > 0.75 ? "touch-pan-x touch-pan-y" : "touch-pan-y"} cursor-crosshair text-left`}>
         {/* This authenticated blob URL cannot use the Next image optimizer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt={`PDF original, página ${page}`} className="block h-auto w-full" />
+        <svg className="pointer-events-none absolute inset-0 z-[1] h-full w-full overflow-visible">
+          {lines.filter((line) => line.page === page).map((line) => {
+            const segments = line.points.slice(0, -1);
+            const selected = selectedId === line.editorId;
+            return <g key={line.editorId} className="pointer-events-auto" onPointerDown={(event) => {
+              event.stopPropagation(); wasSelectedRef.current = selectedId; onSelectLine(line.editorId);
+              drag.current = { id: line.editorId, kind: "line", x: event.clientX, y: event.clientY };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}>
+              {selected && segments.map((point, index) => <line key={`halo-${index}`} x1={`${point.x * 100}%`} y1={`${point.y * 100}%`} x2={`${line.points[index + 1].x * 100}%`} y2={`${line.points[index + 1].y * 100}%`} stroke="#60a5fa" strokeWidth="8" vectorEffect="non-scaling-stroke" strokeLinecap="round" />)}
+              {segments.map((point, index) => <line key={`line-${index}`} x1={`${point.x * 100}%`} y1={`${point.y * 100}%`} x2={`${line.points[index + 1].x * 100}%`} y2={`${line.points[index + 1].y * 100}%`} stroke={line.color} strokeWidth={LINE_STROKE_WIDTH} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />)}
+              {segments.map((point, index) => <line key={`hit-${index}`} x1={`${point.x * 100}%`} y1={`${point.y * 100}%`} x2={`${line.points[index + 1].x * 100}%`} y2={`${line.points[index + 1].y * 100}%`} stroke="transparent" strokeWidth="24" vectorEffect="non-scaling-stroke" strokeLinecap="round" />)}
+            </g>;
+          })}
+          {preview.length > 1 && preview.slice(0, -1).map((point, index) => <line key={`preview-${index}`} x1={`${point.x * 100}%`} y1={`${point.y * 100}%`} x2={`${preview[index + 1].x * 100}%`} y2={`${preview[index + 1].y * 100}%`} stroke={lineColor} strokeWidth={LINE_STROKE_WIDTH} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />)}
+        </svg>
         {notes.filter((note) => note.page === page).map((note) => <div key={note.editorId} role="button" tabIndex={0} aria-label={`Nota de texto en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === note.editorId) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${note.x * 100}%`, top: `${note.y * 100}%`, width: `${note.width * 100}%`, height: `${note.height * 100}%`, fontSize: `${note.fontSizeRatio * 100}cqw` }} className={`absolute z-[5] touch-none cursor-move overflow-hidden whitespace-pre-wrap border bg-white p-1 text-ink ${selectedId === note.editorId ? "border-blue-700 ring-2 ring-blue-300" : "border-black"}`}>
           {note.text}{selectedId === note.editorId && <button type="button" aria-label="Redimensionar nota" onPointerDown={(event) => { event.stopPropagation(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-resize", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} className="absolute bottom-0 right-0 h-6 w-6 touch-none cursor-nwse-resize border-l border-t border-line bg-blue-600" />}
         </div>)}
@@ -206,9 +284,15 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     arrowTipX: Number.isFinite(note.arrowTipX) ? note.arrowTipX : Math.min(1, note.x + note.width / 2 + 0.14),
     arrowTipY: Number.isFinite(note.arrowTipY) ? note.arrowTipY : note.y + note.height / 2,
   })));
-  const [tool, setTool] = useState<"code" | "note">("code");
+  const [lines, setLines] = useState<EditorLine[]>(() => (initialDraft?.lines ?? []).map((line) => ({
+    ...line,
+    editorId: crypto.randomUUID(),
+  })));
+  const [tool, setTool] = useState<"code" | "note" | "line">("code");
   const [stage, setStage] = useState<"edit" | "allocation">("edit");
   const [noteText, setNoteText] = useState("");
+  const [noteFontRatio, setNoteFontRatio] = useState(NOTE_FONT_RATIO);
+  const [lineColor, setLineColor] = useState(DEFAULT_CODE_COLOR);
   const [selectedCatalogId, setSelectedCatalogId] = useState(catalog[0]?.id ?? "");
   const [newQuantity, setNewQuantity] = useState("1");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -223,12 +307,15 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const saveInFlight = useRef<Promise<boolean> | null>(null);
   const placementsRef = useRef(placements);
   const notesRef = useRef(notes);
+  const linesRef = useRef(lines);
   placementsRef.current = placements;
   notesRef.current = notes;
+  linesRef.current = lines;
   const allocationsRef = useRef(allocations);
   allocationsRef.current = allocations;
   const selected = placements.find((item) => item.id === selectedId) ?? null;
   const selectedNote = notes.find((item) => item.editorId === selectedId) ?? null;
+  const selectedLine = lines.find((item) => item.editorId === selectedId) ?? null;
   const priceCategoryName = catalog.find((item) => item.price_category_name)?.price_category_name ?? null;
   const hasUnratedPlacement = placements.some((placement) => catalog.find((item) => item.id === placement.catalogId)?.unit_rate == null);
 
@@ -252,7 +339,12 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     changeGeneration.current += 1; setNotes(next); setDirty(true); setMessage("Cambios sin guardar…");
   }, [submitting]);
 
-  const save = useCallback((current: PdfCodePlacement[], currentNotes: EditorNote[]) => {
+  const changeLines = useCallback((next: EditorLine[]) => {
+    if (submitting) return;
+    changeGeneration.current += 1; setLines(next); setDirty(true); setMessage("Cambios sin guardar…");
+  }, [submitting]);
+
+  const save = useCallback((current: PdfCodePlacement[], currentNotes: EditorNote[], currentLines: EditorLine[]) => {
     if (saveInFlight.current) return saveInFlight.current;
     const operation = (async () => {
       try {
@@ -277,12 +369,19 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
         }));
         const noteValidation = validatePdfTextNotes(persistedNotes, sourceDocuments);
         if (noteValidation) { setMessage("Hay una nota inválida. Revisá el texto y sus límites."); return false; }
+        const persistedLines = currentLines.map((line) => ({
+          page: line.page, sourceDocumentId: line.sourceDocumentId, sourcePage: line.sourcePage,
+          points: line.points, color: line.color,
+        }));
+        const lineValidation = validatePdfLines(persistedLines, sourceDocuments);
+        if (lineValidation) { setMessage("Hay una línea inválida. Borrala y volvé a dibujarla."); return false; }
         const result = await saveJobPdfDraft({
           jobId,
           expectedVersion: versionRef.current,
           pageCount,
           placements: current,
           textNotes: persistedNotes,
+          lines: persistedLines,
           sourceDocuments,
         });
         setMessage(result.message);
@@ -307,9 +406,9 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
 
   useEffect(() => {
     if (!dirty || saving || submitting) return;
-    const timeout = setTimeout(() => void save(placements, notes), 15000);
+    const timeout = setTimeout(() => void save(placements, notes, lines), 15000);
     return () => clearTimeout(timeout);
-  }, [dirty, notes, placements, save, saving, submitting]);
+  }, [dirty, lines, notes, placements, save, saving, submitting]);
 
   useEffect(() => {
     if (stage !== "allocation") return;
@@ -324,7 +423,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     if (activeSave && !await activeSave) return false;
     for (;;) {
       const generation = changeGeneration.current;
-      if (!await save(placementsRef.current, notesRef.current)) return false;
+      if (!await save(placementsRef.current, notesRef.current, linesRef.current)) return false;
       if (changeGeneration.current === generation) return true;
     }
   };
@@ -336,14 +435,14 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       if (!text) { setMessage("Escribí el texto de la nota antes de colocarla."); return; }
       const source = sourcePages.find((item) => item.page === page);
       if (!source) { setMessage("No se pudo identificar la página fuente."); return; }
-      const { width, height } = measureNoteSize(text, NOTE_FONT_RATIO);
+      const { width, height } = measureNoteSize(text, noteFontRatio);
       const boxX = Math.min(1 - width, Math.max(0, x - width / 2));
       const boxY = Math.min(1 - height, Math.max(0, y - height / 2));
       const note: EditorNote = {
         editorId: crypto.randomUUID(), page, sourceDocumentId: source.documentId,
         sourcePage: source.sourcePage, text,
         x: boxX, y: boxY,
-        width, height, fontSizeRatio: NOTE_FONT_RATIO,
+        width, height, fontSizeRatio: noteFontRatio,
         arrowTipX: Math.min(1, boxX + width / 2 + 0.14), arrowTipY: boxY + height / 2,
       };
       changeNotes([...notes, note]); setSelectedId(note.editorId); setSheetOpen(false); return;
@@ -391,6 +490,51 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       return { ...note, text, width, height };
     }));
   };
+  const editNoteFontSize = (id: string, ratio: number) => {
+    if (submitting) return;
+    changeNotes(notes.map((note) => {
+      if (note.editorId !== id) return note;
+      const { width, height } = measureNoteSize(note.text, ratio);
+      return { ...note, fontSizeRatio: ratio, width, height };
+    }));
+  };
+  const commitLine = (sourcePage: SourcePage, points: PdfLinePoint[]) => {
+    if (submitting) return;
+    const simplified = simplifyLine(points, LINE_MIN_DISTANCE);
+    if (simplified.length < 2) { setMessage("El tramo quedó muy corto. Arrastrá un poco más para dibujarlo."); return; }
+    const line: EditorLine = {
+      editorId: crypto.randomUUID(),
+      page: sourcePage.page,
+      sourceDocumentId: sourcePage.documentId,
+      sourcePage: sourcePage.sourcePage,
+      points: simplified,
+      color: lineColor,
+    };
+    changeLines([...lines, line]);
+    setSelectedId(line.editorId);
+  };
+  const recolorLine = (id: string, color: string) => {
+    if (submitting) return;
+    changeLines(lines.map((line) => line.editorId === id ? { ...line, color } : line));
+  };
+  const moveLine = (id: string, requestedDx: number, requestedDy: number) => {
+    const line = lines.find((item) => item.editorId === id); if (!line) return;
+    const minX = Math.min(...line.points.map((point) => point.x));
+    const maxX = Math.max(...line.points.map((point) => point.x));
+    const minY = Math.min(...line.points.map((point) => point.y));
+    const maxY = Math.max(...line.points.map((point) => point.y));
+    const dx = Math.min(1 - maxX, Math.max(-minX, requestedDx));
+    const dy = Math.min(1 - maxY, Math.max(-minY, requestedDy));
+    changeLines(lines.map((item) => item.editorId === id ? {
+      ...item,
+      points: item.points.map((point) => ({ x: point.x + dx, y: point.y + dy })),
+    } : item));
+  };
+  const deleteLine = (id: string) => {
+    if (submitting) return;
+    changeLines(lines.filter((line) => line.editorId !== id));
+    setSelectedId(null);
+  };
   const confirm = async () => {
     const requestedAllocations = allocations.map((item) => ({
       participantId: item.participantId,
@@ -424,7 +568,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   };
   return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-ink sm:px-6 ${stage === "edit" ? (sheetOpen ? "pb-[calc(40vh+8rem)]" : "pb-40 sm:pb-36") : "pb-[28rem] sm:pb-80"}`}>
     <header className="mx-auto mb-5 max-w-5xl"><p className="text-sm font-semibold uppercase tracking-widest">Entrega del trabajo</p><h1 className="text-2xl font-bold sm:text-3xl">Marcá los códigos sobre el PDF</h1><p className="mt-2 text-sm text-ink-soft">El original permanece intacto. Todas las páginas están en orden y se cargan al acercarte.</p></header>
-    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => setSelectedId(id)} onSelectNote={(id) => setSelectedId(id)} onOpen={() => setSheetOpen(true)} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMoveNoteArrow={(id, x, y) => changeNotes(notes.map((note) => note.editorId === id ? { ...note, arrowTipX: x, arrowTipY: y } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMove={(id, requestedDx, requestedDy) => {
+    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => setSelectedId(id)} onSelectNote={(id) => setSelectedId(id)} onOpen={() => setSheetOpen(true)} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMoveNoteArrow={(id, x, y) => changeNotes(notes.map((note) => note.editorId === id ? { ...note, arrowTipX: x, arrowTipY: y } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} tool={tool} lineColor={lineColor} lines={lines} onCommitLine={commitLine} onSelectLine={(id) => setSelectedId(id)} onMoveLine={moveLine} onMove={(id, requestedDx, requestedDy) => {
       const item = placements.find((entry) => entry.id === id); if (!item) return;
       const dx = Math.min(1 - item.x - item.width, 1 - item.arrowTipX, Math.max(-item.x, -item.arrowTipX, requestedDx));
       const dy = Math.min(1 - item.y - item.height, 1 - item.arrowTipY, Math.max(-item.y, -item.arrowTipY, requestedDy));
@@ -435,13 +579,18 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       {sheetOpen && <div className="border-t border-line bg-white shadow-card">
         <div className="mx-auto max-h-[40vh] w-full max-w-5xl overflow-y-auto p-3 sm:p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-base font-bold">{selectedNote ? "Editar nota" : selected ? "Editar código" : tool === "note" ? "Nueva nota de texto" : "Nuevo código"}</h2>
+            <h2 className="text-base font-bold">{selectedNote ? "Editar nota" : selected ? "Editar código" : selectedLine ? "Editar línea" : tool === "note" ? "Nueva nota de texto" : tool === "line" ? "Nueva línea" : "Nuevo código"}</h2>
             <button type="button" aria-label="Cerrar panel" onClick={() => { setSheetOpen(false); setSelectedId(null); }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line text-ink hover:bg-surface-muted"><IconX /></button>
           </div>
           {selectedNote ? <div className="grid gap-2">
             <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={selectedNote.text} onChange={(event) => editNoteText(selectedNote.editorId, event.target.value)} rows={4} maxLength={2000} className="rounded-lg border border-line bg-white p-2" /></label>
+            <NoteFontSizePicker value={selectedNote.fontSizeRatio} onChange={(ratio) => editNoteFontSize(selectedNote.editorId, ratio)} />
             <p className="text-xs text-ink-soft">Nota · pág. {selectedNote.page}. Arrastrá para mover; usá la esquina azul para redimensionar.</p>
             <Button type="button" onClick={() => { changeNotes(notes.filter((note) => note.editorId !== selectedNote.editorId)); setSelectedId(null); }} variant="secondary" className="justify-self-start">Eliminar nota</Button>
+          </div> : selectedLine ? <div className="grid gap-2">
+            <LineColorPicker value={selectedLine.color} onChange={(color) => recolorLine(selectedLine.editorId, color)} />
+            <p className="text-xs text-ink-soft">Línea · pág. {selectedLine.page}. Arrastrala para moverla.</p>
+            <Button type="button" onClick={() => deleteLine(selectedLine.editorId)} variant="secondary" className="justify-self-start">Eliminar línea</Button>
           </div> : selected ? <div className="grid gap-3 sm:grid-cols-[9rem_1fr_auto]">
             <label className="grid gap-1 text-sm font-bold">Cantidad seleccionada<input aria-label="Cantidad del código seleccionado" inputMode="decimal" type="number" min="0.01" step="0.01" value={selected.quantity || ""} onChange={(event) => update(selected.id, { quantity: Number(event.target.value) })} className="min-h-11 rounded-lg border border-line bg-white p-2" /></label>
             <label className="flex items-center gap-2 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label>
@@ -452,7 +601,12 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
             </div>
           </div> : tool === "note" ? <div className="grid gap-2">
             <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} rows={3} maxLength={2000} placeholder="Escribí el texto y tocá el PDF para colocarla" className="rounded-lg border border-line bg-white p-2" /></label>
+            <NoteFontSizePicker value={noteFontRatio} onChange={setNoteFontRatio} />
             <Button type="button" onClick={() => setSheetOpen(false)} variant="primary" className="justify-self-start">Agregar nota</Button>
+          </div> : tool === "line" ? <div className="grid gap-2">
+            <LineColorPicker value={lineColor} onChange={setLineColor} />
+            <p className="text-xs text-ink-soft">Elegí un color y tocá «Listo». Después arrastrá el dedo sobre el PDF para dibujar el tramo.</p>
+            <Button type="button" onClick={() => setSheetOpen(false)} variant="primary" className="justify-self-start">Listo</Button>
           </div> : <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
             <label className="grid min-w-0 gap-1 text-sm font-bold">Código<select aria-label="Código para colocar" value={selectedCatalogId} onChange={(event) => setSelectedCatalogId(event.target.value)} style={{ borderColor: DEFAULT_CODE_COLOR }} className="min-h-12 w-full min-w-0 rounded-lg border-4 bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id} style={{ color: DEFAULT_CODE_COLOR }}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select></label>
             <label className="grid min-w-0 content-end gap-1 text-sm font-bold">Cantidad<input aria-label="Cantidad para el nuevo código" inputMode="decimal" type="number" min="0.01" step="0.01" value={newQuantity} onChange={(event) => setNewQuantity(event.target.value)} className="min-h-12 min-w-0 rounded-lg border border-line bg-white p-2" /></label>
@@ -467,6 +621,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-none">
               <button type="button" onClick={() => { setTool("code"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 w-full border px-3 text-sm font-bold sm:w-auto ${tool === "code" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Código</button>
               <button type="button" onClick={() => { setTool("note"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 w-full border px-3 text-sm font-bold sm:w-auto ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Notas</button>
+              <button type="button" onClick={() => { setTool("line"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 w-full border px-3 text-sm font-bold sm:w-auto ${tool === "line" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Línea</button>
             </div>
             <div className="flex w-full items-center gap-1 sm:w-auto">
               <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.05).toFixed(2)))} className="min-h-11 flex-1 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted sm:flex-none">−</button>

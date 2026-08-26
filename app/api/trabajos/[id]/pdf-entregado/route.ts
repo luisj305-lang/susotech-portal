@@ -5,6 +5,7 @@ import { composeDeliveredPdf } from "@/lib/jobs/delivered-pdf";
 import { ensureVerifiedDocumentManifest } from "@/lib/jobs/document-manifest";
 import { DEFAULT_CODE_COLOR, validatePlacements, type PdfCodePlacement } from "@/lib/jobs/pdf-code-editor-core";
 import { validatePdfTextNotes, type PdfTextNote } from "@/lib/jobs/pdf-text-note-core";
+import { validatePdfLines, type PdfLineAnnotation } from "@/lib/jobs/pdf-line-core";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { ACTIVE_SHIFT_REQUIRED_MESSAGE } from "@/lib/work-shifts/types";
@@ -113,7 +114,7 @@ export async function POST(
     return json(error instanceof Error ? error.message : "No se pudieron verificar los PDFs fuente.", 409);
   }
   const [{ data: draft, error: draftError }, { data: catalog, error: catalogError }, { data: documents, error: documentsError }] = await Promise.all([
-    supabase.from("job_pdf_drafts").select("version,source_page_count,source_document_ids,placements,text_notes").eq("job_id", jobId).maybeSingle(),
+    supabase.from("job_pdf_drafts").select("version,source_page_count,source_document_ids,placements,text_notes,lines").eq("job_id", jobId).maybeSingle(),
     service.from("production_code_catalog").select("id,code,unit").eq("is_active", true),
     supabase.from("job_documents").select("id,storage_path,file_hash,page_count,position,document_type")
       .eq("job_id", jobId).eq("status", "active").is("deleted_at", null)
@@ -158,6 +159,12 @@ export async function POST(
     pageCount: Number(document.page_count),
   })));
   if (textNoteError) return json("El borrador contiene una nota de texto inválida.", 409);
+  const lines = (draft.lines ?? []) as PdfLineAnnotation[];
+  const lineError = validatePdfLines(lines, sourceDocuments.map((document) => ({
+    id: document.id,
+    pageCount: Number(document.page_count),
+  })));
+  if (lineError) return json("El borrador contiene una línea inválida.", 409);
 
   const { data: photos, error: photoError } = await supabase
     .from("job_photos")
@@ -220,6 +227,7 @@ export async function POST(
       })),
       placements.map((item) => ({ ...item, code: catalogById.get(item.catalogId)!, color: item.color ?? DEFAULT_CODE_COLOR })),
       textNotes,
+      lines.map(({ page, points, color }) => ({ page, points, color })),
     );
 
     const { error: uploadError } = await service.storage.from("project-files").upload(
