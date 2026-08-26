@@ -36,6 +36,17 @@ export async function saveCatalogItem(input: {
   return { success: true, message: "Código del catálogo guardado." };
 }
 
+export async function deleteCatalogItem({ id }: { id: string }): Promise<Result> {
+  await requireAdmin();
+  if (!uuidPattern.test(id)) return { success: false, message: "Los datos del código no son válidos." };
+  const { error } = await (await createClient()).rpc("deactivate_production_catalog_item", {
+    p_item_id: id,
+  });
+  if (error) return { success: false, message: "No se pudo eliminar el código del catálogo." };
+  revalidatePath("/catalogo");
+  return { success: true, message: "Código eliminado del catálogo." };
+}
+
 export async function saveCatalogRate(input: {
   catalogItemId: string;
   priceCategoryId: string;

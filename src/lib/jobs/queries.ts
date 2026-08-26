@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { listActiveTechniciansCore } from "./crew-core";
 import { getDeliveredPdfStatus } from "./delivered-status";
 import { requireActiveShift } from "@/lib/work-shifts/access";
-import type { AssigneeOption, CrewOfficeDto, Job, JobArchiveEvent, JobAssignment, JobCategory, JobDocument, JobFinancialAllocation, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyProductionLine, WorkerOperationsRow } from "./types";
+import type { AssigneeOption, CrewOfficeDto, FinancialHistoryBucket, Job, JobArchiveEvent, JobAssignment, JobCategory, JobDocument, JobFinancialAllocation, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyProductionLine, WorkerOperationsRow } from "./types";
 
 const statuses: JobStatus[] = ["sin_asignar", "asignado", "en_revision", "aprobado", "facturado", "pagado"];
 const categories: JobCategory[] = ["categoria_1", "categoria_2", "categoria_3"];
@@ -160,6 +160,12 @@ export async function getFinancialAllocationReport(startDate: string, endDate: s
   });
   if (error) throw new Error("No se pudo cargar la distribución financiera.");
   return (data ?? []) as import("./types").FinancialAllocationReportLine[];
+}
+
+export async function getFinancialHistory(startDate: string, endDate: string) {
+  const { data, error } = await (await createClient()).rpc("get_financial_history", { p_start_date: startDate, p_end_date: endDate });
+  if (error) throw new Error("No se pudo cargar el historial financiero.");
+  return (data ?? []) as FinancialHistoryBucket[];
 }
 
 export async function getOfficeJob(jobId: string) {

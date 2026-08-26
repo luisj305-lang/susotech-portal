@@ -8,13 +8,13 @@ import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
   IconBriefcase,
+  IconChartBar,
   IconClipboardCheck,
   IconDashboard,
   IconLogout,
   IconTag,
   IconUpload,
   IconUserCog,
-  IconUsers,
   type IconProps,
 } from "@/components/ui/icons";
 
@@ -51,11 +51,12 @@ export function Sidebar({
       label: "Revisión",
       icon: IconClipboardCheck,
     },
-    { href: "/equipos", label: "Equipos", icon: IconUsers },
+    { href: "/manual", label: "Trabajos manuales", icon: IconClipboardCheck },
     ...(role === "admin"
       ? [
           { href: "/catalogo", label: "Lista de precios", icon: IconTag },
           { href: "/usuarios", label: "Usuarios", icon: IconUserCog },
+          { href: "/historicos", label: "Históricos", icon: IconChartBar },
         ]
       : []),
   ];

@@ -44,7 +44,6 @@ try {
   jobId = randomUUID(); const originalPath = `${jobId}/original.pdf`;
   await ok("create job", service.from("jobs").insert({ id: jobId, title: "PDF note delivery runtime", project_pdf_url: originalPath }));
   await ok("assign", admin.rpc("assign_jobs_atomic", { job_ids: [jobId], new_assignee_type: "technician", new_assignee_id: userId }));
-  await ok("start job", client.from("jobs").update({ main_status: "en_progreso" }).eq("id", jobId).select("id").single());
   await upload("project-files", originalPath, minimalPdf, "application/pdf");
   const documentId = await ok("register original", service.rpc("ensure_job_original_document", {
     p_job_id: jobId, p_storage_path: originalPath, p_original_filename: "original.pdf",
@@ -54,11 +53,11 @@ try {
   if (!catalog) throw new Error("No rated catalog item");
   const initialized = await ok("initialize v3", client.rpc("initialize_job_pdf_draft_v3", { p_job_id: jobId, p_source_document_ids: [documentId], p_page_count: 1 }));
   const placement = { id: randomUUID(), catalogId: catalog.id, page: 1, sourceDocumentId: documentId, sourcePage: 1, quantity: 1, x: 0.1, y: 0.1, width: 0.2, height: 0.08, arrowTipX: 0.5, arrowTipY: 0.5 };
-  const notes = [{ page: 1, sourceDocumentId: documentId, sourcePage: 1, text: "Instalación — José\nSeñal número 2", x: 0.1, y: 0.2, width: 0.4, height: 0.2, fontSizeRatio: 0.02 }];
+  const notes = [{ page: 1, sourceDocumentId: documentId, sourcePage: 1, text: "Instalación — José\nSeñal número 2", x: 0.1, y: 0.2, width: 0.4, height: 0.2, fontSizeRatio: 0.02, arrowTipX: 0.6, arrowTipY: 0.4 }];
   const version = await ok("save v3", client.rpc("save_job_pdf_draft_v3", { p_job_id: jobId, p_expected_version: initialized[0].version, p_placements: [placement], p_text_notes: notes }));
   const photoId = randomUUID(); const photoPath = `${jobId}/${randomUUID()}.png`;
   await upload("job-evidence", photoPath, tinyPng, "image/png");
-  await ok("register evidence", service.from("job_photos").insert({ id: photoId, job_id: jobId, storage_path: photoPath, photo_type: "evidence", uploaded_by: userId }));
+  await ok("register evidence", client.from("job_photos").insert({ id: photoId, job_id: jobId, storage_path: photoPath, photo_type: "evidence", uploaded_by: userId }));
   const deliveredPath = `${jobId}/delivered/${randomUUID()}.pdf`;
   const snapshotHash = createHash("sha256").update(JSON.stringify([placement])).digest("hex");
   await upload("project-files", deliveredPath, minimalPdf, "application/pdf", { generator: "susotech-portal", job_id: jobId, source_photo_ids: photoId, source_document_ids: documentId, snapshot_hash: snapshotHash });

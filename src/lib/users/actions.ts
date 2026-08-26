@@ -59,6 +59,7 @@ export async function createUser(input: {
   fullName: string;
   role: UserRole;
   isActive: boolean;
+  phone: string;
 }): Promise<ActionResult> {
   try {
     await requireAdmin();
@@ -107,6 +108,7 @@ export async function createUser(input: {
         full_name: input.fullName.trim(),
         role: input.role,
         is_active: input.isActive,
+        phone: input.phone.trim() || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", authData.user.id);
@@ -139,6 +141,7 @@ export async function updateUserProfile(input: {
   fullName: string;
   email: string;
   currentEmail: string;
+  phone: string;
 }): Promise<ActionResult> {
   try {
     await requireAdmin();
@@ -184,6 +187,7 @@ export async function updateUserProfile(input: {
         .update({
           email: normalizedEmail,
           full_name: input.fullName.trim(),
+          phone: input.phone.trim() || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", input.userId);
@@ -206,6 +210,7 @@ export async function updateUserProfile(input: {
         .from("profiles")
         .update({
           full_name: input.fullName.trim(),
+          phone: input.phone.trim() || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", input.userId);

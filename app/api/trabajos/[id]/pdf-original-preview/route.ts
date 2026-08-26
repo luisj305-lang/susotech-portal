@@ -9,7 +9,7 @@ import {
 } from "@/lib/auth/capabilities";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {

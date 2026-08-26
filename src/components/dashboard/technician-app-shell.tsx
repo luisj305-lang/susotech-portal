@@ -27,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/trabajos", label: "Mis trabajos", icon: IconBriefcase },
   { href: "#evidencias", label: "Evidencias", icon: IconCamera },
   { href: "/jornada/iniciar", label: "Jornada", icon: IconActivity },
+  { href: "/manual", label: "Trabajo manual", icon: IconActivity },
 ];
 
 function isActive(href: string, pathname: string): boolean {

@@ -23,6 +23,7 @@ const ITEMS: NavItem[] = [
   { href: "/trabajos", label: "Mis trabajos", icon: IconBriefcase },
   { href: "#evidencias", label: "Evidencias", icon: IconCamera },
   { href: "/jornada/iniciar", label: "Jornada", icon: IconActivity },
+  { href: "/manual", label: "Trabajo manual", icon: IconActivity },
 ];
 
 export function MobileBottomNav() {
@@ -33,7 +34,7 @@ export function MobileBottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white pb-[env(safe-area-inset-bottom)] lg:hidden"
       aria-label="Navegación principal"
     >
-      <div className="grid grid-cols-4">
+      <div className="grid grid-cols-5">
         {ITEMS.map((item) => {
           const active =
             item.href === pathname ||

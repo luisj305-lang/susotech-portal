@@ -8,7 +8,7 @@ export default async function CatalogPage() {
   const profile = await requireAdmin();
   const supabase = await createClient();
   const [items, categories, rates] = await Promise.all([
-    supabase.from("production_code_catalog").select("id,code,description,unit,is_active,sort_order").order("sort_order").order("code"),
+    supabase.from("production_code_catalog").select("id,code,description,unit,is_active,sort_order").eq("is_active", true).order("sort_order").order("code"),
     supabase.from("price_categories").select("id,slug,name,active").order("name"),
     supabase.from("production_code_rates").select("id,catalog_item_id,price_category_id,unit_price,effective_from,active").order("effective_from", { ascending: false }),
   ]);

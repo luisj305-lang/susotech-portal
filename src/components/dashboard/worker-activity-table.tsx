@@ -104,7 +104,14 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
 
   const totals = useMemo(
     () => ({
-      production: rows.reduce((sum, row) => sum + Number(row.weekly_production), 0),
+      productionAmount: rows.reduce(
+        (sum, row) => sum + Number(row.weekly_production_amount),
+        0,
+      ),
+      company: rows.reduce(
+        (sum, row) => sum + Number(row.weekly_production_company_amount),
+        0,
+      ),
       jobs: rows.reduce(
         (sum, row) => sum + Number(row.weekly_delivered_jobs),
         0,
@@ -211,6 +218,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                       <th className="px-4 py-3 text-right font-medium">
                         Producción semanal
                       </th>
+                      <th className="px-4 py-3 text-right font-medium">Compañía</th>
                       <th className="px-4 py-3 text-right font-medium">
                         Trabajos entregados
                       </th>
@@ -241,11 +249,14 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                       );
                     })}
                     <tr className="border-t-2 border-brand-200 bg-brand-50 font-bold text-brand-900">
-                      <td className="px-4 py-3" colSpan={5}>
+                      <td className="px-4 py-3" colSpan={4}>
                         TOTAL
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
-                        {formatQuantity(totals.production)}
+                        {formatMoney(totals.productionAmount)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {formatMoney(totals.company)}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {formatQuantity(totals.jobs)}
@@ -294,7 +305,13 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                       <div>
                         <dt className="text-xs text-ink-muted">Producción</dt>
                         <dd className="font-medium text-ink">
-                          {formatQuantity(row.weekly_production)}
+                          {formatMoney(row.weekly_production_amount)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-ink-muted">Compañía</dt>
+                        <dd className="font-medium text-ink">
+                          {formatMoney(row.weekly_production_company_amount)}
                         </dd>
                       </div>
                       <div>
@@ -404,7 +421,10 @@ function RowGroup({
           {formatShiftUntil(row.shift_active_until)}
         </td>
         <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">
-          {formatQuantity(row.weekly_production)}
+          {formatMoney(row.weekly_production_amount)}
+        </td>
+        <td className="px-4 py-3 text-right tabular-nums text-ink">
+          {formatMoney(row.weekly_production_company_amount)}
         </td>
         <td className="px-4 py-3 text-right tabular-nums text-ink">
           {row.weekly_delivered_jobs}
@@ -427,7 +447,7 @@ function RowGroup({
       </tr>
       {expanded ? (
         <tr className="border-b border-line bg-surface-muted/40">
-          <td colSpan={9} className="px-4 py-3">
+          <td colSpan={10} className="px-4 py-3">
             <BreakdownPanel row={row} />
           </td>
         </tr>

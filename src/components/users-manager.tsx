@@ -27,9 +27,9 @@ type ManagedProfile = {
   role: UserRole;
   is_active: boolean;
   worker_specialty: WorkerSpecialty | null;
-  crew_names: string[];
   price_category_id: string | null;
   price_category_name: string | null;
+  phone: string | null;
 };
 
 const roleLabels: Record<UserRole, string> = {
@@ -64,6 +64,7 @@ export function UsersManager({
   const [createForm, setCreateForm] = useState({
     fullName: "",
     email: "",
+    phone: "",
     password: "",
     role: "tecnico" as UserRole,
     isActive: true,
@@ -72,6 +73,7 @@ export function UsersManager({
   const [editForm, setEditForm] = useState({
     fullName: "",
     email: "",
+    phone: "",
   });
 
   const [confirmEmailChange, setConfirmEmailChange] = useState(false);
@@ -87,6 +89,7 @@ export function UsersManager({
       fullName: createForm.fullName,
       role: createForm.role,
       isActive: createForm.isActive,
+      phone: createForm.phone,
     });
 
     setIsLoading(false);
@@ -97,6 +100,7 @@ export function UsersManager({
       setCreateForm({
         fullName: "",
         email: "",
+        phone: "",
         password: "",
         role: "tecnico",
         isActive: true,
@@ -128,6 +132,7 @@ export function UsersManager({
       fullName: editForm.fullName,
       email: editForm.email,
       currentEmail: modal.user.email,
+      phone: editForm.phone,
     });
 
     setIsLoading(false);
@@ -136,7 +141,7 @@ export function UsersManager({
       setMessage(result.message);
       setModal({ type: "closed" });
       setConfirmEmailChange(false);
-      setEditForm({ fullName: "", email: "" });
+      setEditForm({ fullName: "", email: "", phone: "" });
       router.refresh();
     } else {
       setMessage(result.message);
@@ -261,6 +266,7 @@ export function UsersManager({
     setEditForm({
       fullName: user.full_name ?? "",
       email: user.email,
+      phone: user.phone ?? "",
     });
     setConfirmEmailChange(false);
     setModal({ type: "edit", user });
@@ -333,7 +339,7 @@ export function UsersManager({
               <th className="px-4 py-3 text-left font-semibold">Rol</th>
               <th className="px-4 py-3 text-left font-semibold">Especialidad</th>
               <th className="px-4 py-3 text-left font-semibold">Categoría de precio</th>
-              <th className="px-4 py-3 text-left font-semibold">Crew / Equipos</th>
+              <th className="px-4 py-3 text-left font-semibold">Teléfono</th>
               <th className="px-4 py-3 text-left font-semibold">Estado</th>
               <th className="px-4 py-3 text-left font-semibold">Acciones</th>
             </tr>
@@ -408,22 +414,7 @@ export function UsersManager({
                     )}
                   </td>
                   <td className="px-4 py-3">{user.role === "tecnico" ? canManage ? <select aria-label={`Categoría de precio de ${user.full_name ?? user.email}`} value={user.price_category_id ?? ""} disabled={isLoading} onChange={(event) => void handlePriceCategoryChange(user.id, event.target.value || null)} className="rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Sin categoría</option>{priceCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select> : (user.price_category_name ?? "Sin categoría") : "—"}</td>
-                  <td className="px-4 py-3">
-                    {user.crew_names.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {user.crew_names.map((name) => (
-                          <span
-                            key={name}
-                            className="rounded-full border border-line bg-surface-muted px-2 py-0.5 text-xs text-ink-soft"
-                          >
-                            {name}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
+                  <td className="px-4 py-3 text-ink-soft">{user.phone ?? "—"}</td>
                   <td className="px-4 py-3">
                     {canManage ? <Button
                       type="button"
@@ -533,6 +524,18 @@ export function UsersManager({
                     className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
                   />
                   <input
+                    type="tel"
+                    placeholder="Teléfono"
+                    value={createForm.phone}
+                    onChange={(event) =>
+                      setCreateForm((current) => ({
+                        ...current,
+                        phone: event.target.value,
+                      }))
+                    }
+                    className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
+                  />
+                  <input
                     type="password"
                     placeholder="Contraseña temporal"
                     value={createForm.password}
@@ -624,6 +627,18 @@ export function UsersManager({
                       }))
                     }
                     required
+                    className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Teléfono"
+                    value={editForm.phone}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        phone: event.target.value,
+                      }))
+                    }
                     className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
                   />
                   {modal.user.email.trim().toLowerCase() !==

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 const migration = await readFile("supabase/migrations/202608100200_delivered_job_pdf.sql", "utf8");
 const route = await readFile("app/api/trabajos/[id]/pdf-entregado/route.ts", "utf8");
+const previewRoute = await readFile("app/api/trabajos/[id]/pdf-original-preview/route.ts", "utf8");
 const compositor = await readFile("src/lib/jobs/delivered-pdf.ts", "utf8");
 const freshness = await readFile("src/lib/jobs/delivered-status.ts", "utf8");
 const types = await readFile("src/lib/jobs/types.ts", "utf8");
@@ -13,6 +14,7 @@ const checks = [
   [migration.includes("main_status = 'en_progreso'"), "evidence writes restricted to in-progress"],
   [migration.includes("revoke all on function public.confirm_delivered_job_pdf") && migration.includes("to authenticated"), "RPC grants"],
   [route.includes("supabase.auth.getUser()"), "explicit route authentication"],
+  [route.includes("export const maxDuration = 120") && previewRoute.includes("export const maxDuration = 120"), "large PDF routes allow 120 seconds"],
   [route.includes('.from("job_photos")') && !route.includes("p_source_photo_ids: input"), "server-derived evidence list"],
   [/\.from\("job_photos"\)[\s\S]*?\.eq\("job_id", jobId\)[\s\S]*?\.is\("deleted_at", null\)[\s\S]*?\.order\("created_at"/u.test(route), "soft-deleted evidence excluded from PDF composition"],
   [route.includes('from("project-files").upload') && route.includes("createServiceClient"), "private server upload"],

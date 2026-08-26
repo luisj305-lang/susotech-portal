@@ -247,6 +247,13 @@ export interface FinancialAllocationReportLine {
   billing_state: "pending" | "confirmed";
 }
 
+export interface FinancialHistoryBucket {
+  bucket_date: string;
+  income_cents: number;
+  worker_expense_cents: number;
+  fuel_expense_cents: number;
+}
+
 export interface JobPhoto {
   id: string;
   job_id: string;
@@ -272,6 +279,8 @@ export type WorkerOperationsRow = {
   shift_started_at: string | null;
   shift_active_until: string | null;
   weekly_production: number;
+  weekly_production_amount: number;
+  weekly_production_company_amount: number;
   weekly_delivered_jobs: number;
   weekly_fuel_amount: number;
   fuel_daily: { date: string; amount: number; no_fuel: boolean }[];
@@ -340,4 +349,40 @@ export type AssigneeOption =
 export interface CrewOfficeDto extends Crew {
   lead_label: string;
   members: TechnicianDirectoryOption[];
+}
+
+export type JobStageStatus = "pending" | "completed" | "invoiced" | "paid";
+
+export type JobStageEventAction = "created" | "status_changed" | "invoice_updated" | "details_updated";
+
+export interface JobStage {
+  id: string;
+  job_id: string;
+  sequence: number;
+  title: string;
+  description: string | null;
+  status: JobStageStatus;
+  invoice_number: string | null;
+  invoice_path: string | null;
+  completed_at: string | null;
+  completed_by: string | null;
+  invoiced_at: string | null;
+  invoiced_by: string | null;
+  paid_at: string | null;
+  paid_by: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobStageEvent {
+  id: string;
+  stage_id: string;
+  job_id: string;
+  action: JobStageEventAction;
+  previous_status: JobStageStatus | null;
+  new_status: JobStageStatus | null;
+  actor_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
 }

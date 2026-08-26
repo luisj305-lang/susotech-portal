@@ -6,13 +6,17 @@ import {
   IconFuel,
   IconPackageCheck,
 } from "@/components/ui/icons";
-import { formatMoney, formatQuantity } from "@/lib/dashboard/format";
+import { formatMoney } from "@/lib/dashboard/format";
 
 export function StatCards({ rows, invoicedCents }: { rows: WorkerOperationsRow[]; invoicedCents: number }) {
   const active = rows.filter((row) => row.is_shift_active).length;
   const total = rows.length;
-  const production = rows.reduce(
-    (sum, row) => sum + Number(row.weekly_production),
+  const productionAmount = rows.reduce(
+    (sum, row) => sum + Number(row.weekly_production_amount),
+    0,
+  );
+  const companyAmount = rows.reduce(
+    (sum, row) => sum + Number(row.weekly_production_company_amount),
     0,
   );
   const fuel = rows.reduce(
@@ -33,8 +37,8 @@ export function StatCards({ rows, invoicedCents }: { rows: WorkerOperationsRow[]
         icon={IconChartBar}
         tone="blue"
         title="Producción semanal"
-        value={formatQuantity(production)}
-        sub="Suma de todos los técnicos"
+        value={formatMoney(productionAmount)}
+        sub={`Compañía: ${formatMoney(companyAmount)}`}
       />
       <StatCard
         icon={IconPackageCheck}

@@ -1,10 +1,14 @@
+export type PdfCodeEntry = {
+  catalogId: string;
+  quantity: number;
+};
+
 export type PdfCodePlacement = {
   id: string;
-  catalogId: string;
   page: number;
   sourceDocumentId: string;
   sourcePage: number;
-  quantity: number;
+  entries: PdfCodeEntry[];
   x: number;
   y: number;
   width: number;
@@ -29,18 +33,25 @@ export function validatePlacements(placements: PdfCodePlacement[], pageCount: nu
   if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > 50 || placements.length > 500) return "Borrador inválido.";
   const ids = new Set<string>();
   for (const item of placements) {
-    if (!uuidPattern.test(item.id) || !uuidPattern.test(item.catalogId) || ids.has(item.id)
+    if (!uuidPattern.test(item.id) || ids.has(item.id)
       || !Number.isInteger(item.page) || item.page < 1 || item.page > pageCount
       || !uuidPattern.test(item.sourceDocumentId)
       || !Number.isInteger(item.sourcePage) || item.sourcePage < 1 || item.sourcePage > 500
-      || !Number.isFinite(item.quantity) || item.quantity <= 0
-      || Math.round(item.quantity * 100) !== item.quantity * 100
+      || !Array.isArray(item.entries) || item.entries.length < 1 || item.entries.length > 20
       || ![item.x, item.y, item.width, item.height, item.arrowTipX, item.arrowTipY].every(Number.isFinite)
       || item.x < 0 || item.y < 0 || item.width < 0.04 || item.width > 0.35
       || item.height < 0.025 || item.height > 0.2 || item.x + item.width > 1 || item.y + item.height > 1
       || item.arrowTipX < 0 || item.arrowTipX > 1 || item.arrowTipY < 0 || item.arrowTipY > 1
       || (item.color !== undefined && !CODE_COLOR_OPTIONS.includes(item.color as (typeof CODE_COLOR_OPTIONS)[number]))) {
       return "Hay un código fuera de los bordes permitidos.";
+    }
+    for (const entry of item.entries) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)
+        || !uuidPattern.test(entry.catalogId)
+        || !Number.isFinite(entry.quantity) || entry.quantity <= 0
+        || Math.round(entry.quantity * 100) !== entry.quantity * 100) {
+        return "Hay un código con cantidad inválida.";
+      }
     }
     ids.add(item.id);
   }
@@ -64,6 +75,6 @@ export function clampPlacement(item: PdfCodePlacement): PdfCodePlacement {
   };
 }
 
-export function placementLabel(item: Pick<PdfCodePlacement, "quantity">, code: string) {
-  return `${code} × ${Number(item.quantity).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+export function placementLabel(quantity: number, code: string) {
+  return `${code} × ${Number(quantity).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }

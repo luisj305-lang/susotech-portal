@@ -10,29 +10,16 @@ export default async function UsersPage() {
   const supabase = await createClient();
   const [{ data: users, error }, { data: priceCategories, error: categoriesError }] = await Promise.all([
     supabase.rpc("list_profiles_for_office"),
-    supabase.from("price_categories").select("id, slug, name").eq("active", true).order("name"),
+    supabase
+      .from("price_categories")
+      .select("id, slug, name")
+      .eq("active", true)
+      .eq("technician_assignable", true)
+      .order("name"),
   ]);
 
   if (error || categoriesError) {
     throw new Error("No se pudo cargar la lista de usuarios.");
-  }
-
-  const { data: crews, error: crewsError } = await supabase
-    .from("crews")
-    .select("name, crew_members(technician_id)")
-    .order("name");
-
-  if (crewsError) {
-    throw new Error("No se pudo cargar la membresía de equipos.");
-  }
-
-  const crewNames = new Map<string, string[]>();
-  for (const crew of crews ?? []) {
-    for (const member of crew.crew_members ?? []) {
-      const names = crewNames.get(member.technician_id) ?? [];
-      names.push(crew.name);
-      crewNames.set(member.technician_id, names);
-    }
   }
 
   return (
@@ -50,7 +37,8 @@ export default async function UsersPage() {
           worker_specialty: WorkerSpecialty | null;
           price_category_id: string | null;
           price_category_name: string | null;
-        }) => ({ ...user, crew_names: crewNames.get(user.id) ?? [] }))}
+          phone: string | null;
+        }) => user)}
       />
     </AppShell>
   );

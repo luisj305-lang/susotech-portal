@@ -10,6 +10,7 @@ const page = read("app/trabajos/[id]/entregar/page.tsx");
 const preview = read("app/api/trabajos/[id]/pdf-original-preview/route.ts");
 const hardening = read("supabase/migrations/20260813044000_pdf_text_note_confirmation_hardening.sql");
 const ambiguityFix = read("supabase/migrations/20260813046000_pdf_text_note_confirmation_ambiguity_fix.sql");
+const noteKeyValidationFix = read("supabase/migrations/20260820008000_fix_pdf_text_note_key_validation.sql");
 
 for (const token of ["textarea", "note-resize", "onMoveNote", "onResizeNote", "touch-pan-y", "onPointerCancel", "onLostPointerCapture", "fontSizeRatio", "textNotes: persistedNotes"])
   assert.ok(editor.includes(token), `editor missing ${token}`);
@@ -27,5 +28,9 @@ for (const token of ["p_submit and not public.is_operational_worker", "stored_sn
   assert.ok(hardening.includes(token), `hardening migration missing ${token}`);
 for (const token of ["deliveries.id = confirmed.delivery_id", "annotations.delivery_id = confirmed.delivery_id", "notes.value"])
   assert.ok(ambiguityFix.includes(token), `ambiguity fix missing ${token}`);
+assert.match(noteKeyValidationFix, /from jsonb_object_keys\(item\) as note_keys\(note_key\)\s+where note_key not in/u);
+assert.doesNotMatch(noteKeyValidationFix, /from jsonb_object_keys\(item\)\s+where value not in/u);
+for (const token of ["'arrowTipX'", "'arrowTipY'"])
+  assert.ok(noteKeyValidationFix.includes(token), `note key validation fix missing ${token}`);
 
 console.log("[pdf-text-note-integration-static] PASS");

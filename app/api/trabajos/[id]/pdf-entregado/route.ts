@@ -15,7 +15,7 @@ import {
 } from "@/lib/auth/capabilities";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const MAX_INPUT_BYTES = 120 * 1024 * 1024;
@@ -127,13 +127,13 @@ export async function POST(
   const placementError = validatePlacements(placements, draft.source_page_count);
   if (placementError) return json(placementError, 409);
   const catalogById = new Map((catalog ?? []).map((item) => [item.id, item.code]));
-  if (placements.some((item) => !catalogById.has(item.catalogId))) return json("El borrador contiene un código no disponible.", 409);
+  if (placements.some((item) => item.entries.some((entry) => !catalogById.has(entry.catalogId)))) return json("El borrador contiene un código no disponible.", 409);
   const catalogUnits = new Map((catalog ?? []).map((item) => [item.id, item.unit]));
-  if (placements.some((item) => ["fixed", "event"].includes(catalogUnits.get(item.catalogId) ?? "") && !Number.isInteger(item.quantity))) {
+  if (placements.some((item) => item.entries.some((entry) => ["fixed", "event"].includes(catalogUnits.get(entry.catalogId) ?? "") && !Number.isInteger(entry.quantity)))) {
     return json("Los códigos de cantidad fija o evento requieren un entero mayor que cero.", 409);
   }
   if (isTechnician) {
-    const catalogIds = [...new Set(placements.map((item) => item.catalogId))];
+    const catalogIds = [...new Set(placements.flatMap((item) => item.entries.map((entry) => entry.catalogId)))];
     const effectiveDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
     const { data: rates, error: ratesError } = await service
       .from("production_code_rates")
@@ -225,7 +225,11 @@ export async function POST(
         technicianName: uploaderNames.get(photo.uploaded_by) ?? null,
         comment: photo.comment,
       })),
-      placements.map((item) => ({ ...item, code: catalogById.get(item.catalogId)!, color: item.color ?? DEFAULT_CODE_COLOR })),
+      placements.map((item) => ({
+        ...item,
+        color: item.color ?? DEFAULT_CODE_COLOR,
+        entries: item.entries.map((entry) => ({ code: catalogById.get(entry.catalogId)!, quantity: entry.quantity })),
+      })),
       textNotes,
       lines.map(({ page, points, color }) => ({ page, points, color })),
     );

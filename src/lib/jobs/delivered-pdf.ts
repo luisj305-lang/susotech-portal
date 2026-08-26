@@ -30,10 +30,9 @@ export type DeliveredPdfCodePlacement = {
   y: number;
   width: number;
   height: number;
-  quantity: number;
   arrowTipX: number;
   arrowTipY: number;
-  code: string;
+  entries: { code: string; quantity: number }[];
   color: string;
 };
 
@@ -356,21 +355,27 @@ async function composeUnlocked(
           opacity: 1,
           borderOpacity: 1,
         });
-        const placementText = `${asciiText(placement.code)} × ${placement.quantity}`.slice(0, 36);
+        const texts = placement.entries.map((entry) => `${asciiText(entry.code)} × ${entry.quantity}`.slice(0, 36));
         const horizontalPadding = Math.min(3, width * 0.08);
-        const heightBoundSize = Math.max(1, height * 0.48);
         const availableTextWidth = Math.max(1, width - horizontalPadding * 2);
-        const naturalTextWidth = codeFont.widthOfTextAtSize(placementText, heightBoundSize);
-        const fittedTextSize = Math.max(1, Math.min(
-          heightBoundSize,
-          naturalTextWidth > 0 ? heightBoundSize * availableTextWidth / naturalTextWidth : heightBoundSize,
-        ));
-        page.drawText(placementText, {
-          x: x + horizontalPadding,
-          y: y + Math.max(1, (height - fittedTextSize) / 2),
-          size: fittedTextSize,
-          font: codeFont,
-          color: rgb(0, 0, 0),
+        const lineHeightFactor = 1.1;
+        const heightBoundSize = Math.max(1, height * 0.48 / Math.max(1, texts.length * lineHeightFactor * 0.5));
+        let fittedTextSize = heightBoundSize;
+        for (const text of texts) {
+          const naturalTextWidth = codeFont.widthOfTextAtSize(text, fittedTextSize);
+          if (naturalTextWidth > 0 && naturalTextWidth > availableTextWidth) {
+            fittedTextSize = Math.max(1, fittedTextSize * availableTextWidth / naturalTextWidth);
+          }
+        }
+        const blockHeight = texts.length * fittedTextSize * lineHeightFactor;
+        texts.forEach((text, index) => {
+          page.drawText(text, {
+            x: x + horizontalPadding,
+            y: y + Math.max(1, (height - blockHeight) / 2 + (texts.length - index - 1) * fittedTextSize * lineHeightFactor),
+            size: fittedTextSize,
+            font: codeFont,
+            color: rgb(0, 0, 0),
+          });
         });
       }
     }
@@ -381,7 +386,8 @@ async function composeUnlocked(
   }
 
   if (codes.some((item) => !Number.isInteger(item.page) || item.page < 1 || item.page > originalPageCount
-    || !Number.isFinite(item.quantity) || item.quantity <= 0
+    || !Array.isArray(item.entries) || item.entries.length < 1
+    || item.entries.some((entry) => !Number.isFinite(entry.quantity) || entry.quantity <= 0)
     || item.x < 0 || item.y < 0 || item.width <= 0 || item.height <= 0 || item.x + item.width > 1 || item.y + item.height > 1
     || item.arrowTipX < 0 || item.arrowTipX > 1 || item.arrowTipY < 0 || item.arrowTipY > 1)) {
     throw new Error("El borrador contiene códigos fuera de las páginas o bordes del PDF.");

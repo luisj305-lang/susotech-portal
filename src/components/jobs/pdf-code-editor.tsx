@@ -27,7 +27,7 @@ const NOTE_FONT_SIZES: ReadonlyArray<{ ratio: number; label: string }> = [
   { ratio: 0.012, label: "Muy pequeña" },
 ];
 const NOTE_FONT_RATIO: number = NOTE_FONT_SIZES[0].ratio;
-const LINE_MIN_DISTANCE = 0.008;
+const LINE_MIN_DISTANCE = 0.012;
 const LINE_STROKE_WIDTH = 3;
 const NOTE_PAD_X = 0.01;
 const NOTE_PAD_Y = 0.006;
@@ -81,8 +81,6 @@ function LineColorPicker({ value, onChange }: { value: string; onChange: (color:
 type PageProps = {
   jobId: string;
   page: number;
-  selectedCatalogId: string;
-  addingNote?: boolean;
   selectedId: string | null;
   placements: PdfCodePlacement[];
   notes: EditorNote[];
@@ -107,7 +105,7 @@ type PageProps = {
   zoom: number;
 };
 
-function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onOpen, onMoveNote, onMoveNoteArrow, onResizeNote, tool, lineColor, lines, onCommitLine, onSelectLine, onMoveLine, sourcePage, zoom }: PageProps) {
+function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onOpen, onMoveNote, onMoveNoteArrow, onResizeNote, tool, lineColor, lines, onCommitLine, onSelectLine, onMoveLine, sourcePage, zoom }: PageProps) {
   const host = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: string; kind: "box" | "arrow" | "note" | "note-arrow" | "note-resize" | "line"; x: number; y: number } | null>(null);
   const drawRef = useRef<{ points: PdfLinePoint[] } | null>(null);
@@ -162,7 +160,7 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
     <div ref={host} className="relative min-h-[55vh] w-full overflow-hidden border border-line bg-white shadow-card [container-type:inline-size]">
       {!imageUrl && <div className="flex min-h-[55vh] items-center justify-center bg-surface-muted p-6 text-center text-ink-muted">{error || (visible ? "Cargando página…" : "La página se cargará al acercarte")}</div>}
       {imageUrl && <div role="application" aria-label={`Colocar código en la página ${page}`} onClick={(event) => {
-        if (tool === "line" || (!selectedCatalogId && !addingNote) || drag.current) return;
+        if (tool === "line" || drag.current) return;
         const rect = event.currentTarget.getBoundingClientRect();
         onAdd(sourcePage.page, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
       }} onPointerDown={(event) => {
@@ -203,10 +201,10 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
           onCommitLine(sourcePage, points);
         }
         drag.current = null;
-      }} onPointerCancel={() => { drawRef.current = null; setPreview([]); drag.current = null; }} onLostPointerCapture={() => { drawRef.current = null; setPreview([]); drag.current = null; }} className={`relative block w-full ${tool === "line" ? "touch-none" : zoom > 0.75 ? "touch-pan-x touch-pan-y" : "touch-pan-y"} cursor-crosshair text-left`}>
+      }} onPointerCancel={() => { drawRef.current = null; setPreview([]); drag.current = null; }} onLostPointerCapture={() => { drawRef.current = null; setPreview([]); drag.current = null; }} onDragStart={(event) => event.preventDefault()} className={`relative block w-full select-none ${tool === "line" ? "touch-none" : zoom > 0.75 ? "touch-pan-x touch-pan-y" : "touch-pan-y"} cursor-crosshair text-left`}>
         {/* This authenticated blob URL cannot use the Next image optimizer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl} alt={`PDF original, página ${page}`} className="block h-auto w-full" />
+        <img src={imageUrl} alt={`PDF original, página ${page}`} draggable={false} className="block h-auto w-full" />
         <svg className="pointer-events-none absolute inset-0 z-[1] h-full w-full overflow-visible">
           {lines.filter((line) => line.page === page).map((line) => {
             const segments = line.points.slice(0, -1);
@@ -236,13 +234,18 @@ function PdfPage({ jobId, page, selectedCatalogId, addingNote = true, selectedId
           {notes.filter((note) => note.page === page).map((note) => <line key={`note-arrow-${note.editorId}`} x1={`${(note.x + note.width / 2) * 100}%`} y1={`${(note.y + note.height / 2) * 100}%`} x2={`${note.arrowTipX * 100}%`} y2={`${note.arrowTipY * 100}%`} stroke="#000000" strokeWidth="2.5" vectorEffect="non-scaling-stroke" markerEnd={`url(#note-arrow-${page})`} />)}
         </svg>
         {pagePlacements.map((item) => {
-          const catalogItem = catalog.find((entry) => entry.id === item.catalogId);
-          const label = placementLabel(item, catalogItem?.code ?? "Código");
+          const labels = item.entries.map((entry) => {
+            const catalogItem = catalog.find((catalogEntry) => catalogEntry.id === entry.catalogId);
+            return placementLabel(entry.quantity, catalogItem?.code ?? "Código");
+          });
+          const longestLabel = labels.reduce((max, label) => (label.length > max.length ? label : max), "");
           const color = item.color ?? DEFAULT_CODE_COLOR;
-          const fittedFontSize = Math.max(0.1, (item.width * 100 - 0.8) / Math.max(1, label.length * 0.62));
-          return <span key={item.id} role="button" tabIndex={0} aria-label={`${label} en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex touch-none cursor-move items-center overflow-hidden whitespace-nowrap border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{label}</span>;
+          const maxFontByWidth = (item.width * 100 - 0.8) / Math.max(1, longestLabel.length * 0.62);
+          const maxFontByHeight = (item.height * 100 - 0.4) / Math.max(1, labels.length * 1.1);
+          const fittedFontSize = Math.max(0.1, Math.min(maxFontByWidth, maxFontByHeight));
+          return <span key={item.id} role="button" tabIndex={0} aria-label={`${labels.join(", ")} en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex touch-none cursor-move flex-col items-start justify-center overflow-hidden border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{labels.map((label, index) => <span key={index} className="block whitespace-nowrap leading-tight">{label}</span>)}</span>;
         })}
-        {pagePlacements.map((item) => <button key={`tip-${item.id}`} type="button" aria-label={`Mover extremo de la flecha de ${catalog.find((entry) => entry.id === item.catalogId)?.code ?? "código"}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }}           style={{ left: `calc(${item.arrowTipX * 100}% - 12px)`, top: `calc(${item.arrowTipY * 100}% - 12px)`, backgroundColor: item.color ?? DEFAULT_CODE_COLOR }} className={`absolute z-20 h-6 w-6 touch-none rounded-full border-2 ${selectedId === item.id ? "border-black ring-2 ring-white" : "border-white"}`} />)}
+        {pagePlacements.map((item) => <button key={`tip-${item.id}`} type="button" aria-label={`Mover extremo de la flecha de ${catalog.find((entry) => entry.id === item.entries[0]?.catalogId)?.code ?? "código"}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }}           style={{ left: `calc(${item.arrowTipX * 100}% - 12px)`, top: `calc(${item.arrowTipY * 100}% - 12px)`, backgroundColor: item.color ?? DEFAULT_CODE_COLOR }} className={`absolute z-20 h-6 w-6 touch-none rounded-full border-2 ${selectedId === item.id ? "border-black ring-2 ring-white" : "border-white"}`} />)}
       </div>}
     </div>
   </section>;
@@ -267,13 +270,19 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const [pageCount, setPageCount] = useState(sourcePages.length || initialDraft?.source_page_count || 1);
   const [version, setVersion] = useState(initialDraft?.version ?? 0);
   const versionRef = useRef(initialDraft?.version ?? 0);
-  const [placements, setPlacements] = useState<PdfCodePlacement[]>(() => (initialDraft?.placements ?? []).map((placement) => {
+  const [placements, setPlacements] = useState<PdfCodePlacement[]>(() => (initialDraft?.placements ?? []).map((raw) => {
+    const placement = raw as PdfCodePlacement & { catalogId?: string; quantity?: number };
     const source = sourcePages.find((item) => item.page === placement.page);
+    const entries = placement.entries?.length
+      ? placement.entries
+      : placement.catalogId && Number.isFinite(placement.quantity) && (placement.quantity ?? 0) > 0
+        ? [{ catalogId: placement.catalogId, quantity: placement.quantity as number }]
+        : [];
     return {
       ...placement,
+      entries,
       sourceDocumentId: placement.sourceDocumentId || source?.documentId || "",
       sourcePage: placement.sourcePage || source?.sourcePage || placement.page,
-      quantity: placement.quantity || 0,
       arrowTipX: Number.isFinite(placement.arrowTipX) ? placement.arrowTipX : Math.min(1, placement.x + placement.width / 2 + 0.14),
       arrowTipY: Number.isFinite(placement.arrowTipY) ? placement.arrowTipY : placement.y + placement.height / 2,
     };
@@ -293,12 +302,11 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const [noteText, setNoteText] = useState("");
   const [noteFontRatio, setNoteFontRatio] = useState(NOTE_FONT_RATIO);
   const [lineColor, setLineColor] = useState(DEFAULT_CODE_COLOR);
-  const [selectedCatalogId, setSelectedCatalogId] = useState(catalog[0]?.id ?? "");
-  const [newQuantity, setNewQuantity] = useState("1");
+  const [draftEntries, setDraftEntries] = useState<Array<{ catalogId: string; quantity: string }>>([{ catalogId: catalog[0]?.id ?? "", quantity: "1" }]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const hasLegacyPlacements = placements.some((placement) => placement.quantity <= 0);
+  const hasLegacyPlacements = placements.some((placement) => !placement.entries?.length);
   const [message, setMessage] = useState(hasLegacyPlacements ? "Completa la cantidad de cada código antes de entregar." : "Preparando los PDFs fuente…");
   const [dirty, setDirty] = useState(hasLegacyPlacements);
   const [saving, setSaving] = useState(false);
@@ -317,7 +325,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const selectedNote = notes.find((item) => item.editorId === selectedId) ?? null;
   const selectedLine = lines.find((item) => item.editorId === selectedId) ?? null;
   const priceCategoryName = catalog.find((item) => item.price_category_name)?.price_category_name ?? null;
-  const hasUnratedPlacement = placements.some((placement) => catalog.find((item) => item.id === placement.catalogId)?.unit_rate == null);
+  const hasUnratedPlacement = placements.some((placement) => placement.entries.some((entry) => catalog.find((item) => item.id === entry.catalogId)?.unit_rate == null));
 
   const onMetadata = useCallback((count: number, draftVersion: number) => {
     if (count > 0) setPageCount(count);
@@ -350,10 +358,10 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       try {
         const validation = validatePlacements(current, pageCount);
         if (validation) { setMessage(validation); return false; }
-        const invalidQuantity = current.find((placement) => {
-          const unit = catalog.find((item) => item.id === placement.catalogId)?.unit;
-          return (unit === "fixed" || unit === "event") && !Number.isInteger(placement.quantity);
-        });
+        const invalidQuantity = current.find((placement) => placement.entries.some((entry) => {
+          const unit = catalog.find((item) => item.id === entry.catalogId)?.unit;
+          return (unit === "fixed" || unit === "event") && !Number.isInteger(entry.quantity);
+        }));
         if (invalidQuantity) { setMessage("Los códigos de cantidad fija o evento requieren un entero mayor que cero."); return false; }
         const generation = changeGeneration.current;
         setSaving(true); setMessage("Guardando borrador…");
@@ -447,17 +455,21 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       };
       changeNotes([...notes, note]); setSelectedId(note.editorId); setSheetOpen(false); return;
     }
-    if (!selectedCatalogId) return;
-    if (catalog.find((entry) => entry.id === selectedCatalogId)?.unit_rate == null) {
-      setMessage(priceCategoryName ? "Este código no tiene tarifa configurada para tu categoría." : "Tu categoría de precio no está configurada. Contacta a un administrador.");
-      return;
-    }
-    const quantity = Number(newQuantity);
-    const unit = catalog.find((entry) => entry.id === selectedCatalogId)?.unit;
-    if (!Number.isFinite(quantity) || quantity <= 0 || Math.round(quantity * 100) !== quantity * 100
-      || ((unit === "fixed" || unit === "event") && !Number.isInteger(quantity))) {
-      setMessage(unit === "fixed" || unit === "event" ? "La cantidad debe ser un entero mayor que cero." : "La cantidad debe ser mayor que cero y tener máximo dos decimales.");
-      return;
+    const entries = draftEntries
+      .filter((entry) => entry.catalogId)
+      .map((entry) => ({ catalogId: entry.catalogId, quantity: Number(entry.quantity) }));
+    if (!entries.length) { setMessage("Selecciona al menos un código."); return; }
+    for (const entry of entries) {
+      const unit = catalog.find((item) => item.id === entry.catalogId)?.unit;
+      if (!Number.isFinite(entry.quantity) || entry.quantity <= 0 || Math.round(entry.quantity * 100) !== entry.quantity * 100
+        || ((unit === "fixed" || unit === "event") && !Number.isInteger(entry.quantity))) {
+        setMessage(unit === "fixed" || unit === "event" ? "Un código de cantidad fija o evento requiere un entero mayor que cero." : "La cantidad debe ser mayor que cero y tener máximo dos decimales.");
+        return;
+      }
+      if (catalog.find((item) => item.id === entry.catalogId)?.unit_rate == null) {
+        setMessage(priceCategoryName ? "Un código no tiene tarifa configurada para tu categoría." : "Tu categoría de precio no está configurada. Contacta a un administrador.");
+        return;
+      }
     }
     const width = 0.14; const height = 0.05;
     const boxX = Math.min(1 - width, Math.max(0, x - width / 2));
@@ -466,9 +478,9 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     const source = sourcePages.find((item) => item.page === page);
     if (!source) { setMessage("No se pudo identificar la página fuente."); return; }
     const item = clampPlacement({
-      id: crypto.randomUUID(), catalogId: selectedCatalogId, page,
+      id: crypto.randomUUID(), entries, page,
       sourceDocumentId: source.documentId, sourcePage: source.sourcePage,
-      quantity, x: boxX, y: boxY, width, height,
+      x: boxX, y: boxY, width, height,
       arrowTipX: Math.min(1, centerX + 0.14), arrowTipY: centerY,
     });
     const next = [...placements, item]; const error = validatePlacements(next, pageCount);
@@ -481,6 +493,29 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     const next = placements.map((item) => item.id === id ? clampPlacement({ ...current, ...patch }) : item);
     const error = validatePlacements(next, pageCount); if (error) { setMessage(error); return; }
     change(next);
+  };
+  const snapArrowTip = (page: number, x: number, y: number, excludeId: string): { x: number; y: number } => {
+    const threshold = 0.015;
+    let best: { x: number; y: number } | null = null;
+    let bestDistance = threshold;
+    for (const placement of placements) {
+      if (placement.page !== page || placement.id === excludeId) continue;
+      const distance = Math.hypot(placement.arrowTipX - x, placement.arrowTipY - y);
+      if (distance < bestDistance) { bestDistance = distance; best = { x: placement.arrowTipX, y: placement.arrowTipY }; }
+    }
+    return best ?? { x, y };
+  };
+  const updateEntry = (id: string, index: number, patch: Partial<{ catalogId: string; quantity: number }>) => {
+    const placement = placements.find((item) => item.id === id); if (!placement) return;
+    update(id, { entries: placement.entries.map((entry, i) => i === index ? { ...entry, ...patch } : entry) });
+  };
+  const removeEntry = (id: string, index: number) => {
+    const placement = placements.find((item) => item.id === id); if (!placement) return;
+    update(id, { entries: placement.entries.filter((_, i) => i !== index) });
+  };
+  const addEntry = (id: string) => {
+    const placement = placements.find((item) => item.id === id); if (!placement) return;
+    update(id, { entries: [...placement.entries, { catalogId: catalog[0]?.id ?? "", quantity: 1 }] });
   };
   const editNoteText = (id: string, text: string) => {
     if (submitting) return;
@@ -568,12 +603,16 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   };
   return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-ink sm:px-6 ${stage === "edit" ? (sheetOpen ? "pb-[calc(40vh+8rem)]" : "pb-40 sm:pb-36") : "pb-[28rem] sm:pb-80"}`}>
     <header className="mx-auto mb-5 max-w-5xl"><p className="text-sm font-semibold uppercase tracking-widest">Entrega del trabajo</p><h1 className="text-2xl font-bold sm:text-3xl">Marcá los códigos sobre el PDF</h1><p className="mt-2 text-sm text-ink-soft">El original permanece intacto. Todas las páginas están en orden y se cargan al acercarte.</p></header>
-    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedCatalogId={selectedCatalogId} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => setSelectedId(id)} onSelectNote={(id) => setSelectedId(id)} onOpen={() => setSheetOpen(true)} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMoveNoteArrow={(id, x, y) => changeNotes(notes.map((note) => note.editorId === id ? { ...note, arrowTipX: x, arrowTipY: y } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} tool={tool} lineColor={lineColor} lines={lines} onCommitLine={commitLine} onSelectLine={(id) => setSelectedId(id)} onMoveLine={moveLine} onMove={(id, requestedDx, requestedDy) => {
+    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => setSelectedId(id)} onSelectNote={(id) => setSelectedId(id)} onOpen={() => setSheetOpen(true)} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMoveNoteArrow={(id, x, y) => changeNotes(notes.map((note) => note.editorId === id ? { ...note, arrowTipX: x, arrowTipY: y } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} tool={tool} lineColor={lineColor} lines={lines} onCommitLine={commitLine} onSelectLine={(id) => setSelectedId(id)} onMoveLine={moveLine} onMove={(id, requestedDx, requestedDy) => {
       const item = placements.find((entry) => entry.id === id); if (!item) return;
       const dx = Math.min(1 - item.x - item.width, 1 - item.arrowTipX, Math.max(-item.x, -item.arrowTipX, requestedDx));
       const dy = Math.min(1 - item.y - item.height, 1 - item.arrowTipY, Math.max(-item.y, -item.arrowTipY, requestedDy));
       update(id, { x: item.x + dx, y: item.y + dy, arrowTipX: item.arrowTipX + dx, arrowTipY: item.arrowTipY + dy });
-    }} onMoveArrow={(id, x, y) => update(id, { arrowTipX: x, arrowTipY: y })} />)}</div>
+    }} onMoveArrow={(id, x, y) => {
+      const placement = placements.find((item) => item.id === id); if (!placement) return;
+      const snapped = snapArrowTip(placement.page, x, y, id);
+      update(id, { arrowTipX: snapped.x, arrowTipY: snapped.y });
+    }} />)}</div>
     {stage === "edit" ? <>
     <div className="fixed inset-x-0 bottom-0 z-40">
       {sheetOpen && <div className="border-t border-line bg-white shadow-card">
@@ -591,11 +630,16 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
             <LineColorPicker value={selectedLine.color} onChange={(color) => recolorLine(selectedLine.editorId, color)} />
             <p className="text-xs text-ink-soft">Línea · pág. {selectedLine.page}. Arrastrala para moverla.</p>
             <Button type="button" onClick={() => deleteLine(selectedLine.editorId)} variant="secondary" className="justify-self-start">Eliminar línea</Button>
-          </div> : selected ? <div className="grid gap-3 sm:grid-cols-[9rem_1fr_auto]">
-            <label className="grid gap-1 text-sm font-bold">Cantidad seleccionada<input aria-label="Cantidad del código seleccionado" inputMode="decimal" type="number" min="0.01" step="0.01" value={selected.quantity || ""} onChange={(event) => update(selected.id, { quantity: Number(event.target.value) })} className="min-h-11 rounded-lg border border-line bg-white p-2" /></label>
+          </div> : selected ? <div className="grid gap-2">
+            {selected.entries.map((entry, index) => <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
+              <select aria-label={`Código ${index + 1}`} value={entry.catalogId} onChange={(event) => updateEntry(selected.id, index, { catalogId: event.target.value })} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.description}</option>)}</select>
+              <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity || ""} onChange={(event) => updateEntry(selected.id, index, { quantity: Number(event.target.value) })} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
+              <Button type="button" disabled={selected.entries.length <= 1} onClick={() => removeEntry(selected.id, index)} variant="secondary" aria-label={`Quitar código ${index + 1}`}>Quitar</Button>
+            </div>)}
+            <Button type="button" onClick={() => addEntry(selected.id)} variant="secondary" className="justify-self-start">+ Agregar otro código</Button>
             <label className="flex items-center gap-2 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label>
             <div className="flex items-end gap-3"><span className="text-xs text-ink-soft">Pág. {selected.page}</span><Button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} variant="secondary">Eliminar</Button></div>
-            <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-bold">Color</span>
               {CODE_COLOR_OPTIONS.map((option) => <button key={option} type="button" aria-label={`Color ${option}`} onClick={() => update(selected.id, { color: option })} className={`h-8 w-8 rounded-full border-2 ${(selected.color ?? DEFAULT_CODE_COLOR) === option ? "border-black ring-2 ring-black" : "border-line"}`} style={{ backgroundColor: option }} />)}
             </div>
@@ -607,10 +651,14 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
             <LineColorPicker value={lineColor} onChange={setLineColor} />
             <p className="text-xs text-ink-soft">Elegí un color y tocá «Listo». Después arrastrá el dedo sobre el PDF para dibujar el tramo.</p>
             <Button type="button" onClick={() => setSheetOpen(false)} variant="primary" className="justify-self-start">Listo</Button>
-          </div> : <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
-            <label className="grid min-w-0 gap-1 text-sm font-bold">Código<select aria-label="Código para colocar" value={selectedCatalogId} onChange={(event) => setSelectedCatalogId(event.target.value)} style={{ borderColor: DEFAULT_CODE_COLOR }} className="min-h-12 w-full min-w-0 rounded-lg border-4 bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id} style={{ color: DEFAULT_CODE_COLOR }}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select></label>
-            <label className="grid min-w-0 content-end gap-1 text-sm font-bold">Cantidad<input aria-label="Cantidad para el nuevo código" inputMode="decimal" type="number" min="0.01" step="0.01" value={newQuantity} onChange={(event) => setNewQuantity(event.target.value)} className="min-h-12 min-w-0 rounded-lg border border-line bg-white p-2" /></label>
-            <Button type="button" onClick={() => setSheetOpen(false)} className="self-end" variant="primary">Aplicar</Button>
+          </div> : <div className="grid gap-2">
+            {draftEntries.map((entry, index) => <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
+              <select aria-label={`Código ${index + 1}`} value={entry.catalogId} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, catalogId: event.target.value } : item))} className="min-h-12 w-full min-w-0 rounded-lg border border-line bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select>
+              <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, quantity: event.target.value } : item))} className="min-h-12 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
+              <Button type="button" disabled={draftEntries.length <= 1} onClick={() => setDraftEntries((current) => current.filter((_, i) => i !== index))} variant="secondary" aria-label={`Quitar código ${index + 1}`}>Quitar</Button>
+            </div>)}
+            <Button type="button" onClick={() => setDraftEntries((current) => [...current, { catalogId: catalog[0]?.id ?? "", quantity: "1" }])} variant="secondary" className="justify-self-start">+ Agregar otro código</Button>
+            <Button type="button" onClick={() => setSheetOpen(false)} variant="primary" className="justify-self-start">Aplicar</Button>
           </div>}
           <p role="status" aria-live="polite" className="mt-3 min-h-4 text-xs text-ink-soft sm:hidden">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
         </div>

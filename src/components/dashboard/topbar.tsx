@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { IconBell } from "@/components/ui/icons";
+import { NotificationsBell } from "./notifications-bell";
 
 export function Topbar({
   menuButton,
@@ -16,13 +16,7 @@ export function Topbar({
     <header className="flex h-16 items-center justify-between border-b border-line bg-white px-4 sm:px-6">
       <div className="flex items-center gap-3">{menuButton}</div>
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          aria-label="Notificaciones"
-          className="rounded-full border border-line bg-white p-2.5 text-ink-soft"
-        >
-          <IconBell className="h-5 w-5" />
-        </button>
+        <NotificationsBell />
         <div className="flex items-center gap-3">
           <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-900 text-sm font-semibold text-white">
             {initials}
