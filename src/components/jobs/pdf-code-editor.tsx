@@ -115,6 +115,7 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
   const [visible, setVisible] = useState(page === 1);
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
+  const [pageAspect, setPageAspect] = useState(1);
 
   useEffect(() => {
     const element = host.current;
@@ -205,7 +206,7 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
       }} onPointerCancel={() => { drawRef.current = null; setPreview([]); drag.current = null; }} onLostPointerCapture={() => { drawRef.current = null; setPreview([]); drag.current = null; }} onDragStart={(event) => event.preventDefault()} className={`relative block w-full select-none ${tool === "line" ? "touch-none" : zoom > 0.75 ? "touch-pan-x touch-pan-y" : "touch-pan-y"} cursor-crosshair text-left`}>
         {/* This authenticated blob URL cannot use the Next image optimizer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl} alt={`PDF original, página ${page}`} draggable={false} className="block h-auto w-full" />
+        <img src={imageUrl} alt={`PDF original, página ${page}`} draggable={false} onLoad={(event) => { const image = event.currentTarget; if (image.naturalWidth > 0 && image.naturalHeight > 0) setPageAspect(image.naturalHeight / image.naturalWidth); }} className="block h-auto w-full" />
         <svg className="pointer-events-none absolute inset-0 z-[1] h-full w-full overflow-visible">
           {lines.filter((line) => line.page === page).map((line) => {
             const segments = line.points.slice(0, -1);
@@ -242,7 +243,7 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
           const longestLabel = labels.reduce((max, label) => (label.length > max.length ? label : max), "");
           const color = item.color ?? DEFAULT_CODE_COLOR;
           const maxFontByWidth = (item.width * 100 - 0.8) / Math.max(1, longestLabel.length * 0.62);
-          const maxFontByHeight = (item.height * 100 - 0.4) / Math.max(1, labels.length * 1.1);
+          const maxFontByHeight = (item.height * 100 * pageAspect - 0.8) / Math.max(1, labels.length * 1.25);
           const fittedFontSize = Math.max(0.1, Math.min(maxFontByWidth, maxFontByHeight));
           return <span key={item.id} role="button" tabIndex={0} aria-label={`${labels.join(", ")} en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex touch-none cursor-move flex-col items-start justify-center overflow-hidden border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{labels.map((label, index) => <span key={index} className="block whitespace-nowrap leading-tight">{label}</span>)}</span>;
         })}
