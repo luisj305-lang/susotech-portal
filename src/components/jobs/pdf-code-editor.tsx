@@ -495,7 +495,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     change(next);
   };
   const snapArrowTip = (page: number, x: number, y: number, excludeId: string): { x: number; y: number } => {
-    const threshold = 0.015;
+    const threshold = 0.03;
     let best: { x: number; y: number } | null = null;
     let bestDistance = threshold;
     for (const placement of placements) {
