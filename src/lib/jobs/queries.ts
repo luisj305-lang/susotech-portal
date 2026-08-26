@@ -84,12 +84,17 @@ export async function listOfficeJobs(filters: { query?: string; status?: string;
     });
 }
 
-export async function listTechnicianJobs() {
+export async function listTechnicianJobs(filters?: { query?: string; status?: string }) {
   await requireActiveShift();
   const supabase = await createClient();
-  const { data, error } = await supabase.from("jobs").select("*").is("archived_at", null).order("deadline_date", { ascending: true, nullsFirst: false });
+  let request = supabase.from("jobs").select("*").is("archived_at", null).order("deadline_date", { ascending: true, nullsFirst: false });
+  const status = filters?.status;
+  if (statuses.includes(status as JobStatus)) request = request.eq("main_status", status);
+  const { data, error } = await request;
   if (error) throw new Error("No se pudieron cargar tus trabajos.");
-  return (data ?? []) as Job[];
+  const query = filters?.query?.trim().toLocaleLowerCase("es") ?? "";
+  return ((data ?? []) as Job[])
+    .filter((job) => !query || [job.prism_number, job.title, job.address, job.location].some((value) => value?.toLocaleLowerCase("es").includes(query)));
 }
 
 export async function getTechnicianJob(jobId: string) {

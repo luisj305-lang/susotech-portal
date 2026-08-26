@@ -21,12 +21,15 @@ function relevantDate(job: { submitted_at: string | null; deadline_date: string 
 
 export default async function JobsPage({ searchParams }: { searchParams: SearchParams }) {
   const profile = await requireProfile();
-  if (profile.role === "tecnico") {
-    await requireActiveShiftPage();
-    return <FieldShell userName={displayName(profile)}><JobList jobs={await listTechnicianJobs()} /></FieldShell>;
-  }
   const values = await searchParams;
   const first = (key: string) => { const value = values[key]; return Array.isArray(value) ? value[0] : value; };
+  if (profile.role === "tecnico") {
+    await requireActiveShiftPage();
+    const query = first("q");
+    const status = first("status");
+    const jobs = await listTechnicianJobs({ query, status });
+    return <FieldShell userName={displayName(profile)}><JobList jobs={jobs} initialQuery={query ?? ""} initialStatus={status ?? ""} /></FieldShell>;
+  }
   const filters = { q: first("q"), status: first("status"), category: first("category"), archived: first("archived") === "1", facturados: first("facturados") === "1" };
   const jobs = await listOfficeJobs({ query: filters.q, status: filters.status, category: filters.category, archived: filters.archived, facturados: filters.facturados });
 
