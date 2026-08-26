@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { saveJobPdfAllocations, saveJobPdfDraft } from "@/lib/jobs/actions";
 import {
   clampPlacement,
+  codeBoxHeight,
   CODE_COLOR_OPTIONS,
   DEFAULT_CODE_COLOR,
   placementLabel,
@@ -471,7 +472,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
         return;
       }
     }
-    const width = 0.14; const height = 0.05;
+    const width = 0.14; const height = codeBoxHeight(entries.length);
     const boxX = Math.min(1 - width, Math.max(0, x - width / 2));
     const boxY = Math.min(1 - height, Math.max(0, y - height / 2));
     const centerX = boxX + width / 2; const centerY = boxY + height / 2;
@@ -515,7 +516,8 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   };
   const addEntry = (id: string) => {
     const placement = placements.find((item) => item.id === id); if (!placement) return;
-    update(id, { entries: [...placement.entries, { catalogId: catalog[0]?.id ?? "", quantity: 1 }] });
+    const entries = [...placement.entries, { catalogId: catalog[0]?.id ?? "", quantity: 1 }];
+    update(id, { entries, height: Math.max(placement.height, codeBoxHeight(entries.length)) });
   };
   const editNoteText = (id: string, text: string) => {
     if (submitting) return;

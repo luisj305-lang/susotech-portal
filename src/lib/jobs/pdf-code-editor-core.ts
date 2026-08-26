@@ -78,3 +78,10 @@ export function clampPlacement(item: PdfCodePlacement): PdfCodePlacement {
 export function placementLabel(quantity: number, code: string) {
   return `${code} × ${Number(quantity).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }
+
+export const CODE_BOX_LINE_HEIGHT = 0.05;
+export const CODE_BOX_MAX_HEIGHT = 0.2;
+
+export function codeBoxHeight(entryCount: number) {
+  return Math.min(CODE_BOX_MAX_HEIGHT, CODE_BOX_LINE_HEIGHT * Math.max(1, entryCount));
+}
