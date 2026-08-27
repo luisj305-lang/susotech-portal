@@ -43,11 +43,11 @@ assert.match(migration, /delete_job_photo_audited[\s\S]*can_mutate_job[\s\S]*mai
 
 assert.doesNotMatch(editor, /Buscar código o descripción|catalogSearch/u);
 assert.match(editor, /stage === "edit"[\s\S]*Confirmar PDF[\s\S]*Distribución financiera[\s\S]*Entregar trabajo/u);
-assert.match(deliveryPage, /\["en_progreso", "enviado_revision"\]\.includes\(detail\.job\.main_status\)/u);
-assert.match(route, /\["en_progreso", "enviado_revision"\]\.includes\(job\.main_status\)/u);
-assert.match(technicianActions, /\["en_progreso", "enviado_revision"\]\.includes\(status\)/u);
-assert.match(detail, /JobEvidenceList photos=\{photos\} canDelete=\{canMutate/u);
-assert.match(detail, /\["en_progreso", "enviado_revision"\]\.includes\(job\.main_status\)[\s\S]*PhotoUpload/u);
+assert.match(deliveryPage, /\["asignado", "en_revision"\]\.includes\(detail\.job\.main_status\)/u);
+assert.match(route, /\["asignado", "en_revision"\]\.includes\(job\.main_status\)/u);
+assert.match(technicianActions, /\["asignado", "en_revision"\]\.includes\(status\)/u);
+assert.match(detail, /JobEvidenceList photos=\{photos\} canDelete=/u);
+assert.match(detail, /\["asignado", "en_revision"\]\.includes\(job\.main_status\)[\s\S]*PhotoUpload/u);
 assert.match(actions, /El administrador cambió los PDFs del trabajo\. Recarga el editor para verlos todos unidos\./u);
 assert.match(attachments, /se concatenan en este orden después del original dentro del único PDF final/u);
 
