@@ -323,6 +323,9 @@ export async function deleteArchivedJob(input: { jobId: string }): Promise<Resul
     if (error.message.includes("Only archived jobs")) {
       return failure("Solo se pueden eliminar permanentemente trabajos archivados.");
     }
+    if (error.message.includes("jobs_parent_job_id_fkey")) {
+      return failure("No se puede eliminar este trabajo porque tiene partes asociadas.");
+    }
     return failure("No se pudo eliminar permanentemente el trabajo.");
   }
 
@@ -516,4 +519,25 @@ export async function deleteJobPhoto(input: { jobId: string; photoId: string }):
       : "Fotografía eliminada de la evidencia.",
     data: null,
   };
+}
+
+function mapCreateJobPartError(message: string): string {
+  if (message.includes("Archived jobs cannot gain parts")) return "Los trabajos archivados no pueden ganar partes.";
+  if (message.includes("Only the root job can gain parts")) return "Solo el trabajo raíz puede ganar partes.";
+  if (message.includes("Job unavailable")) return "El trabajo no está disponible.";
+  if (message.includes("Only active office staff")) return "Solo el personal de oficina puede agregar partes.";
+  if (message.includes("foreign key") || message.includes("Foreign key")) return "El trabajo ya no está disponible para agregar partes.";
+  return "No se pudo agregar la parte.";
+}
+
+export async function createJobPart(input: { jobId: string }): Promise<Result<{ id: string }>> {
+  await requireSupervisor();
+  if (!validId(input.jobId)) return failure("El trabajo no es válido.");
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_job_part", { p_parent_job_id: input.jobId });
+  if (error) return failure(mapCreateJobPartError(error.message));
+  const row = (data as Array<{ new_job_id: string }> | null)?.[0];
+  if (!row?.new_job_id) return failure("No se pudo crear la parte.");
+  refresh(input.jobId);
+  return { success: true, message: "Parte agregada.", data: { id: row.new_job_id } };
 }

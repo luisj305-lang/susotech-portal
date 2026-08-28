@@ -67,10 +67,17 @@ export interface Job {
   archive_notes: string | null;
   created_at: string;
   updated_at: string;
+  parent_job_id: string | null;
+  partLabel?: string | null;
 }
 
 export interface JobWithAssignee extends Job {
   assignment: JobAssignment | null;
+}
+
+export interface JobPartGroup<T extends Job = Job> {
+  root: T;
+  children: T[];
 }
 
 export interface Crew {

@@ -193,11 +193,26 @@ export async function getOfficeJob(jobId: string) {
     if (result.error) throw new Error("No se pudieron cargar los datos relacionados.");
   }
   if (!jobResult.data) return null;
+  const job = jobResult.data as Job;
+  const rootId = job.parent_job_id ?? job.id;
+  const partsResult = await supabase
+    .from("jobs")
+    .select("*")
+    .or(`id.eq.${rootId},parent_job_id.eq.${rootId}`)
+    .order("created_at", { ascending: true });
+  if (partsResult.error) throw new Error("No se pudieron cargar las partes del trabajo.");
+  const family = (partsResult.data ?? []) as Job[];
+  const root = family.find((item) => item.id === rootId);
+  const children = family
+    .filter((item) => item.id !== rootId)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const parts = root ? [root, ...children] : children;
   const options: AssigneeOption[] = crewData.technicians
     .map((profile) => ({ type: "technician" as const, ...profile }));
   const technicianLabels = new Map(crewData.technicians.map((technician) => [technician.id, technician.label]));
   return {
-    job: jobResult.data as Job,
+    job,
+    parts,
     assignment: assignmentResult.data as JobAssignment | null,
     history: (historyResult.data ?? []) as JobStatusHistoryEntry[],
     archiveEvents: (archiveResult.data ?? []) as JobArchiveEvent[],
