@@ -11,6 +11,7 @@ import type {
   FleetInsurancePolicy,
   FleetMaintenanceRecord,
   FleetOdometerReading,
+  FleetSettings,
   FleetVehicle,
   FleetVehicleAssignment,
   FleetVehicleStatus,
@@ -48,6 +49,11 @@ export type FleetShiftAssociation = {
   technician_name: string;
   vehicle_unit_number: string | null;
 };
+
+export type FleetOperationalSettings = Pick<
+  FleetSettings,
+  "weekly_odometer_day" | "weekly_odometer_required" | "alert_day_offsets" | "timezone"
+>;
 
 export type FleetVehicleDetail = {
   vehicle: FleetVehicle;
@@ -210,6 +216,21 @@ export async function getFleetVehicleDetail(vehicleId: string): Promise<FleetVeh
       vehicle_unit_number: shift.vehicle_id ? (vehicleNames.get(shift.vehicle_id) ?? "Camión no disponible") : null,
     })),
     vehicleOptions,
+  };
+}
+
+export async function getFleetSettings(): Promise<FleetOperationalSettings> {
+  await requireSupervisor();
+  const result = await (await createClient()).from("fleet_settings")
+    .select("weekly_odometer_day,weekly_odometer_required,alert_day_offsets,timezone")
+    .eq("id", 1)
+    .maybeSingle();
+  if (result.error) throw new Error("No se pudo cargar la configuraci\u00f3n de alertas de flota.");
+  return (result.data as FleetOperationalSettings | null) ?? {
+    weekly_odometer_day: 1,
+    weekly_odometer_required: false,
+    alert_day_offsets: [30, 14, 7, 0],
+    timezone: "America/New_York",
   };
 }
 

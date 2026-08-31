@@ -207,6 +207,7 @@ function PolicyForm({ detail, policyId }: { detail: FleetVehicleDetail; policyId
     <SelectField label="Estado" name="status" defaultValue={policy?.status ?? "active"} values={FLEET_POLICY_STATUSES} labels={policyStatusLabels} />
     <TextField label="Vigente desde" name="effective_on" type="date" defaultValue={policy?.effective_on ?? currentDateInput()} required />
     <TextField label="Vence" name="expires_on" type="date" defaultValue={policy?.expires_on} required />
+    <TextField label="Pago vence" name="payment_due_on" type="date" defaultValue={policy?.payment_due_on} />
     <TextField label="Prima (USD)" name="premium_dollars" type="number" min={0} step="0.01" defaultValue={policy?.premium_cents == null ? "" : Number(policy.premium_cents) / 100} />
     <TextField label="Deducible (USD)" name="deductible_dollars" type="number" min={0} step="0.01" defaultValue={policy?.deductible_cents == null ? "" : Number(policy.deductible_cents) / 100} />
     <TextField label="Agente" name="agent_name" defaultValue={policy?.agent_name} />

@@ -107,6 +107,8 @@ const actionNames = [
   "saveFleetDocumentMetadataAction",
   "deleteFleetDocumentAction",
   "setFleetShiftVehicleAction",
+  "saveFleetSettingsAction",
+  "runFleetAlertsAction",
 ];
 assertOwnOfficeGate(actions, "actions.ts", actionNames);
 for (const action of actionNames) {
@@ -139,7 +141,7 @@ assert.match(functionText(actions, "actions.ts", "syncVehicleOdometer"), /readEr
 assert.match(functionText(actions, "actions.ts", "syncVehicleOdometer"), /assertAffectedRow/u);
 
 assert.match(queries, /import "server-only"/u);
-assertOwnOfficeGate(queries, "queries.ts", ["listFleetVehicles", "getFleetVehicleDetail"]);
+assertOwnOfficeGate(queries, "queries.ts", ["listFleetVehicles", "getFleetVehicleDetail", "getFleetSettings"]);
 assert.match(queries, /export async function listFleetVehicles/u);
 assert.match(queries, /export async function getFleetVehicleDetail/u);
 assert.match(queries, /rpc\("list_fleet_cost_ledger"/u);
@@ -160,4 +162,4 @@ assert.match(uploader, /finally \{/u);
 assert.match(sections, /ShiftAssociationsCard/u);
 assert.match(sections, /setFleetShiftVehicleAction/u);
 
-console.log("[fleet-office-static] PASS routes=2 tabs=7 actions=18 signed-storage=enabled office-gates=present");
+console.log("[fleet-office-static] PASS routes=2 tabs=7 actions=20 signed-storage=enabled office-gates=present");

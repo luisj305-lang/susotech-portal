@@ -90,6 +90,7 @@ export type FleetInsurancePolicy = FleetAuditFields & {
   status: FleetPolicyStatus;
   effective_on: string;
   expires_on: string;
+  payment_due_on: string | null;
   premium_cents: FleetMoneyCents | null;
   deductible_cents: FleetMoneyCents | null;
   agent_name: string | null;

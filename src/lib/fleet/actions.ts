@@ -309,6 +309,7 @@ export async function saveFleetInsurancePolicyAction(_previous: FleetFormState, 
       status: enumValue(formData, "status", FLEET_POLICY_STATUSES),
       effective_on: dateValue(formData, "effective_on", true),
       expires_on: dateValue(formData, "expires_on", true),
+      payment_due_on: dateValue(formData, "payment_due_on"),
       premium_cents: moneyCents(formData, "premium_dollars"),
       deductible_cents: moneyCents(formData, "deductible_dollars"),
       agent_name: nullable(formData, "agent_name"),
@@ -656,5 +657,66 @@ export async function setFleetShiftVehicleAction(_previous: FleetFormState, form
     return { success: true, message: corrected.vehicle_id ? "Jornada asociada al camión seleccionado." : "Asociación de camión eliminada de la jornada." };
   } catch (error) {
     return failure(error, "No se pudo corregir la asociación de la jornada.");
+  }
+}
+
+export async function saveFleetSettingsAction(_previous: FleetFormState, formData: FormData): Promise<FleetFormState> {
+  const actor = await requireSupervisor();
+  try {
+    const weeklyDay = Number(value(formData, "weekly_odometer_day"));
+    if (!Number.isInteger(weeklyDay) || weeklyDay < 0 || weeklyDay > 6) {
+      throw new Error("Seleccione un d\u00eda semanal v\u00e1lido.");
+    }
+    const offsetText = value(formData, "alert_day_offsets");
+    if (!offsetText) throw new Error("Ingrese al menos un d\u00eda de anticipaci\u00f3n para las alertas.");
+    const offsetEntries = offsetText.split(",").map((entry) => entry.trim());
+    if (offsetEntries.some((entry) => !/^\d+$/u.test(entry))) {
+      throw new Error("Los d\u00edas de alerta deben ser enteros no negativos separados por comas.");
+    }
+    const offsets = offsetEntries.map(Number);
+    if (offsets.length > 10 || offsets.some((offset) => offset < 0 || offset > 365)) {
+      throw new Error("Configure entre 1 y 10 alertas, cada una entre 0 y 365 d\u00edas.");
+    }
+    const uniqueOffsets = [...new Set(offsets)];
+    if (uniqueOffsets.length !== offsets.length) throw new Error("Los d\u00edas de alerta no pueden repetirse.");
+    uniqueOffsets.sort((left, right) => right - left);
+    const timezone = requiredText(formData, "timezone", "La zona horaria", 100);
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
+    } catch {
+      throw new Error("Ingrese una zona horaria IANA v\u00e1lida, por ejemplo America/New_York.");
+    }
+    const weeklyRequired = formData.get("weekly_odometer_required") === "true";
+    const result = await (await createClient()).from("fleet_settings").upsert({
+      id: 1,
+      weekly_odometer_day: weeklyDay,
+      weekly_odometer_required: weeklyRequired,
+      alert_day_offsets: uniqueOffsets,
+      timezone,
+      created_by: actor.id,
+      updated_by: actor.id,
+    }, { onConflict: "id" }).select("id").maybeSingle();
+    if (result.error || !result.data) throw new Error(databaseMessage(result.error, "No se pudo guardar la configuraci\u00f3n."));
+    revalidateFleet();
+    return { success: true, message: "Configuraci\u00f3n de alertas guardada." };
+  } catch (error) {
+    return failure(error, "No se pudo guardar la configuraci\u00f3n de alertas.");
+  }
+}
+
+export async function runFleetAlertsAction(_previous: FleetFormState, _formData: FormData): Promise<FleetFormState> {
+  void _previous;
+  void _formData;
+  await requireSupervisor();
+  try {
+    const { data, error } = await (await createClient()).rpc("generate_fleet_alerts");
+    const result = data?.[0] as { generated_count: number | string; skipped_count: number | string } | undefined;
+    if (error || !result) throw new Error(databaseMessage(error, "No se pudieron generar las alertas."));
+    const generated = Number(result.generated_count);
+    const skipped = Number(result.skipped_count);
+    revalidateFleet();
+    return { success: true, message: `Alertas generadas: ${generated}. Duplicadas omitidas: ${skipped}.` };
+  } catch (error) {
+    return failure(error, "No se pudieron generar las alertas.");
   }
 }
