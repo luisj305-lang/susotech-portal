@@ -27,8 +27,16 @@ type NavItem = {
 function FleetIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z" />
-      <path d="M6 7l1.5-3h5L14 7M5.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
+      <path data-part="utility-pole" d="M21.5 2v16.5M20 5h3" />
+      <path data-part="worker-bucket" d="M16.4 4.2h3.5l-.4 3h-2.7z" />
+      <polyline data-part="hydraulic-boom" points="8,13 10.5,9 14.7,7 17.2,7" />
+      <circle cx="10.5" cy="9" r=".7" />
+      <path data-part="service-truck" d="M2.5 13h9.2v4H2.5zM11.7 12h3.5l3 2.6V17h-6.5zM14.2 12.2v2.4h3.7" />
+      <path d="M7.2 13v-1.2h1.6V13M3.5 17h16" />
+      <g data-part="wheels">
+        <circle cx="6" cy="18.5" r="1.5" />
+        <circle cx="15.5" cy="18.5" r="1.5" />
+      </g>
     </svg>
   );
 }

@@ -634,3 +634,27 @@ export async function deleteFleetDocumentAction(_previous: FleetFormState, formD
     return failure(error, "No se pudo eliminar el documento.");
   }
 }
+
+export async function setFleetShiftVehicleAction(_previous: FleetFormState, formData: FormData): Promise<FleetFormState> {
+  await requireSupervisor();
+  try {
+    const shiftId = value(formData, "shift_id");
+    const routeVehicleId = value(formData, "route_vehicle_id");
+    const targetVehicleId = nullable(formData, "target_vehicle_id");
+    if (!validUuid(shiftId) || !validUuid(routeVehicleId) || (targetVehicleId && !validUuid(targetVehicleId))) {
+      throw new Error("La asociación de la jornada no es válida.");
+    }
+    const { data, error } = await (await createClient()).rpc("set_technician_shift_vehicle", {
+      p_shift_id: shiftId,
+      p_vehicle_id: targetVehicleId,
+    });
+    const corrected = data?.[0] as { previous_vehicle_id: string | null; vehicle_id: string | null } | undefined;
+    if (error || !corrected) return { success: false, message: "No se pudo corregir la asociación de la jornada." };
+    revalidateFleet(routeVehicleId);
+    if (corrected.previous_vehicle_id) revalidateFleet(corrected.previous_vehicle_id);
+    if (corrected.vehicle_id) revalidateFleet(corrected.vehicle_id);
+    return { success: true, message: corrected.vehicle_id ? "Jornada asociada al camión seleccionado." : "Asociación de camión eliminada de la jornada." };
+  } catch (error) {
+    return failure(error, "No se pudo corregir la asociación de la jornada.");
+  }
+}

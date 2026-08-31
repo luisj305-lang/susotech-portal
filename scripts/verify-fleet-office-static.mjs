@@ -42,7 +42,19 @@ function assertOwnOfficeGate(source, path, expectedNames) {
 }
 
 assert.match(sidebar, /href: "\/camiones", label: "Camiones"/u);
-assert.match(sidebar, /function FleetIcon/u);
+const fleetIcon = functionText(sidebar, "sidebar.tsx", "FleetIcon", ts.ScriptKind.TSX);
+assert.match(fleetIcon, /viewBox="0 0 24 24"/u);
+assert.match(fleetIcon, /stroke="currentColor"/u);
+assert.match(fleetIcon, /aria-hidden="true"/u);
+for (const part of ["service-truck", "wheels", "hydraulic-boom", "worker-bucket", "utility-pole"]) {
+  assert.match(fleetIcon, new RegExp(`data-part="${part}"`, "u"), `FleetIcon: missing ${part} geometry`);
+}
+const wheels = fleetIcon.match(/<g data-part="wheels">([\s\S]*?)<\/g>/u)?.[1] ?? "";
+assert.equal([...wheels.matchAll(/<circle\b/gu)].length, 2, "FleetIcon: expected two distinct wheels");
+const boomPoints = fleetIcon.match(/<polyline data-part="hydraulic-boom" points="([^"]+)"/u)?.[1].trim().split(/\s+/u) ?? [];
+assert.ok(boomPoints.length >= 4, "FleetIcon: hydraulic boom must have articulated segments");
+assert.match(fleetIcon, /<path data-part="worker-bucket"/u, "FleetIcon: worker bucket must be an elevated outline");
+assert.match(fleetIcon, /<path data-part="utility-pole"/u, "FleetIcon: utility pole must establish working height");
 
 for (const page of [listPage, detailPage]) {
   assert.match(page, /await requireSupervisor\(\)/u);
@@ -94,6 +106,7 @@ const actionNames = [
   "confirmFleetDocumentUpload",
   "saveFleetDocumentMetadataAction",
   "deleteFleetDocumentAction",
+  "setFleetShiftVehicleAction",
 ];
 assertOwnOfficeGate(actions, "actions.ts", actionNames);
 for (const action of actionNames) {
@@ -144,4 +157,7 @@ assert.match(uploader, /try \{/u);
 assert.match(uploader, /catch \(error\)/u);
 assert.match(uploader, /finally \{/u);
 
-console.log("[fleet-office-static] PASS routes=2 tabs=7 actions=17 signed-storage=enabled office-gates=present");
+assert.match(sections, /ShiftAssociationsCard/u);
+assert.match(sections, /setFleetShiftVehicleAction/u);
+
+console.log("[fleet-office-static] PASS routes=2 tabs=7 actions=18 signed-storage=enabled office-gates=present");

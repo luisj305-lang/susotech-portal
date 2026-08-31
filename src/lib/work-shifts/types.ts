@@ -16,6 +16,8 @@ export type ActiveWorkShift = {
   no_fuel_today: boolean;
   fuel_photo_path: string | null;
   server_now: string;
+  vehicle_id: string | null;
+  vehicle_unit_number: string | null;
 };
 
 export type WorkShiftAccess = {

@@ -38,6 +38,17 @@ export type FleetVehicleListItem = FleetVehicle & {
   maintenance_alert: FleetAlertSummary;
 };
 
+export type FleetShiftAssociation = {
+  id: string;
+  technician_id: string;
+  vehicle_id: string | null;
+  started_at: string;
+  fuel_amount: string | number;
+  no_fuel_today: boolean;
+  technician_name: string;
+  vehicle_unit_number: string | null;
+};
+
 export type FleetVehicleDetail = {
   vehicle: FleetVehicle;
   assignments: Array<FleetVehicleAssignment & { technician_name: string }>;
@@ -50,6 +61,8 @@ export type FleetVehicleDetail = {
   incidents: Array<FleetIncident & { reporter_name: string }>;
   documents: Array<FleetDocument & { signed_url: string | null }>;
   ledger: FleetCostLedgerEntry[];
+  shiftAssociations: FleetShiftAssociation[];
+  vehicleOptions: Array<Pick<FleetVehicle, "id" | "unit_number">>;
 };
 
 function currentDate(): string {
@@ -136,7 +149,7 @@ export async function getFleetVehicleDetail(vehicleId: string): Promise<FleetVeh
   await requireSupervisor();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(vehicleId)) return null;
   const supabase = await createClient();
-  const [vehicleResult, assignmentsResult, profilesResult, policiesResult, maintenanceResult, odometerResult, expensesResult, incidentsResult, documentsResult, ledgerResult] = await Promise.all([
+  const [vehicleResult, assignmentsResult, profilesResult, policiesResult, maintenanceResult, odometerResult, expensesResult, incidentsResult, documentsResult, ledgerResult, shiftsResult, vehicleOptionsResult] = await Promise.all([
     supabase.from("fleet_vehicles").select("*").eq("id", vehicleId).maybeSingle(),
     supabase.from("fleet_vehicle_assignments").select("*").eq("vehicle_id", vehicleId).order("starts_on", { ascending: false }),
     supabase.from("profiles").select("id,full_name,email,is_active,role").order("full_name"),
@@ -147,8 +160,10 @@ export async function getFleetVehicleDetail(vehicleId: string): Promise<FleetVeh
     supabase.from("fleet_incidents").select("*").eq("vehicle_id", vehicleId).order("occurred_at", { ascending: false }),
     supabase.from("fleet_documents").select("*").eq("vehicle_id", vehicleId).order("created_at", { ascending: false }),
     supabase.rpc("list_fleet_cost_ledger", { p_start_on: null, p_end_on: null, p_vehicle_id: vehicleId }),
+    supabase.from("technician_shifts").select("id,technician_id,vehicle_id,started_at,fuel_amount,no_fuel_today").order("started_at", { ascending: false }).limit(30),
+    supabase.from("fleet_vehicles").select("id,unit_number").order("unit_number"),
   ]);
-  const firstError = [vehicleResult, assignmentsResult, profilesResult, policiesResult, maintenanceResult, odometerResult, expensesResult, incidentsResult, documentsResult, ledgerResult].find((result) => result.error)?.error;
+  const firstError = [vehicleResult, assignmentsResult, profilesResult, policiesResult, maintenanceResult, odometerResult, expensesResult, incidentsResult, documentsResult, ledgerResult, shiftsResult, vehicleOptionsResult].find((result) => result.error)?.error;
   if (firstError) throw new Error("No se pudo cargar el detalle del camión.");
   if (!vehicleResult.data) return null;
 
@@ -164,6 +179,8 @@ export async function getFleetVehicleDetail(vehicleId: string): Promise<FleetVeh
     .filter((profile) => profile.role === "tecnico")
     .map(({ id, full_name, email, is_active }) => ({ id, full_name, email, is_active }));
   const names = new Map(profiles.map((profile) => [profile.id, profile.full_name || profile.email]));
+  const vehicleOptions = (vehicleOptionsResult.data ?? []) as Array<Pick<FleetVehicle, "id" | "unit_number">>;
+  const vehicleNames = new Map(vehicleOptions.map((vehicle) => [vehicle.id, vehicle.unit_number]));
   const documents = await Promise.all((documentsResult.data as FleetDocument[]).map(async (document) => {
     const { data } = await supabase.storage.from("fleet-documents").createSignedUrl(document.storage_path, 300);
     return { ...document, signed_url: data?.signedUrl ?? null };
@@ -187,6 +204,12 @@ export async function getFleetVehicleDetail(vehicleId: string): Promise<FleetVeh
     })),
     documents,
     ledger: (ledgerResult.data ?? []) as FleetCostLedgerEntry[],
+    shiftAssociations: ((shiftsResult.data ?? []) as Array<Omit<FleetShiftAssociation, "technician_name" | "vehicle_unit_number">>).map((shift) => ({
+      ...shift,
+      technician_name: names.get(shift.technician_id) ?? "Técnico no disponible",
+      vehicle_unit_number: shift.vehicle_id ? (vehicleNames.get(shift.vehicle_id) ?? "Camión no disponible") : null,
+    })),
+    vehicleOptions,
   };
 }
 

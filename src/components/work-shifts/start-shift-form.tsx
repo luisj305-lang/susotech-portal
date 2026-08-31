@@ -14,7 +14,7 @@ const allowedPhotoTypes = ["image/jpeg", "image/png", "image/webp"];
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 const moneyPattern = /^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/u;
 
-export function StartShiftForm() {
+export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }) {
   const router = useRouter();
   const cameraInput = useRef<HTMLInputElement>(null);
   const galleryInput = useRef<HTMLInputElement>(null);
@@ -118,6 +118,9 @@ export function StartShiftForm() {
         <h1 className="mt-2 text-3xl font-bold text-ink">Iniciar jornada</h1>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
           Registra tu jornada y la información de gasolina de hoy.
+        </p>
+        <p className="mt-3 rounded-xl bg-surface-muted p-3 text-sm font-semibold text-ink">
+          {vehicleLabel ? `Camión de la jornada: ${vehicleLabel}` : "Sin camión asignado"}
         </p>
       </div>
 

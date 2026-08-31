@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import type { ActiveWorkShift, WorkShiftActionResult } from "./types";
+import type { WorkShiftActionResult } from "./types";
 
 const FUEL_PHOTO_BUCKET = "technician-shift-fuel";
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
@@ -107,10 +107,11 @@ export async function startTechnicianShift(input: {
     };
   }
 
-  const shift = data[0] as ActiveWorkShift;
+  const shift = data[0] as { active_until: string };
   revalidatePath("/dashboard");
   revalidatePath("/trabajos");
   revalidatePath("/jornada/iniciar");
+  revalidatePath("/camiones/mi-camion");
   return {
     success: true,
     message: "Jornada iniciada.",

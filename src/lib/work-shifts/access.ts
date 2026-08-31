@@ -11,7 +11,7 @@ import {
 } from "./types";
 
 type ActiveShiftClient = {
-  rpc: (name: "get_my_active_shift") => PromiseLike<{
+  rpc: (name: "get_my_active_shift_with_vehicle") => PromiseLike<{
     data: unknown[] | null;
     error: { message?: string } | null;
   }>;
@@ -39,7 +39,7 @@ export async function getWorkShiftAccessForActor(
   }
 
   const supabase = client ?? await createClient();
-  const { data, error } = await supabase.rpc("get_my_active_shift");
+  const { data, error } = await supabase.rpc("get_my_active_shift_with_vehicle");
   if (error) {
     throw new Error("No se pudo verificar la jornada de trabajo.");
   }

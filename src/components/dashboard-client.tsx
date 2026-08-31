@@ -85,6 +85,19 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
           Trabajo manual
         </Link>
 
+        {profile.role === "tecnico" && (
+          <Link
+            href="/camiones/mi-camion"
+            style={{
+              padding: "12px 20px",
+              border: "1px solid currentColor",
+              textDecoration: "none",
+            }}
+          >
+            Mi camión
+          </Link>
+        )}
+
         {canCreateJobs && <Link href="/produccion" style={{ padding: "12px 20px", border: "1px solid currentColor", textDecoration: "none" }}>Producción</Link>}
 
         {canCreateJobs && <Link href="/catalogo" style={{ padding: "12px 20px", border: "1px solid currentColor", textDecoration: "none" }}>Catálogo y tarifas</Link>}

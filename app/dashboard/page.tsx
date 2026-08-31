@@ -4,6 +4,7 @@ import { requireProfile } from "@/lib/auth/session";
 import { getMyWeeklyFinancialAllocations, getMyWeeklyProduction, getWeeklyInvoicedTotal, getWorkerOperationsDashboard, listOfficeJobs } from "@/lib/jobs/queries";
 import { getWorkShiftAccess } from "@/lib/work-shifts/access";
 import { ShiftStartPrompt } from "@/components/work-shifts/shift-start-prompt";
+import { getMyPrimaryVehicleLabel } from "@/lib/fleet/technician-queries";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -24,13 +25,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   const weekOffset = Number.isFinite(Number(rawWeek)) ? Number(rawWeek) : 0;
 
   if (profile.role === "tecnico") {
-    const shiftAccess = await getWorkShiftAccess();
     const referenceDate = referenceDateForWeek(weekOffset);
-    const weeklyProduction = await getMyWeeklyProduction(referenceDate);
-    const weeklyFinancial = await getMyWeeklyFinancialAllocations(referenceDate);
+    const [shiftAccess, weeklyProduction, weeklyFinancial, vehicleLabel] = await Promise.all([
+      getWorkShiftAccess(),
+      getMyWeeklyProduction(referenceDate),
+      getMyWeeklyFinancialAllocations(referenceDate),
+      getMyPrimaryVehicleLabel(),
+    ]);
     return <>
       <DashboardClient profile={profile} weeklyProduction={weeklyProduction} weeklyFinancial={weeklyFinancial} weekOffset={weekOffset} />
-      <ShiftStartPrompt technicianId={profile.id} active={shiftAccess.active} />
+      <ShiftStartPrompt technicianId={profile.id} active={shiftAccess.active} vehicleLabel={vehicleLabel} />
     </>;
   }
 

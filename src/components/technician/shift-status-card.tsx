@@ -68,6 +68,10 @@ export function ShiftStatusCard({
           <dt className="text-ink-muted">Vence</dt>
           <dd className="font-semibold text-ink">{dateTimeFormatter.format(new Date(shift.active_until))}</dd>
         </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-ink-muted">Camión</dt>
+          <dd className="font-semibold text-ink">{shift.vehicle_unit_number ?? "Sin camión asignado"}</dd>
+        </div>
       </dl>
       <div className="mt-4">
         <div className="h-2 rounded-full bg-surface-muted" aria-hidden="true">
