@@ -24,10 +24,22 @@ type NavItem = {
   icon: ComponentType<IconProps>;
 };
 
+function FleetIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z" />
+      <path d="M6 7l1.5-3h5L14 7M5.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
+    </svg>
+  );
+}
+
 function isActive(href: string, pathname: string): boolean {
   if (href === "/trabajos/importar") return pathname === "/trabajos/importar";
   if (href === "/trabajos") {
     return pathname === "/trabajos" || pathname.startsWith("/trabajos/");
+  }
+  if (href === "/camiones") {
+    return pathname === "/camiones" || pathname.startsWith("/camiones/");
   }
   return pathname === href;
 }
@@ -45,6 +57,7 @@ export function Sidebar({
   const items: NavItem[] = [
     { href: "/dashboard", label: "Dashboard", icon: IconDashboard },
     { href: "/trabajos", label: "Trabajos", icon: IconBriefcase },
+    { href: "/camiones", label: "Camiones", icon: FleetIcon },
     { href: "/trabajos/importar", label: "Importar PDFs", icon: IconUpload },
     {
       href: "/trabajos?status=en_revision",
