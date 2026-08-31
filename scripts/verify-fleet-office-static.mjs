@@ -63,6 +63,46 @@ for (const page of [listPage, detailPage]) {
 assert.match(listPage, /await searchParams/u);
 assert.match(listPage, /listFleetVehicles/u);
 assert.match(listPage, /createFleetVehicleAction/u);
+const fleetListBody = functionText(listPage, "page.tsx", "FleetPage", ts.ScriptKind.TSX);
+assert.match(fleetListBody, /<details className="group relative">/u, "create vehicle flow must keep a native grouped details disclosure");
+const createSummaryMarkup = fleetListBody.match(/<summary[\s\S]*?<\/summary>/u)?.[0] ?? "";
+assert.match(createSummaryMarkup, /<span className="group-open:hidden lg:group-open:inline">\+ Nuevo camión<\/span>/u, "closed and desktop disclosure must show the create label");
+assert.match(createSummaryMarkup, /<span className="hidden group-open:inline lg:group-open:hidden">Cerrar formulario<\/span>/u, "open mobile disclosure must expose an explicit close label");
+for (const toggleClass of [
+  "group-open:fixed",
+  "group-open:top-4",
+  "group-open:right-4",
+  "group-open:z-50",
+  "lg:group-open:static",
+  "lg:group-open:z-auto",
+]) {
+  assert.ok(createSummaryMarkup.includes(toggleClass), `open create toggle must include ${toggleClass}`);
+}
+assert.match(listPage, /const fieldClass = "[^"]*\bw-full\b[^"]*\bmin-w-0\b/u, "fleet fields must shrink within their responsive grid columns");
+const createPanelClass = fleetListBody.match(/<\/summary><div className="([^"]+)"/u)?.[1] ?? "";
+for (const responsiveClass of [
+  "fixed",
+  "inset-x-4",
+  "top-20",
+  "bottom-24",
+  "z-40",
+  "overflow-x-hidden",
+  "overflow-y-auto",
+  "touch-pan-y",
+  "overscroll-contain",
+  "lg:absolute",
+  "lg:left-auto",
+  "lg:right-0",
+  "lg:top-full",
+  "lg:bottom-auto",
+  "lg:max-h-[calc(100dvh-8rem)]",
+  "lg:w-[min(44rem,calc(100vw-3rem))]",
+]) {
+  assert.ok(createPanelClass.split(/\s+/u).includes(responsiveClass), `create vehicle panel must include ${responsiveClass}`);
+}
+assert.ok(createPanelClass.includes("top-20"), "mobile create panel must reserve the top viewport band for its close toggle");
+assert.doesNotMatch(createPanelClass, /(?:^|\s)absolute(?:\s|$)/u, "create vehicle panel must be viewport-fixed below desktop");
+assert.match(fleetListBody, /action=\{createFleetVehicleAction\}[\s\S]*?className="grid gap-3 sm:grid-cols-2"/u, "create form must be one column on mobile and two columns from sm");
 assert.match(detailPage, /const \{ id \} = await params/u);
 assert.match(detailPage, /getFleetVehicleDetail/u);
 assert.match(detailPage, /FleetDetailSections/u);
