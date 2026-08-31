@@ -21,6 +21,12 @@ import { IconX } from "@/components/ui/icons";
 type SourcePage = { page: number; documentId: string; sourcePage: number };
 type EditorNote = PdfTextNote & { editorId: string };
 type EditorLine = PdfLineAnnotation & { editorId: string };
+type EditorTool = "code" | "note" | "line";
+type EditorSnapshot = {
+  placements: PdfCodePlacement[];
+  notes: EditorNote[];
+  lines: EditorLine[];
+};
 
 const NOTE_FONT_SIZES: ReadonlyArray<{ ratio: number; label: string }> = [
   { ratio: 0.018, label: "Normal" },
@@ -34,6 +40,35 @@ const NOTE_PAD_X = 0.01;
 const NOTE_PAD_Y = 0.006;
 const NOTE_LINE_EM = 1.2;
 const BASE_PAGE_WIDTH = 64;
+const HISTORY_LIMIT = 40;
+
+function snapshotsMatch(left: EditorSnapshot, right: EditorSnapshot): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function EditorToolIcon({ tool }: { tool: EditorTool }) {
+  if (tool === "code") {
+    return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" />
+      <rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" />
+    </svg>;
+  }
+  if (tool === "note") {
+    return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+      <path d="M5 4.5h14v11H9l-4 4v-15Z" /><path d="M8 8h8M8 11.5h6" />
+    </svg>;
+  }
+  return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <path d="m5 19 14-14" />
+  </svg>;
+}
+
+function HistoryIcon({ direction }: { direction: "undo" | "redo" }) {
+  const transform = direction === "redo" ? "scale(-1 1) translate(-24 0)" : undefined;
+  return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <g transform={transform}><path d="m9 8-4 4 4 4" /><path d="M5 12h8a6 6 0 0 1 6 6" /></g>
+  </svg>;
+}
 
 function textWidthEm(text: string): number {
   if (typeof document === "undefined") return Array.from(text).length * 0.62;
@@ -96,17 +131,19 @@ type PageProps = {
   onMoveNote: (id: string, dx: number, dy: number) => void;
   onMoveNoteArrow: (id: string, x: number, y: number) => void;
   onResizeNote: (id: string, dx: number, dy: number) => void;
-  tool: "code" | "note" | "line";
+  tool: EditorTool;
   lineColor: string;
   lines: EditorLine[];
   onCommitLine: (sourcePage: SourcePage, points: PdfLinePoint[]) => void;
   onSelectLine: (id: string) => void;
   onMoveLine: (id: string, dx: number, dy: number) => void;
+  onGestureStart: () => void;
+  onGestureEnd: () => void;
   sourcePage: SourcePage;
   zoom: number;
 };
 
-function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onOpen, onMoveNote, onMoveNoteArrow, onResizeNote, tool, lineColor, lines, onCommitLine, onSelectLine, onMoveLine, sourcePage, zoom }: PageProps) {
+function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetadata, onAdd, onSelect, onMove, onMoveArrow, onSelectNote, onOpen, onMoveNote, onMoveNoteArrow, onResizeNote, tool, lineColor, lines, onCommitLine, onSelectLine, onMoveLine, onGestureStart, onGestureEnd, sourcePage, zoom }: PageProps) {
   const host = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: string; kind: "box" | "arrow" | "note" | "note-arrow" | "note-resize" | "line"; x: number; y: number } | null>(null);
   const drawRef = useRef<{ points: PdfLinePoint[] } | null>(null);
@@ -157,7 +194,7 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
   }, [jobId, onMetadata, page, visible]);
 
   const pagePlacements = placements.filter((item) => item.page === page);
-  return <section aria-labelledby={`pdf-page-${page}`} className="mx-auto" style={zoom >= 1 ? { width: `${BASE_PAGE_WIDTH * zoom}rem` } : { width: "100%", maxWidth: `${BASE_PAGE_WIDTH * zoom}rem` }}>
+  return <section aria-labelledby={`pdf-page-${page}`} className="mx-auto" style={{ width: `${zoom * 100}%`, maxWidth: `${BASE_PAGE_WIDTH * zoom}rem` }}>
     <h2 id={`pdf-page-${page}`} className="mb-2 text-sm font-bold text-ink">Página {page}</h2>
     <div ref={host} className="relative min-h-[55vh] w-full overflow-hidden border border-line bg-white shadow-card [container-type:inline-size]">
       {!imageUrl && <div className="flex min-h-[55vh] items-center justify-center bg-surface-muted p-6 text-center text-ink-muted">{error || (visible ? "Cargando página…" : "La página se cargará al acercarte")}</div>}
@@ -167,6 +204,7 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
         onAdd(sourcePage.page, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
       }} onPointerDown={(event) => {
         if (tool !== "line") return;
+        onGestureStart();
         const rect = event.currentTarget.getBoundingClientRect();
         const point = { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
         drawRef.current = { points: [point] };
@@ -196,6 +234,7 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
         else onResizeNote(drag.current.id, (event.clientX - drag.current.x) / rect.width, (event.clientY - drag.current.y) / rect.height);
         drag.current = { ...drag.current, x: event.clientX, y: event.clientY };
       }} onPointerUp={() => {
+        const hadGesture = Boolean(drawRef.current || drag.current);
         if (drawRef.current) {
           const points = drawRef.current.points;
           drawRef.current = null;
@@ -203,7 +242,8 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
           onCommitLine(sourcePage, points);
         }
         drag.current = null;
-      }} onPointerCancel={() => { drawRef.current = null; setPreview([]); drag.current = null; }} onLostPointerCapture={() => { drawRef.current = null; setPreview([]); drag.current = null; }} onDragStart={(event) => event.preventDefault()} className={`relative block w-full select-none ${tool === "line" ? "touch-none" : zoom > 0.75 ? "touch-pan-x touch-pan-y" : "touch-pan-y"} cursor-crosshair text-left`}>
+        if (hadGesture) onGestureEnd();
+      }} onPointerCancel={() => { drawRef.current = null; setPreview([]); drag.current = null; onGestureEnd(); }} onLostPointerCapture={() => { drawRef.current = null; setPreview([]); drag.current = null; onGestureEnd(); }} onDragStart={(event) => event.preventDefault()} className={`relative block w-full select-none ${tool === "line" ? "touch-none" : zoom > 0.75 ? "touch-pan-x touch-pan-y" : "touch-pan-y"} cursor-crosshair text-left`}>
         {/* This authenticated blob URL cannot use the Next image optimizer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt={`PDF original, página ${page}`} draggable={false} onLoad={(event) => { const image = event.currentTarget; if (image.naturalWidth > 0 && image.naturalHeight > 0) setPageAspect(image.naturalHeight / image.naturalWidth); }} className="block h-auto w-full" />
@@ -212,7 +252,7 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
             const segments = line.points.slice(0, -1);
             const selected = selectedId === line.editorId;
             return <g key={line.editorId} className="pointer-events-auto" onPointerDown={(event) => {
-              event.stopPropagation(); wasSelectedRef.current = selectedId; onSelectLine(line.editorId);
+              event.stopPropagation(); onGestureStart(); wasSelectedRef.current = selectedId; onSelectLine(line.editorId);
               drag.current = { id: line.editorId, kind: "line", x: event.clientX, y: event.clientY };
               event.currentTarget.setPointerCapture(event.pointerId);
             }}>
@@ -223,10 +263,10 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
           })}
           {preview.length > 1 && preview.slice(0, -1).map((point, index) => <line key={`preview-${index}`} x1={`${point.x * 100}%`} y1={`${point.y * 100}%`} x2={`${preview[index + 1].x * 100}%`} y2={`${preview[index + 1].y * 100}%`} stroke={lineColor} strokeWidth={LINE_STROKE_WIDTH} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />)}
         </svg>
-        {notes.filter((note) => note.page === page).map((note) => <div key={note.editorId} role="button" tabIndex={0} aria-label={`Nota de texto en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === note.editorId) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${note.x * 100}%`, top: `${note.y * 100}%`, width: `${note.width * 100}%`, height: `${note.height * 100}%`, fontSize: `${note.fontSizeRatio * 100}cqw` }} className={`absolute z-[5] touch-none cursor-move overflow-hidden whitespace-pre-wrap border bg-white p-1 text-ink ${selectedId === note.editorId ? "border-blue-700 ring-2 ring-blue-300" : "border-black"}`}>
-          {note.text}{selectedId === note.editorId && <button type="button" aria-label="Redimensionar nota" onPointerDown={(event) => { event.stopPropagation(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-resize", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} className="absolute bottom-0 right-0 h-6 w-6 touch-none cursor-nwse-resize border-l border-t border-line bg-blue-600" />}
+        {notes.filter((note) => note.page === page).map((note) => <div key={note.editorId} role="button" tabIndex={0} aria-label={`Nota de texto en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === note.editorId) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); onGestureStart(); wasSelectedRef.current = selectedId; onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${note.x * 100}%`, top: `${note.y * 100}%`, width: `${note.width * 100}%`, height: `${note.height * 100}%`, fontSize: `${note.fontSizeRatio * 100}cqw` }} className={`absolute z-[5] touch-none cursor-move overflow-hidden whitespace-pre-wrap border bg-white p-1 text-ink ${selectedId === note.editorId ? "border-blue-700 ring-2 ring-blue-300" : "border-black"}`}>
+          {note.text}{selectedId === note.editorId && <button type="button" aria-label="Redimensionar nota" onPointerDown={(event) => { event.stopPropagation(); onGestureStart(); onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-resize", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} className="absolute bottom-0 right-0 h-6 w-6 touch-none cursor-nwse-resize border-l border-t border-line bg-blue-600" />}
         </div>)}
-        {notes.filter((note) => note.page === page).map((note) => <button key={`note-tip-${note.editorId}`} type="button" aria-label="Mover extremo de la flecha de la nota" onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === note.editorId) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `calc(${note.arrowTipX * 100}% - 10px)`, top: `calc(${note.arrowTipY * 100}% - 10px)`, backgroundColor: "#000000" }} className={`absolute z-20 h-5 w-5 touch-none rounded-full border-2 ${selectedId === note.editorId ? "border-black ring-2 ring-white" : "border-white"}`} />)}
+        {notes.filter((note) => note.page === page).map((note) => <button key={`note-tip-${note.editorId}`} type="button" aria-label="Mover extremo de la flecha de la nota" onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === note.editorId) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); onGestureStart(); wasSelectedRef.current = selectedId; onSelectNote(note.editorId); drag.current = { id: note.editorId, kind: "note-arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `calc(${note.arrowTipX * 100}% - 10px)`, top: `calc(${note.arrowTipY * 100}% - 10px)`, backgroundColor: "#000000" }} className={`absolute z-20 h-5 w-5 touch-none rounded-full border-2 ${selectedId === note.editorId ? "border-black ring-2 ring-white" : "border-white"}`} />)}
         <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
           <defs><marker id={`arrow-${page}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" /></marker><marker id={`note-arrow-${page}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#000000" /></marker></defs>
           {pagePlacements.map((item) => {
@@ -245,9 +285,9 @@ function PdfPage({ jobId, page, selectedId, placements, notes, catalog, onMetada
           const maxFontByWidth = (item.width * 100 - 0.8) / Math.max(1, longestLabel.length * 0.62);
           const maxFontByHeight = (item.height * 100 * pageAspect - 0.8) / Math.max(1, labels.length * 1.25);
           const fittedFontSize = Math.max(0.1, Math.min(maxFontByWidth, maxFontByHeight));
-          return <span key={item.id} role="button" tabIndex={0} aria-label={`${labels.join(", ")} en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex touch-none cursor-move flex-col items-start justify-center overflow-hidden border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{labels.map((label, index) => <span key={index} className="block whitespace-nowrap leading-tight">{label}</span>)}</span>;
+          return <span key={item.id} role="button" tabIndex={0} aria-label={`${labels.join(", ")} en página ${page}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }} onPointerDown={(event) => { event.stopPropagation(); onGestureStart(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "box", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} style={{ left: `${item.x * 100}%`, top: `${item.y * 100}%`, width: `${item.width * 100}%`, height: `${item.height * 100}%`, backgroundColor: "#ffffff", borderColor: color, color: "#000000", fontSize: `${fittedFontSize}cqw` }} className={`absolute z-10 flex touch-none cursor-move flex-col items-start justify-center overflow-hidden border-2 px-1 font-bold ${selectedId === item.id ? "ring-2 ring-black" : ""}`}>{labels.map((label, index) => <span key={index} className="block whitespace-nowrap leading-tight">{label}</span>)}</span>;
         })}
-        {pagePlacements.map((item) => <button key={`tip-${item.id}`} type="button" aria-label={`Mover extremo de la flecha de ${catalog.find((entry) => entry.id === item.entries[0]?.catalogId)?.code ?? "código"}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }}           style={{ left: `calc(${item.arrowTipX * 100}% - 12px)`, top: `calc(${item.arrowTipY * 100}% - 12px)`, backgroundColor: item.color ?? DEFAULT_CODE_COLOR }} className={`absolute z-20 h-6 w-6 touch-none rounded-full border-2 ${selectedId === item.id ? "border-black ring-2 ring-white" : "border-white"}`} />)}
+        {pagePlacements.map((item) => <button key={`tip-${item.id}`} type="button" aria-label={`Mover extremo de la flecha de ${catalog.find((entry) => entry.id === item.entries[0]?.catalogId)?.code ?? "código"}`} onClick={(event) => { event.stopPropagation(); if (wasSelectedRef.current === item.id) onOpen(); }} onPointerDown={(event) => { event.stopPropagation(); onGestureStart(); wasSelectedRef.current = selectedId; onSelect(item.id); drag.current = { id: item.id, kind: "arrow", x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }}           style={{ left: `calc(${item.arrowTipX * 100}% - 12px)`, top: `calc(${item.arrowTipY * 100}% - 12px)`, backgroundColor: item.color ?? DEFAULT_CODE_COLOR }} className={`absolute z-20 h-6 w-6 touch-none rounded-full border-2 ${selectedId === item.id ? "border-black ring-2 ring-white" : "border-white"}`} />)}
       </div>}
     </div>
   </section>;
@@ -299,7 +339,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     ...line,
     editorId: crypto.randomUUID(),
   })));
-  const [tool, setTool] = useState<"code" | "note" | "line">("code");
+  const [tool, setTool] = useState<EditorTool>("code");
   const [stage, setStage] = useState<"edit" | "allocation">("edit");
   const [noteText, setNoteText] = useState("");
   const [noteFontRatio, setNoteFontRatio] = useState(NOTE_FONT_RATIO);
@@ -313,11 +353,16 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const [dirty, setDirty] = useState(hasLegacyPlacements);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [, setHistoryRevision] = useState(0);
   const changeGeneration = useRef(0);
   const saveInFlight = useRef<Promise<boolean> | null>(null);
   const placementsRef = useRef(placements);
   const notesRef = useRef(notes);
   const linesRef = useRef(lines);
+  const undoStackRef = useRef<EditorSnapshot[]>([]);
+  const redoStackRef = useRef<EditorSnapshot[]>([]);
+  const historyGestureActiveRef = useRef(false);
+  const historyGestureMutatedRef = useRef(false);
   placementsRef.current = placements;
   notesRef.current = notes;
   linesRef.current = lines;
@@ -328,6 +373,70 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const selectedLine = lines.find((item) => item.editorId === selectedId) ?? null;
   const priceCategoryName = catalog.find((item) => item.price_category_name)?.price_category_name ?? null;
   const hasUnratedPlacement = placements.some((placement) => placement.entries.some((entry) => catalog.find((item) => item.id === entry.catalogId)?.unit_rate == null));
+
+  const captureSnapshot = useCallback((): EditorSnapshot => structuredClone({
+    placements: placementsRef.current,
+    notes: notesRef.current,
+    lines: linesRef.current,
+  }), []);
+
+  const recordHistory = useCallback(() => {
+    if (submitting) return;
+    const snapshot = captureSnapshot();
+    const latest = undoStackRef.current.at(-1);
+    if (latest && snapshotsMatch(latest, snapshot)) return;
+    undoStackRef.current.push(snapshot);
+    if (undoStackRef.current.length > HISTORY_LIMIT) undoStackRef.current.shift();
+    redoStackRef.current = [];
+    setHistoryRevision((value) => value + 1);
+  }, [captureSnapshot, submitting]);
+
+  const beginHistoryGesture = useCallback(() => {
+    if (historyGestureActiveRef.current) return;
+    historyGestureActiveRef.current = true;
+    historyGestureMutatedRef.current = false;
+  }, []);
+
+  const endHistoryGesture = useCallback(() => {
+    if (!historyGestureActiveRef.current) return;
+    historyGestureActiveRef.current = false;
+    historyGestureMutatedRef.current = false;
+    setHistoryRevision((value) => value + 1);
+  }, []);
+
+  const restoreSnapshot = useCallback((snapshot: EditorSnapshot, nextMessage: string) => {
+    const restored = structuredClone(snapshot);
+    placementsRef.current = restored.placements;
+    notesRef.current = restored.notes;
+    linesRef.current = restored.lines;
+    setPlacements(restored.placements);
+    setNotes(restored.notes);
+    setLines(restored.lines);
+    changeGeneration.current += 1;
+    setDirty(true);
+    setSelectedId(null);
+    setSheetOpen(false);
+    setMessage(nextMessage);
+    setHistoryRevision((value) => value + 1);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (submitting) return;
+    const current = captureSnapshot();
+    let previous = undoStackRef.current.pop();
+    while (previous && snapshotsMatch(previous, current)) previous = undoStackRef.current.pop();
+    if (!previous) { setHistoryRevision((value) => value + 1); return; }
+    redoStackRef.current.push(current);
+    restoreSnapshot(previous, "Cambio deshecho. Guardando borrador…");
+  }, [captureSnapshot, restoreSnapshot, submitting]);
+
+  const redo = useCallback(() => {
+    if (submitting) return;
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+    undoStackRef.current.push(captureSnapshot());
+    restoreSnapshot(next, "Cambio rehecho. Guardando borrador…");
+  }, [captureSnapshot, restoreSnapshot, submitting]);
 
   const onMetadata = useCallback((count: number, draftVersion: number) => {
     if (count > 0) setPageCount(count);
@@ -341,18 +450,39 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
 
   const change = useCallback((next: PdfCodePlacement[]) => {
     if (submitting) return;
+    if (JSON.stringify(placementsRef.current) === JSON.stringify(next)) return;
+    if (historyGestureActiveRef.current) {
+      if (!historyGestureMutatedRef.current) {
+        recordHistory();
+        historyGestureMutatedRef.current = true;
+      }
+    } else recordHistory();
     changeGeneration.current += 1; setPlacements(next); setDirty(true); setMessage("Cambios sin guardar…");
-  }, [submitting]);
+  }, [recordHistory, submitting]);
 
   const changeNotes = useCallback((next: EditorNote[]) => {
     if (submitting) return;
+    if (JSON.stringify(notesRef.current) === JSON.stringify(next)) return;
+    if (historyGestureActiveRef.current) {
+      if (!historyGestureMutatedRef.current) {
+        recordHistory();
+        historyGestureMutatedRef.current = true;
+      }
+    } else recordHistory();
     changeGeneration.current += 1; setNotes(next); setDirty(true); setMessage("Cambios sin guardar…");
-  }, [submitting]);
+  }, [recordHistory, submitting]);
 
   const changeLines = useCallback((next: EditorLine[]) => {
     if (submitting) return;
+    if (JSON.stringify(linesRef.current) === JSON.stringify(next)) return;
+    if (historyGestureActiveRef.current) {
+      if (!historyGestureMutatedRef.current) {
+        recordHistory();
+        historyGestureMutatedRef.current = true;
+      }
+    } else recordHistory();
     changeGeneration.current += 1; setLines(next); setDirty(true); setMessage("Cambios sin guardar…");
-  }, [submitting]);
+  }, [recordHistory, submitting]);
 
   const save = useCallback((current: PdfCodePlacement[], currentNotes: EditorNote[], currentLines: EditorLine[]) => {
     if (saveInFlight.current) return saveInFlight.current;
@@ -604,87 +734,175 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     setStage("allocation");
     setMessage("PDF confirmado. Completa la distribución financiera para entregar.");
   };
-  return <main inert={submitting} aria-busy={submitting} className={`min-h-screen bg-white px-3 pt-4 text-ink sm:px-6 ${stage === "edit" ? (sheetOpen ? "pb-[calc(40vh+8rem)]" : "pb-40 sm:pb-36") : "pb-[28rem] sm:pb-80"}`}>
-    <header className="mx-auto mb-5 max-w-5xl"><p className="text-sm font-semibold uppercase tracking-widest">Entrega del trabajo</p><h1 className="text-2xl font-bold sm:text-3xl">Marcá los códigos sobre el PDF</h1><p className="mt-2 text-sm text-ink-soft">El original permanece intacto. Todas las páginas están en orden y se cargan al acercarte.</p></header>
-    <div className="grid gap-8 overflow-x-auto">{sourcePages.map((sourcePage) => <PdfPage key={sourcePage.page} jobId={jobId} page={sourcePage.page} sourcePage={sourcePage} zoom={zoom} selectedId={selectedId} placements={placements} notes={notes} catalog={catalog} onMetadata={onMetadata} onAdd={add} onSelect={(id) => setSelectedId(id)} onSelectNote={(id) => setSelectedId(id)} onOpen={() => setSheetOpen(true)} onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} onMoveNoteArrow={(id, x, y) => changeNotes(notes.map((note) => note.editorId === id ? { ...note, arrowTipX: x, arrowTipY: y } : note))} onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))} tool={tool} lineColor={lineColor} lines={lines} onCommitLine={commitLine} onSelectLine={(id) => setSelectedId(id)} onMoveLine={moveLine} onMove={(id, requestedDx, requestedDy) => {
-      const item = placements.find((entry) => entry.id === id); if (!item) return;
-      const dx = Math.min(1 - item.x - item.width, 1 - item.arrowTipX, Math.max(-item.x, -item.arrowTipX, requestedDx));
-      const dy = Math.min(1 - item.y - item.height, 1 - item.arrowTipY, Math.max(-item.y, -item.arrowTipY, requestedDy));
-      update(id, { x: item.x + dx, y: item.y + dy, arrowTipX: item.arrowTipX + dx, arrowTipY: item.arrowTipY + dy });
-    }} onMoveArrow={(id, x, y) => {
-      const placement = placements.find((item) => item.id === id); if (!placement) return;
-      const snapped = snapArrowTip(placement.page, x, y, id);
-      update(id, { arrowTipX: snapped.x, arrowTipY: snapped.y });
-    }} />)}</div>
-    {stage === "edit" ? <>
-    <div className="fixed inset-x-0 bottom-0 z-40">
-      {sheetOpen && <div className="border-t border-line bg-white shadow-card">
-        <div className="mx-auto max-h-[40vh] w-full max-w-5xl overflow-y-auto p-3 sm:p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-base font-bold">{selectedNote ? "Editar nota" : selected ? "Editar código" : selectedLine ? "Editar línea" : tool === "note" ? "Nueva nota de texto" : tool === "line" ? "Nueva línea" : "Nuevo código"}</h2>
-            <button type="button" aria-label="Cerrar panel" onClick={() => { setSheetOpen(false); setSelectedId(null); }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line text-ink hover:bg-surface-muted"><IconX /></button>
-          </div>
-          {selectedNote ? <div className="grid gap-2">
-            <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={selectedNote.text} onChange={(event) => editNoteText(selectedNote.editorId, event.target.value)} rows={4} maxLength={2000} className="rounded-lg border border-line bg-white p-2" /></label>
-            <NoteFontSizePicker value={selectedNote.fontSizeRatio} onChange={(ratio) => editNoteFontSize(selectedNote.editorId, ratio)} />
-            <p className="text-xs text-ink-soft">Nota · pág. {selectedNote.page}. Arrastrá para mover; usá la esquina azul para redimensionar.</p>
-            <Button type="button" onClick={() => { changeNotes(notes.filter((note) => note.editorId !== selectedNote.editorId)); setSelectedId(null); }} variant="secondary" className="justify-self-start">Eliminar nota</Button>
-          </div> : selectedLine ? <div className="grid gap-2">
-            <LineColorPicker value={selectedLine.color} onChange={(color) => recolorLine(selectedLine.editorId, color)} />
-            <p className="text-xs text-ink-soft">Línea · pág. {selectedLine.page}. Arrastrala para moverla.</p>
-            <Button type="button" onClick={() => deleteLine(selectedLine.editorId)} variant="secondary" className="justify-self-start">Eliminar línea</Button>
-          </div> : selected ? <div className="grid gap-2">
-            {selected.entries.map((entry, index) => <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
-              <select aria-label={`Código ${index + 1}`} value={entry.catalogId} onChange={(event) => updateEntry(selected.id, index, { catalogId: event.target.value })} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.description}</option>)}</select>
-              <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity || ""} onChange={(event) => updateEntry(selected.id, index, { quantity: Number(event.target.value) })} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
-              <Button type="button" disabled={selected.entries.length <= 1} onClick={() => removeEntry(selected.id, index)} variant="secondary" aria-label={`Quitar código ${index + 1}`}>Quitar</Button>
-            </div>)}
-            <Button type="button" onClick={() => addEntry(selected.id)} variant="secondary" className="justify-self-start">+ Agregar otro código</Button>
-            <label className="flex items-center gap-2 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label>
-            <div className="flex items-end gap-3"><span className="text-xs text-ink-soft">Pág. {selected.page}</span><Button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} variant="secondary">Eliminar</Button></div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold">Color</span>
-              {CODE_COLOR_OPTIONS.map((option) => <button key={option} type="button" aria-label={`Color ${option}`} onClick={() => update(selected.id, { color: option })} className={`h-8 w-8 rounded-full border-2 ${(selected.color ?? DEFAULT_CODE_COLOR) === option ? "border-black ring-2 ring-black" : "border-line"}`} style={{ backgroundColor: option }} />)}
-            </div>
-          </div> : tool === "note" ? <div className="grid gap-2">
-            <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} rows={3} maxLength={2000} placeholder="Escribí el texto y tocá el PDF para colocarla" className="rounded-lg border border-line bg-white p-2" /></label>
-            <NoteFontSizePicker value={noteFontRatio} onChange={setNoteFontRatio} />
-            <Button type="button" onClick={() => setSheetOpen(false)} variant="primary" className="justify-self-start">Agregar nota</Button>
-          </div> : tool === "line" ? <div className="grid gap-2">
-            <LineColorPicker value={lineColor} onChange={setLineColor} />
-            <p className="text-xs text-ink-soft">Elegí un color y tocá «Listo». Después arrastrá el dedo sobre el PDF para dibujar el tramo.</p>
-            <Button type="button" onClick={() => setSheetOpen(false)} variant="primary" className="justify-self-start">Listo</Button>
-          </div> : <div className="grid gap-2">
-            {draftEntries.map((entry, index) => <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
-              <select aria-label={`Código ${index + 1}`} value={entry.catalogId} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, catalogId: event.target.value } : item))} className="min-h-12 w-full min-w-0 rounded-lg border border-line bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select>
-              <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, quantity: event.target.value } : item))} className="min-h-12 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
-              <Button type="button" disabled={draftEntries.length <= 1} onClick={() => setDraftEntries((current) => current.filter((_, i) => i !== index))} variant="secondary" aria-label={`Quitar código ${index + 1}`}>Quitar</Button>
-            </div>)}
-            <Button type="button" onClick={() => setDraftEntries((current) => [...current, { catalogId: catalog[0]?.id ?? "", quantity: "1" }])} variant="secondary" className="justify-self-start">+ Agregar otro código</Button>
-            <Button type="button" onClick={() => setSheetOpen(false)} variant="primary" className="justify-self-start">Aplicar</Button>
-          </div>}
-          <p role="status" aria-live="polite" className="mt-3 min-h-4 text-xs text-ink-soft sm:hidden">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
-        </div>
-      </div>}
-      <div className="border-t border-line bg-white/95 shadow-card backdrop-blur">
-        <div className="mx-auto w-full max-w-5xl p-2 sm:p-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-none">
-              <button type="button" onClick={() => { setTool("code"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 w-full border px-3 text-sm font-bold sm:w-auto ${tool === "code" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Código</button>
-              <button type="button" onClick={() => { setTool("note"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 w-full border px-3 text-sm font-bold sm:w-auto ${tool === "note" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Notas</button>
-              <button type="button" onClick={() => { setTool("line"); setSelectedId(null); setSheetOpen(true); }} className={`min-h-11 w-full border px-3 text-sm font-bold sm:w-auto ${tool === "line" ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}>Línea</button>
-            </div>
-            <div className="flex w-full items-center gap-1 sm:w-auto">
-              <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.05).toFixed(2)))} className="min-h-11 flex-1 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted sm:flex-none">−</button>
-              <button type="button" aria-label="Restablecer zoom" title="Restablecer zoom" onClick={() => setZoom(1)} className="min-h-11 flex-1 border border-line bg-white px-2 text-center text-xs font-bold text-ink hover:bg-surface-muted sm:min-w-[3.5rem] sm:flex-none">{Math.round(zoom * 100)}%</button>
-              <button type="button" aria-label="Acercar" onClick={() => setZoom((value) => Math.min(3, +(value + 0.05).toFixed(2)))} className="min-h-11 flex-1 border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-surface-muted sm:flex-none">+</button>
-            </div>
-            <p role="status" aria-live="polite" className="hidden min-w-0 flex-1 truncate text-xs text-ink-soft sm:block">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
-            <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" className="min-h-11 w-full sm:w-auto sm:flex-none">{submitting ? "Confirmando…" : <><span className="sm:hidden">Confirmar</span><span className="hidden sm:inline">Confirmar PDF</span></>}</Button>
-          </div>
-        </div>
-      </div>
+
+  const selectTool = (nextTool: EditorTool) => {
+    setTool(nextTool);
+    setSelectedId(null);
+    setSheetOpen(true);
+  };
+
+  const renderToolButton = (nextTool: EditorTool, label: string) => (
+    <button
+      key={nextTool}
+      type="button"
+      aria-pressed={tool === nextTool}
+      onClick={() => selectTool(nextTool)}
+      className={`flex min-h-14 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-bold transition-colors lg:min-h-16 lg:flex-col ${tool === nextTool ? "border-brand-900 bg-brand-900 text-white shadow-card" : "border-line bg-white text-ink hover:bg-surface-muted"}`}
+    >
+      <EditorToolIcon tool={nextTool} />
+      <span>{label}</span>
+    </button>
+  );
+
+  const contextPanelTitle = selectedNote
+    ? "Editar nota"
+    : selected
+      ? "Editar código"
+      : selectedLine
+        ? "Editar línea"
+        : tool === "note"
+          ? "Nueva nota de texto"
+          : tool === "line"
+            ? "Nueva línea"
+            : "Nuevo código";
+
+  const contextPanel = <div className="flex h-full min-h-0 flex-col bg-white">
+    <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3">
+      <h2 className="text-base font-bold">{contextPanelTitle}</h2>
+      <button type="button" aria-label="Cerrar panel" onClick={() => { setSheetOpen(false); setSelectedId(null); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-ink hover:bg-surface-muted"><IconX /></button>
     </div>
+    <div className="min-h-0 flex-1 overflow-y-auto touch-pan-y overscroll-contain p-4">
+      {selectedNote ? <div className="grid gap-3">
+        <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={selectedNote.text} onChange={(event) => editNoteText(selectedNote.editorId, event.target.value)} rows={4} maxLength={2000} className="rounded-lg border border-line bg-white p-2" /></label>
+        <NoteFontSizePicker value={selectedNote.fontSizeRatio} onChange={(ratio) => editNoteFontSize(selectedNote.editorId, ratio)} />
+        <p className="text-xs text-ink-soft">Nota · pág. {selectedNote.page}. Arrastrá para mover; usá la esquina azul para redimensionar.</p>
+        <Button type="button" onClick={() => { changeNotes(notes.filter((note) => note.editorId !== selectedNote.editorId)); setSelectedId(null); }} variant="secondary" className="justify-self-start">Eliminar nota</Button>
+      </div> : selectedLine ? <div className="grid gap-3">
+        <LineColorPicker value={selectedLine.color} onChange={(color) => recolorLine(selectedLine.editorId, color)} />
+        <p className="text-xs text-ink-soft">Línea · pág. {selectedLine.page}. Arrastrala para moverla.</p>
+        <Button type="button" onClick={() => deleteLine(selectedLine.editorId)} variant="secondary" className="justify-self-start">Eliminar línea</Button>
+      </div> : selected ? <div className="grid gap-3">
+        {selected.entries.map((entry, index) => <div key={index} className="grid gap-2">
+          <select aria-label={`Código ${index + 1}`} value={entry.catalogId} onChange={(event) => updateEntry(selected.id, index, { catalogId: event.target.value })} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.description}</option>)}</select>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity || ""} onChange={(event) => updateEntry(selected.id, index, { quantity: Number(event.target.value) })} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
+            <Button type="button" disabled={selected.entries.length <= 1} onClick={() => removeEntry(selected.id, index)} variant="secondary" aria-label={`Quitar código ${index + 1}`}>Quitar</Button>
+          </div>
+        </div>)}
+        <Button type="button" onClick={() => addEntry(selected.id)} variant="secondary" className="justify-self-start">+ Agregar otro código</Button>
+        <label className="grid gap-1 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-bold">Color</span>
+          {CODE_COLOR_OPTIONS.map((option) => <button key={option} type="button" aria-label={`Color ${option}`} onClick={() => update(selected.id, { color: option })} className={`h-8 w-8 rounded-full border-2 ${(selected.color ?? DEFAULT_CODE_COLOR) === option ? "border-black ring-2 ring-black" : "border-line"}`} style={{ backgroundColor: option }} />)}
+        </div>
+        <div className="flex items-center justify-between gap-3"><span className="text-xs text-ink-soft">Pág. {selected.page}</span><Button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} variant="secondary">Eliminar</Button></div>
+      </div> : tool === "note" ? <div className="grid gap-3">
+        <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} rows={4} maxLength={2000} placeholder="Escribí el texto y tocá el PDF para colocarla" className="rounded-lg border border-line bg-white p-2" /></label>
+        <NoteFontSizePicker value={noteFontRatio} onChange={setNoteFontRatio} />
+        <Button type="button" onClick={() => setSheetOpen(false)} variant="primary">Agregar nota</Button>
+      </div> : tool === "line" ? <div className="grid gap-3">
+        <LineColorPicker value={lineColor} onChange={setLineColor} />
+        <p className="text-xs text-ink-soft">Elegí un color y tocá «Listo». Después arrastrá el dedo sobre el PDF para dibujar el tramo.</p>
+        <Button type="button" onClick={() => setSheetOpen(false)} variant="primary">Listo</Button>
+      </div> : <div className="grid gap-3">
+        {draftEntries.map((entry, index) => <div key={index} className="grid gap-2">
+          <select aria-label={`Código ${index + 1}`} value={entry.catalogId} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, catalogId: event.target.value } : item))} className="min-h-12 w-full min-w-0 rounded-lg border border-line bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, quantity: event.target.value } : item))} className="min-h-12 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
+            <Button type="button" disabled={draftEntries.length <= 1} onClick={() => setDraftEntries((current) => current.filter((_, i) => i !== index))} variant="secondary" aria-label={`Quitar código ${index + 1}`}>Quitar</Button>
+          </div>
+        </div>)}
+        <Button type="button" onClick={() => setDraftEntries((current) => [...current, { catalogId: catalog[0]?.id ?? "", quantity: "1" }])} variant="secondary" className="justify-self-start">+ Agregar otro código</Button>
+        <Button type="button" onClick={() => setSheetOpen(false)} variant="primary">Aplicar</Button>
+      </div>}
+      <p role="status" aria-live="polite" className="mt-4 min-h-4 text-xs text-ink-soft lg:hidden">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
+    </div>
+  </div>;
+  return <main inert={submitting} aria-busy={submitting} className={`relative bg-surface-muted text-ink ${stage === "edit" ? "min-h-dvh lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden" : "min-h-screen pb-[28rem] sm:pb-80"}`}>
+    {stage === "edit" ? <>
+      <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-white/95 px-3 py-2 backdrop-blur sm:px-5">
+        <div className="flex min-h-14 items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="hidden text-[11px] font-semibold uppercase tracking-widest text-ink-soft sm:block">Entrega del trabajo</p>
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <h1 className="truncate text-sm font-bold sm:text-lg">Marcá los códigos sobre el PDF</h1>
+              <span className="shrink-0 rounded-md border border-line bg-surface-muted px-2 py-1 text-[11px] font-bold text-ink-soft">{pageCount} {pageCount === 1 ? "página" : "páginas"}</span>
+            </div>
+          </div>
+          <div className="flex min-w-0 items-center gap-3">
+            <p role="status" aria-live="polite" className="hidden max-w-[24rem] truncate text-xs text-ink-soft md:block">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
+            <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" className="min-h-10 shrink-0 px-3 sm:px-5">{submitting ? "Confirmando…" : "Confirmar PDF"}</Button>
+          </div>
+        </div>
+      </header>
+
+      <div data-pdf-editor="workspace" className={`relative grid min-h-0 flex-1 grid-cols-1 ${sheetOpen ? "lg:grid-cols-[4.75rem_minmax(0,1fr)_19rem]" : "lg:grid-cols-[4.75rem_minmax(0,1fr)]"}`}>
+        <nav data-pdf-editor="desktop-tool-rail" aria-label="Herramientas del editor" className="hidden min-h-0 flex-col gap-2 border-r border-line bg-white p-2 lg:flex">
+          {renderToolButton("code", "Código")}
+          {renderToolButton("note", "Nota")}
+          {renderToolButton("line", "Línea")}
+        </nav>
+
+        <section aria-label="Lienzo del PDF" className={`relative min-w-0 overflow-x-auto px-2 py-3 sm:px-4 lg:min-h-0 lg:overflow-auto lg:p-5 ${sheetOpen ? "pb-[calc(35dvh_+_5.5rem)]" : "pb-28"} lg:pb-20`}>
+          <div className="grid gap-6 lg:gap-8">{sourcePages.map((sourcePage) => <PdfPage
+            key={sourcePage.page}
+            jobId={jobId}
+            page={sourcePage.page}
+            sourcePage={sourcePage}
+            zoom={zoom}
+            selectedId={selectedId}
+            placements={placements}
+            notes={notes}
+            catalog={catalog}
+            onMetadata={onMetadata}
+            onAdd={add}
+            onSelect={(id) => setSelectedId(id)}
+            onSelectNote={(id) => setSelectedId(id)}
+            onOpen={() => setSheetOpen(true)}
+            onMoveNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...movePdfTextNote(note, dx, dy), editorId: note.editorId } : note))}
+            onMoveNoteArrow={(id, x, y) => changeNotes(notes.map((note) => note.editorId === id ? { ...note, arrowTipX: x, arrowTipY: y } : note))}
+            onResizeNote={(id, dx, dy) => changeNotes(notes.map((note) => note.editorId === id ? { ...resizePdfTextNote(note, dx, dy), editorId: note.editorId } : note))}
+            tool={tool}
+            lineColor={lineColor}
+            lines={lines}
+            onCommitLine={commitLine}
+            onSelectLine={(id) => setSelectedId(id)}
+            onMoveLine={moveLine}
+            onGestureStart={beginHistoryGesture}
+            onGestureEnd={endHistoryGesture}
+            onMove={(id, requestedDx, requestedDy) => {
+              const item = placements.find((entry) => entry.id === id); if (!item) return;
+              const dx = Math.min(1 - item.x - item.width, 1 - item.arrowTipX, Math.max(-item.x, -item.arrowTipX, requestedDx));
+              const dy = Math.min(1 - item.y - item.height, 1 - item.arrowTipY, Math.max(-item.y, -item.arrowTipY, requestedDy));
+              update(id, { x: item.x + dx, y: item.y + dy, arrowTipX: item.arrowTipX + dx, arrowTipY: item.arrowTipY + dy });
+            }}
+            onMoveArrow={(id, x, y) => {
+              const placement = placements.find((item) => item.id === id); if (!placement) return;
+              const snapped = snapArrowTip(placement.page, x, y, id);
+              update(id, { arrowTipX: snapped.x, arrowTipY: snapped.y });
+            }}
+          />)}</div>
+
+          <div data-pdf-editor="floating-controls" className={`fixed left-1/2 z-30 flex -translate-x-1/2 items-center overflow-hidden rounded-xl border border-line bg-white/95 shadow-card backdrop-blur ${sheetOpen ? "bottom-[calc(35dvh_+_5.25rem)] lg:left-[calc(4.75rem_+_(100vw_-_23.75rem)/2)]" : "bottom-[5.25rem] lg:left-[calc(4.75rem_+_(100vw_-_4.75rem)/2)]"} lg:bottom-4`}>
+            <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.05).toFixed(2)))} className="flex h-11 min-w-11 items-center justify-center text-lg font-bold hover:bg-surface-muted">−</button>
+            <button type="button" aria-label="Restablecer zoom" title="Restablecer zoom" onClick={() => setZoom(1)} className="h-11 min-w-[3.75rem] border-x border-line px-2 text-xs font-bold hover:bg-surface-muted">{Math.round(zoom * 100)}%</button>
+            <button type="button" aria-label="Acercar" onClick={() => setZoom((value) => Math.min(3, +(value + 0.05).toFixed(2)))} className="flex h-11 min-w-11 items-center justify-center text-lg font-bold hover:bg-surface-muted">+</button>
+            <span aria-hidden="true" className="h-7 w-px bg-line" />
+            <button type="button" aria-label="Deshacer último cambio" disabled={undoStackRef.current.length === 0 || submitting} onClick={undo} className="flex h-11 min-w-11 items-center justify-center disabled:cursor-not-allowed disabled:text-ink-muted hover:bg-surface-muted"><HistoryIcon direction="undo" /></button>
+            <button type="button" aria-label="Rehacer último cambio" disabled={redoStackRef.current.length === 0 || submitting} onClick={redo} className="flex h-11 min-w-11 items-center justify-center disabled:cursor-not-allowed disabled:text-ink-muted hover:bg-surface-muted"><HistoryIcon direction="redo" /></button>
+          </div>
+        </section>
+
+        {sheetOpen && <aside data-pdf-editor="context-panel" aria-label={contextPanelTitle} className="fixed inset-x-0 bottom-[4.75rem] z-40 h-[35dvh] max-h-[35dvh] overflow-hidden rounded-t-2xl border-t border-line bg-white shadow-card lg:static lg:bottom-auto lg:z-auto lg:h-full lg:max-h-none lg:w-[19rem] lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none">
+          {contextPanel}
+        </aside>}
+      </div>
+
+      <nav data-pdf-editor="mobile-tool-dock" aria-label="Herramientas del editor" className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-3 gap-2 border-t border-line bg-white/95 p-2 pb-[calc(0.5rem_+_env(safe-area-inset-bottom))] shadow-card backdrop-blur lg:hidden">
+        {renderToolButton("code", "Código")}
+        {renderToolButton("note", "Nota")}
+        {renderToolButton("line", "Línea")}
+      </nav>
     </> : <>
     <div className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto overflow-x-hidden border-t border-line bg-white/95 p-3 shadow-card backdrop-blur sm:p-4"><div className="mx-auto grid w-full min-w-0 max-w-5xl gap-3">
       <h2 className="text-lg font-bold">Distribución financiera</h2>
