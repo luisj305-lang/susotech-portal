@@ -13,12 +13,12 @@ export function Topbar({
   initials: string;
 }) {
   return (
-    <header className="flex h-16 items-center justify-between border-b border-line bg-white px-4 sm:px-6">
+    <header className="flex min-h-[4rem] items-center justify-between border-b border-line bg-white px-4 py-2 sm:px-6">
       <div className="flex items-center gap-3">{menuButton}</div>
       <div className="flex items-center gap-3">
         <NotificationsBell />
         <div className="flex items-center gap-3">
-          <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-900 text-sm font-semibold text-white">
+          <div className="grid h-10 w-10 place-items-center rounded-full bg-brand-900 text-sm font-semibold text-white shadow-[var(--shadow-control)]">
             {initials}
           </div>
           <div className="hidden sm:block">

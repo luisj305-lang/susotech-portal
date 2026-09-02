@@ -62,16 +62,16 @@ export function TechnicianAppShell({
   };
 
   return (
-    <div className="flex min-h-screen bg-white">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-line lg:flex">
-        <div className="flex h-16 shrink-0 items-center px-6">
+    <div className="flex min-h-screen bg-surface-muted">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-white lg:flex">
+        <div className="flex h-14 shrink-0 items-center border-b border-line/70 px-5">
           <Image
             src="/login/susotech-logo.png"
             alt="Susotech"
-            width={120}
-            height={44}
+            width={112}
+            height={41}
             priority
-            className="h-auto w-[120px]"
+            className="h-auto w-28"
           />
         </div>
         <nav className="flex-1 space-y-1 px-3 py-4">
@@ -83,7 +83,7 @@ export function TechnicianAppShell({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
+                  "relative flex min-h-[var(--control-height)] items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium transition-colors",
                   active
                     ? "bg-brand-50 font-semibold text-brand-900"
                     : "text-ink-soft hover:bg-surface-muted hover:text-brand-900",
@@ -101,11 +101,11 @@ export function TechnicianAppShell({
             );
           })}
         </nav>
-        <div className="border-t border-line px-3 py-4">
+        <div className="border-t border-line bg-surface-muted/60 px-3 py-4">
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 text-left text-sm font-medium text-ink-soft hover:bg-surface-muted hover:text-brand-900"
+            className="flex min-h-[var(--control-height)] w-full items-center gap-3 rounded-[var(--radius-control)] border-0 bg-transparent px-3 text-left text-sm font-medium text-ink-soft transition-colors hover:bg-white hover:text-brand-900"
           >
             <IconLogout className="h-5 w-5" />
             Cerrar sesión
@@ -114,29 +114,29 @@ export function TechnicianAppShell({
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-line bg-white px-4 lg:hidden">
+      <div className="flex min-w-0 flex-1 flex-col bg-surface-muted">
+        <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b border-line bg-white/95 px-4 pt-[var(--safe-area-top)] shadow-[var(--shadow-soft)] backdrop-blur lg:hidden">
           <Image
             src="/login/susotech-logo.png"
             alt="Susotech"
-            width={80}
-            height={30}
+            width={88}
+            height={32}
             priority
-            className="h-auto w-[80px]"
+            className="h-auto w-[88px]"
           />
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-ink-soft">{userName}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="max-w-44 truncate text-sm font-medium text-ink-soft">{userName}</span>
             <button
               type="button"
               onClick={handleLogout}
-              className="flex items-center gap-2 rounded-lg border-0 bg-transparent p-2 text-sm font-medium text-ink-soft hover:bg-surface-muted hover:text-brand-900"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] border-0 bg-transparent text-sm font-medium text-ink-soft transition-colors hover:bg-surface-muted hover:text-brand-900"
             >
               <IconLogout className="h-5 w-5" />
               <span className="sr-only">Cerrar sesión</span>
             </button>
           </div>
         </header>
-        <main className="flex-1 pb-24 lg:pb-8">{children}</main>
+        <main className="flex-1 pb-[calc(4.75rem+var(--safe-area-bottom))] lg:pb-6">{children}</main>
         <MobileBottomNav />
       </div>
     </div>

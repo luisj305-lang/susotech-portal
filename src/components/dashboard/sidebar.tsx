@@ -96,7 +96,7 @@ export function Sidebar({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 shrink-0 items-center px-6">
+      <div className="flex h-[4.5rem] shrink-0 items-center border-b border-line/70 px-5">
         <Image
           src="/login/susotech-logo.png"
           alt="Susotech"
@@ -115,7 +115,7 @@ export function Sidebar({
               key={item.href}
               href={item.href}
               className={cn(
-                "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
+                "relative flex min-h-[var(--control-height)] items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium transition-colors",
                 active
                   ? "bg-brand-50 font-semibold text-brand-900"
                   : "text-ink-soft hover:bg-surface-muted hover:text-brand-900",
@@ -133,11 +133,11 @@ export function Sidebar({
           );
         })}
       </nav>
-      <div className="border-t border-line px-3 py-4">
+      <div className="border-t border-line bg-surface-muted/60 px-3 py-4">
         <button
           type="button"
           onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 text-left text-sm font-medium text-ink-soft hover:bg-surface-muted hover:text-brand-900"
+          className="flex min-h-[var(--control-height)] w-full items-center gap-3 rounded-[var(--radius-control)] border-0 bg-transparent px-3 text-left text-sm font-medium text-ink-soft hover:bg-white hover:text-brand-900"
         >
           <IconLogout className="h-5 w-5" />
           Cerrar sesión

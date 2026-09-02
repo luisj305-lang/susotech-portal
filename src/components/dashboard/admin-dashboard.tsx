@@ -112,7 +112,7 @@ export function AdminDashboard({
       roleLabel={roleLabel}
       initials={initials}
     >
-      <div className="mx-auto w-full max-w-[1600px] space-y-6 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto w-full max-w-[1600px] space-y-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
         <PageHeader
           greeting={`${computeGreeting()}, ${firstName}`}
           title="Resumen operativo de esta semana"
@@ -121,11 +121,11 @@ export function AdminDashboard({
           weekControls={weekControls}
         />
         <StatCards rows={workerOperations} invoicedCents={weeklyInvoiced.invoiced_cents} />
-        <div className="grid gap-6 xl:grid-cols-3">
+        <div className="grid gap-5 xl:grid-cols-3">
           <div className="xl:col-span-2">
             <WorkerActivityTable rows={workerOperations} />
           </div>
-          <div className="space-y-6">
+          <div className="space-y-5">
             <QuickActions role={role} />
             <PendingReview jobs={pendingReview} />
           </div>

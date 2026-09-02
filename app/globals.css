@@ -36,6 +36,29 @@
   /* Shadows */
   --shadow-soft: 0 1px 2px rgb(16 36 61 / 0.04), 0 1px 3px rgb(16 36 61 / 0.06);
   --shadow-card: 0 1px 3px rgb(16 36 61 / 0.05), 0 4px 12px rgb(16 36 61 / 0.05);
+  --shadow-card-compact: 0 1px 2px rgb(16 36 61 / 0.05), 0 6px 18px rgb(16 36 61 / 0.05);
+  --shadow-control: 0 1px 2px rgb(16 36 61 / 0.08);
+  --shadow-status: 0 1px 1px rgb(16 36 61 / 0.06);
+
+  /* Compact presentation scale */
+  --space-page: 1.25rem;
+  --space-panel: 1.25rem;
+  --space-stack: 1rem;
+  --radius-control: 0.625rem;
+  --radius-surface: 0.875rem;
+  --radius-pill: 9999px;
+  --control-height-sm: 2.25rem;
+  --control-height: 2.5rem;
+  --control-height-lg: 2.75rem;
+  --status-padding-x: 0.625rem;
+  --status-padding-y: 0.25rem;
+  --status-font-size: 0.75rem;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
 }
 
 @theme inline {
@@ -82,8 +105,8 @@
   textarea:focus,
   button:focus-visible,
   a:focus-visible {
-    outline: 2px solid var(--color-accent-500);
-    outline-offset: 2px;
+    outline: var(--focus-ring-width) solid var(--color-accent-500);
+    outline-offset: var(--focus-ring-offset);
   }
   input[type="date"]::-webkit-calendar-picker-indicator {
     filter: none;

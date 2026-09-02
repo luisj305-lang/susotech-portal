@@ -24,14 +24,14 @@ function relevantDate(job: { submitted_at: string | null; deadline_date: string 
 function OfficeJobCard({ job, showDelete }: { job: OfficeJobPreview; showDelete: boolean }) {
   const mapUrl = getJobMapUrl({ address: job.address, location: job.location, projectMapUrl: job.project_map_url });
   return (
-    <article className="rounded-2xl border border-line bg-white p-6 shadow-card">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    <article className="rounded-[var(--radius-surface)] border border-line bg-white p-5 shadow-[var(--shadow-card-compact)] sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-widest text-ink-muted">{job.prism_number ? `PRISM ${job.prism_number}` : "Sin número PRISM"}</p>
           {mapUrl ? <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mt-1 block text-xl font-bold text-ink underline">{job.address || job.location || "Sin dirección"}</a> : <h2 className="mt-1 text-xl font-bold text-ink">{job.address || job.location || "Sin dirección"}</h2>}
           <p className="mt-1 text-sm text-ink-soft">{job.job_type ?? ""}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {job.partLabel && <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink-soft">{job.partLabel}</span>}
           <StatusBadge status={job.main_status} />
         </div>
@@ -69,9 +69,9 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
 
   return (
     <AppShell role={profile.role as "admin" | "supervisor"} userName={displayName(profile)} roleLabel={roleLabel(profile.role)} initials={initials(profile)}>
-      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
         <Link href="/dashboard" className="text-sm font-medium text-accent-600 hover:text-accent-500">← Dashboard</Link>
-        <header className="flex flex-wrap items-end justify-between gap-4">
+        <header className="flex flex-wrap items-end justify-between gap-4 rounded-[var(--radius-surface)] bg-white p-5 shadow-[var(--shadow-card-compact)] sm:p-6">
           <div>
             <p className="text-sm font-semibold uppercase tracking-widest text-ink-muted">Operaciones</p>
             <h1 className="text-3xl font-bold text-ink">{filters.archived ? "Trabajos archivados" : filters.facturados ? "Trabajos facturados" : "Trabajos"}</h1>
@@ -85,15 +85,15 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
             <Link href="/trabajos/nuevo" className={buttonClasses({ variant: "secondary" })}>Creación manual</Link>
           </div>
         </header>
-        <form className="grid gap-3 rounded-2xl border border-line bg-white p-4 shadow-card sm:grid-cols-4">
+        <form className="grid gap-3 rounded-[var(--radius-surface)] border border-line bg-white p-4 shadow-[var(--shadow-card-compact)] sm:grid-cols-4">
           {filters.archived && <input type="hidden" name="archived" value="1" />}
           {filters.facturados && <input type="hidden" name="facturados" value="1" />}
-          <label className="grid gap-1 text-sm font-medium text-ink-soft sm:col-span-2">Buscar por PRISM, título o dirección<input name="q" defaultValue={filters.q} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
-          <label className="grid gap-1 text-sm font-medium text-ink-soft">Estado<select name="status" defaultValue={filters.status} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Todos</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label className="grid gap-1 text-sm font-medium text-ink-soft">Categoría<select name="category" defaultValue={filters.category} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Todas</option><option value="categoria_1">Categoría 1</option><option value="categoria_2">Categoría 2</option><option value="categoria_3">Categoría 3</option></select></label>
+          <label className="grid gap-1 text-sm font-medium text-ink-soft sm:col-span-2">Buscar por PRISM, título o dirección<input name="q" defaultValue={filters.q} className="min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">Estado<select name="status" defaultValue={filters.status} className="min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Todos</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">Categoría<select name="category" defaultValue={filters.category} className="min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Todas</option><option value="categoria_1">Categoría 1</option><option value="categoria_2">Categoría 2</option><option value="categoria_3">Categoría 3</option></select></label>
           <button className={`${buttonClasses({ variant: "primary" })} sm:col-start-4`}>Aplicar filtros</button>
         </form>
-        {groups.length ? <div className="grid gap-4 sm:grid-cols-2">{groups.map((group) => (
+        {groups.length ? <div className="grid gap-4 lg:grid-cols-2">{groups.map((group) => (
           <div key={group.root.id} className="grid content-start gap-4">
             <OfficeJobCard job={group.root} showDelete={showDelete} />
             {group.children.length > 0 && (

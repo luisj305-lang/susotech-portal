@@ -60,7 +60,7 @@ function formatShiftUntil(iso: string | null): string {
 }
 
 const inputClass =
-  "min-h-11 rounded-xl border border-line bg-white px-3 py-2 text-sm focus:border-accent-500";
+  "min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm focus:border-accent-500";
 
 export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
   const [query, setQuery] = useState("");
@@ -147,7 +147,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
             </p>
           ) : null}
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[var(--radius-control)] bg-surface-muted p-2">
           <div className="relative">
             <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
             <input
@@ -186,7 +186,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
             description="Los técnicos activos aparecerán aquí cuando sean creados y asignados."
           />
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+          <div className="flex flex-col items-center justify-center gap-3 px-5 py-12 text-center sm:px-6 sm:py-14">
             <p className="text-sm text-ink-muted">
               No hay resultados para los filtros seleccionados.
             </p>
@@ -278,7 +278,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
               {filtered.map((row) => {
                 const expanded = expandedId === row.technician_id;
                 return (
-                  <div key={row.technician_id} className="rounded-2xl border border-line p-4 shadow-soft">
+                  <div key={row.technician_id} className="rounded-[var(--radius-surface)] border border-line bg-white p-4 shadow-[var(--shadow-card-compact)]">
                     <div className="flex items-center justify-between gap-3">
                       <button
                         type="button"
@@ -354,10 +354,10 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
       </CardContent>
       {jobsModal && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-brand-950/40 p-4" onClick={() => setJobsModal(null)}>
-          <div className="w-full max-w-lg rounded-2xl border border-line bg-white p-6 text-ink shadow-card" onClick={(event) => event.stopPropagation()}>
+          <div className="w-full max-w-lg rounded-[var(--radius-surface)] border border-line bg-white p-5 text-ink shadow-card sm:p-6" onClick={(event) => event.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-lg font-bold">Trabajos de {jobsModal.technicianName}</h2>
-              <button type="button" aria-label="Cerrar" onClick={() => setJobsModal(null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line text-ink hover:bg-surface-muted"><IconX /></button>
+              <button type="button" aria-label="Cerrar" onClick={() => setJobsModal(null)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line text-ink hover:bg-surface-muted"><IconX /></button>
             </div>
             {jobsLoading ? (
               <p className="py-8 text-center text-sm text-ink-muted">Cargando…</p>
@@ -369,7 +369,7 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
               <ul className="grid max-h-[60vh] gap-2 overflow-y-auto">
                 {jobs.map((job) => (
                   <li key={job.id}>
-                    <Link href={`/trabajos/${job.id}`} onClick={() => setJobsModal(null)} className="block rounded-lg border border-line bg-surface-muted p-3 hover:bg-surface-muted/60">
+                    <Link href={`/trabajos/${job.id}`} onClick={() => setJobsModal(null)} className="block rounded-[var(--radius-control)] border border-line bg-surface-muted p-3 hover:bg-surface-muted/60">
                       <span className="flex items-center justify-between gap-3">
                         <span className="font-semibold text-ink">{job.prism_number || job.address || "Sin PRISM"}</span>
                         <StatusBadge status={job.archived_at ? "archivado" : job.main_status} />

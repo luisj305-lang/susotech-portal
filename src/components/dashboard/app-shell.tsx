@@ -22,8 +22,8 @@ export function AppShell({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-white">
-      <aside className="hidden border-r border-line lg:flex lg:w-64 lg:shrink-0 lg:flex-col">
+    <div className="flex min-h-screen bg-surface-muted">
+      <aside className="hidden border-r border-line bg-white lg:flex lg:w-64 lg:shrink-0 lg:flex-col">
         <Sidebar role={role} userName={userName} />
       </aside>
 
@@ -34,12 +34,12 @@ export function AppShell({
             onClick={() => setOpen(false)}
             aria-hidden="true"
           />
-          <aside className="fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl">
+          <aside className="fixed inset-y-0 left-0 z-50 flex w-[min(19rem,calc(100vw-var(--safe-area-right)))] flex-col bg-white pb-[var(--safe-area-bottom)] pt-[var(--safe-area-top)] shadow-2xl">
             <button
               type="button"
               aria-label="Cerrar menú"
               onClick={() => setOpen(false)}
-              className="absolute right-3 top-4 z-10 rounded-lg border-0 bg-transparent p-2 text-ink-soft hover:bg-surface-muted"
+              className="absolute right-3 top-[calc(var(--safe-area-top)+0.75rem)] z-10 flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border-0 bg-transparent text-ink-soft hover:bg-surface-muted"
             >
               <IconX className="h-5 w-5" />
             </button>
@@ -48,7 +48,7 @@ export function AppShell({
         </>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col bg-surface-muted">
         <Topbar
           userName={userName}
           roleLabel={roleLabel}
@@ -58,7 +58,7 @@ export function AppShell({
               type="button"
               aria-label="Abrir menú"
               onClick={() => setOpen(true)}
-              className="rounded-lg border-0 bg-transparent p-2 text-ink-soft hover:bg-surface-muted lg:hidden"
+              className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border-0 bg-transparent text-ink-soft hover:bg-surface-muted lg:hidden"
             >
               <IconMenu className="h-5 w-5" />
             </button>

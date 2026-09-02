@@ -2,7 +2,10 @@ import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 export function cardClasses(className?: string): string {
-  return cn("rounded-2xl border border-line bg-white shadow-soft", className);
+  return cn(
+    "rounded-[var(--radius-surface)] border border-line bg-white shadow-[var(--shadow-card-compact)]",
+    className,
+  );
 }
 
 export function Card({
@@ -16,7 +19,7 @@ export function CardHeader({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("px-6 pt-6", className)} {...props} />;
+  return <div className={cn("px-5 pt-5 sm:px-6 sm:pt-6", className)} {...props} />;
 }
 
 export function CardTitle({
@@ -37,12 +40,12 @@ export function CardContent({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-6", className)} {...props} />;
+  return <div className={cn("p-5 sm:p-6", className)} {...props} />;
 }
 
 export function CardFooter({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("px-6 pb-6 pt-2", className)} {...props} />;
+  return <div className={cn("px-5 pb-5 pt-2 sm:px-6 sm:pb-6", className)} {...props} />;
 }

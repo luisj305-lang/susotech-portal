@@ -17,7 +17,7 @@ const pdfStatusLabels: Record<string, string> = {
 };
 
 const smallPrimary =
-  "inline-flex items-center justify-center rounded-xl border border-brand-900 bg-brand-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-950";
+  "inline-flex min-h-[var(--control-height-sm)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-brand-900 px-3 text-xs font-semibold text-white shadow-[var(--shadow-control)] transition-colors hover:bg-brand-950";
 
 export function PendingReview({ jobs }: { jobs: OfficeJobPreview[] }) {
   const visible = jobs.slice(0, 8);
@@ -25,7 +25,7 @@ export function PendingReview({ jobs }: { jobs: OfficeJobPreview[] }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
           <CardTitle>Pendientes de revisión</CardTitle>
           <Link
             href="/trabajos?status=en_revision"
@@ -43,11 +43,11 @@ export function PendingReview({ jobs }: { jobs: OfficeJobPreview[] }) {
             description="Los trabajos enviados por los técnicos aparecerán aquí."
           />
         ) : (
-          <div className="divide-y divide-line px-6">
+          <div className="divide-y divide-line px-5 sm:px-6">
             {visible.map((job) => (
               <div
                 key={job.id}
-                className="flex flex-wrap items-center gap-3 py-3"
+                className="flex flex-wrap items-center gap-3 py-3.5"
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">

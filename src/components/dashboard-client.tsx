@@ -18,20 +18,12 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
   const pendingAmount = weeklyFinancial.filter((line) => line.billing_state === "pending").reduce((sum, line) => sum + Number(line.allocated_cents), 0) / 100;
 
   return (
-    <main style={{ minHeight: "100vh", padding: "40px" }}>
-      <h1
-        style={{
-          fontSize: "32px",
-          fontWeight: "bold",
-          marginBottom: "10px",
-        }}
-      >
-        SUSOTECH
-      </h1>
-
-      <h2 style={{ fontSize: "24px", marginBottom: "30px" }}>Dashboard</h2>
-
-      <div style={{ marginBottom: "30px" }}>
+    <main className="min-h-screen bg-surface-muted px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[1200px] space-y-5">
+        <header className="rounded-[var(--radius-surface)] border border-line bg-white p-5 shadow-[var(--shadow-card-compact)] sm:p-6">
+          <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">SUSOTECH</h1>
+          <h2 className="mt-1 text-lg font-semibold text-ink-soft">Dashboard</h2>
+          <div className="mt-5 grid gap-1 text-sm text-ink-soft">
         {profile.full_name && <p>{profile.full_name}</p>}
         <p>{profile.email}</p>
         <p>
@@ -40,24 +32,14 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
         {profile.role === "tecnico" && profile.worker_specialty && <p>
           Especialidad: <strong>{WORKER_SPECIALTY_LABELS[profile.worker_specialty]}</strong>
         </p>}
-      </div>
+          </div>
+        </header>
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "12px",
-          marginBottom: "30px",
-        }}
-      >
+        <nav aria-label="Acciones del dashboard" className="flex flex-wrap gap-2 rounded-[var(--radius-surface)] border border-line bg-white p-4 shadow-[var(--shadow-card-compact)]">
         {canCreateJobs && (
           <Link
             href="/trabajos/nuevo"
-            style={{
-              padding: "12px 20px",
-              border: "1px solid currentColor",
-              textDecoration: "none",
-            }}
+            className="inline-flex min-h-[var(--control-height)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-brand-900 px-4 text-sm font-semibold text-white shadow-[var(--shadow-control)] hover:bg-brand-950"
           >
             + Nuevo trabajo
           </Link>
@@ -65,22 +47,14 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
 
         <Link
           href="/trabajos"
-          style={{
-            padding: "12px 20px",
-            border: "1px solid currentColor",
-            textDecoration: "none",
-          }}
+          className="inline-flex min-h-[var(--control-height)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-white px-4 text-sm font-semibold text-brand-900 hover:bg-brand-50"
         >
           Ver trabajos
         </Link>
 
         <Link
           href="/manual"
-          style={{
-            padding: "12px 20px",
-            border: "1px solid currentColor",
-            textDecoration: "none",
-          }}
+          className="inline-flex min-h-[var(--control-height)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-white px-4 text-sm font-semibold text-brand-900 hover:bg-brand-50"
         >
           Trabajo manual
         </Link>
@@ -88,65 +62,58 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
         {profile.role === "tecnico" && (
           <Link
             href="/camiones/mi-camion"
-            style={{
-              padding: "12px 20px",
-              border: "1px solid currentColor",
-              textDecoration: "none",
-            }}
+            className="inline-flex min-h-[var(--control-height)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-white px-4 text-sm font-semibold text-brand-900 hover:bg-brand-50"
           >
             Mi camión
           </Link>
         )}
 
-        {canCreateJobs && <Link href="/produccion" style={{ padding: "12px 20px", border: "1px solid currentColor", textDecoration: "none" }}>Producción</Link>}
+        {canCreateJobs && <Link href="/produccion" className="inline-flex min-h-[var(--control-height)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-white px-4 text-sm font-semibold text-brand-900 hover:bg-brand-50">Producción</Link>}
 
-        {canCreateJobs && <Link href="/catalogo" style={{ padding: "12px 20px", border: "1px solid currentColor", textDecoration: "none" }}>Catálogo y tarifas</Link>}
+        {canCreateJobs && <Link href="/catalogo" className="inline-flex min-h-[var(--control-height)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-white px-4 text-sm font-semibold text-brand-900 hover:bg-brand-50">Catálogo y tarifas</Link>}
 
         {canCreateJobs && (
           <Link
             href="/usuarios"
-            style={{
-              padding: "12px 20px",
-              border: "1px solid currentColor",
-              textDecoration: "none",
-            }}
+            className="inline-flex min-h-[var(--control-height)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-white px-4 text-sm font-semibold text-brand-900 hover:bg-brand-50"
           >
             {profile.role === "admin" ? "Administrar usuarios" : "Consultar usuarios"}
           </Link>
         )}
-      </div>
-
-      {profile.role === "tecnico" && <section style={{ border: "1px solid currentColor", padding: "20px", marginBottom: "30px" }}>
-        <h2 style={{ fontSize: "20px", fontWeight: "bold" }}>Producción semanal</h2>
-        <nav aria-label="Navegación de semana" style={{ margin: "12px 0", fontSize: "14px" }}>
-          <Link href={`/dashboard?week=${weekOffset - 1}`} style={{ marginRight: "12px", textDecoration: "underline" }}>← Semana anterior</Link>
-          {weekOffset !== 0 ? <Link href="/dashboard" style={{ textDecoration: "underline" }}>Semana actual</Link> : null}
         </nav>
-        <p>{weeklyProduction[0] ? `${weeklyProduction[0].week_start} — ${weeklyProduction[0].week_end}` : "Viernes — jueves"}</p>
-        <p style={{ marginTop: "12px" }}>Confirmado: <strong>${confirmed.toFixed(2)}</strong></p>
-        <p>Pendiente: <strong>${pendingAmount.toFixed(2)}</strong></p>
-        <p style={{ marginTop: "8px" }}>{weeklyProduction.length} línea(s) operativas · {weeklyFinancial.length} distribución(es) financieras</p>
-        {weeklyFinancial.length > 0 && <div style={{ marginTop: "16px", overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "520px" }}>
-            <thead><tr><th style={{ padding: "8px", textAlign: "left" }}>Fecha</th><th style={{ padding: "8px", textAlign: "left" }}>PRISM</th><th style={{ padding: "8px", textAlign: "right" }}>Porcentaje</th><th style={{ padding: "8px", textAlign: "right" }}>Monto</th><th style={{ padding: "8px", textAlign: "left" }}>Estado</th></tr></thead>
-            <tbody>{weeklyFinancial.map((line) => <tr key={`${line.delivery_id}-${line.job_id}`} style={{ borderTop: "1px solid currentColor" }}>
-              <td style={{ padding: "8px" }}>{line.allocation_date}</td>
-              <td style={{ padding: "8px" }}>{line.prism_number ?? "—"}</td>
-              <td style={{ padding: "8px", textAlign: "right" }}>{(Number(line.percentage_basis_points) / 100).toFixed(2)}%</td>
-              <td style={{ padding: "8px", textAlign: "right" }}>${(Number(line.allocated_cents) / 100).toFixed(2)}</td>
-              <td style={{ padding: "8px" }}>{line.billing_state === "confirmed" ? "Confirmado" : "Pendiente"}</td>
+
+        {profile.role === "tecnico" && <section className="rounded-[var(--radius-surface)] border border-line bg-white p-5 shadow-[var(--shadow-card-compact)] sm:p-6">
+          <h2 className="text-xl font-bold text-ink">Producción semanal</h2>
+          <nav aria-label="Navegación de semana" className="mt-3 flex flex-wrap gap-3 text-sm font-medium text-accent-600">
+            <Link href={`/dashboard?week=${weekOffset - 1}`} className="hover:text-accent-500 hover:underline">← Semana anterior</Link>
+            {weekOffset !== 0 ? <Link href="/dashboard" className="hover:text-accent-500 hover:underline">Semana actual</Link> : null}
+          </nav>
+          <p className="mt-3 text-sm text-ink-soft">{weeklyProduction[0] ? `${weeklyProduction[0].week_start} — ${weeklyProduction[0].week_end}` : "Viernes — jueves"}</p>
+          <div className="mt-4 grid gap-1 text-sm text-ink-soft sm:grid-cols-2">
+            <p>Confirmado: <strong className="text-ink">${confirmed.toFixed(2)}</strong></p>
+            <p>Pendiente: <strong className="text-ink">${pendingAmount.toFixed(2)}</strong></p>
+          </div>
+          <p className="mt-2 text-sm text-ink-muted">{weeklyProduction.length} línea(s) operativas · {weeklyFinancial.length} distribución(es) financieras</p>
+          {weeklyFinancial.length > 0 && <div className="mt-4 overflow-x-auto rounded-[var(--radius-control)] border border-line">
+            <table className="w-full min-w-[520px] border-collapse text-sm">
+              <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-ink-muted"><tr><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">PRISM</th><th className="px-3 py-2 text-right">Porcentaje</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2">Estado</th></tr></thead>
+              <tbody>{weeklyFinancial.map((line) => <tr key={`${line.delivery_id}-${line.job_id}`} className="border-t border-line">
+                <td className="px-3 py-2">{line.allocation_date}</td>
+                <td className="px-3 py-2">{line.prism_number ?? "—"}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{(Number(line.percentage_basis_points) / 100).toFixed(2)}%</td>
+                <td className="px-3 py-2 text-right tabular-nums">${(Number(line.allocated_cents) / 100).toFixed(2)}</td>
+                <td className="px-3 py-2">{line.billing_state === "confirmed" ? "Confirmado" : "Pendiente"}</td>
             </tr>)}</tbody>
           </table>
-        </div>}
-      </section>}
+          </div>}
+        </section>}
 
-      {profile.role !== "tecnico" && <WorkerOperationsTable rows={workerOperations} />}
+        {profile.role !== "tecnico" && <WorkerOperationsTable rows={workerOperations} />}
 
-      <p style={{ marginBottom: "30px" }}>
-        Consulta y administra los trabajos disponibles según tu rol.
-      </p>
+        <p className="text-sm text-ink-soft">Consulta y administra los trabajos disponibles según tu rol.</p>
 
-      <LogoutButton />
+        <LogoutButton />
+      </div>
     </main>
   );
 }

@@ -41,14 +41,14 @@ export function StatusBadge({
 
   return (
     <span
-      className={className}
+      className={cn("shadow-[var(--shadow-status)]", className)}
       style={{
         display: "inline-flex",
         alignItems: "center",
         gap: "0.375rem",
-        borderRadius: "9999px",
-        padding: "0.25rem 0.625rem",
-        fontSize: "0.75rem",
+        borderRadius: "var(--radius-pill)",
+        padding: "var(--status-padding-y) var(--status-padding-x)",
+        fontSize: "var(--status-font-size)",
         fontWeight: 600,
         lineHeight: 1,
         backgroundColor: meta.bg,
@@ -69,3 +69,4 @@ export function StatusBadge({
     </span>
   );
 }
+import { cn } from "@/lib/utils";

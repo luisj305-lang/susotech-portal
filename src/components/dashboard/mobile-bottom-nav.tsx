@@ -33,7 +33,7 @@ export function MobileBottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] shadow-[var(--shadow-soft)] backdrop-blur lg:hidden"
       aria-label="Navegación principal"
     >
       <div className="grid grid-cols-6">
@@ -47,12 +47,14 @@ export function MobileBottomNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 py-2.5",
-                active ? "text-brand-900" : "text-ink-muted",
+                "flex min-h-[3.75rem] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-center transition-colors",
+                active
+                  ? "bg-brand-50/80 text-brand-900"
+                  : "text-ink-muted hover:bg-surface-muted hover:text-ink-soft",
               )}
             >
-              <Icon className="h-6 w-6" />
-              <span className="text-[11px] font-medium">{item.label}</span>
+              <Icon className="h-5 w-5 shrink-0" />
+              <span className="text-[10px] font-semibold leading-tight">{item.label}</span>
             </Link>
           );
         })}
