@@ -9,6 +9,7 @@ import {
   IconBriefcase,
   IconCamera,
   IconDashboard,
+  IconRoute,
   type IconProps,
 } from "@/components/ui/icons";
 
@@ -21,6 +22,7 @@ type NavItem = {
 const ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Inicio", icon: IconDashboard },
   { href: "/trabajos", label: "Mis trabajos", icon: IconBriefcase },
+  { href: "/trabajos/mi-ruta", label: "Mi ruta", icon: IconRoute },
   { href: "#evidencias", label: "Evidencias", icon: IconCamera },
   { href: "/jornada/iniciar", label: "Jornada", icon: IconActivity },
   { href: "/manual", label: "Trabajo manual", icon: IconActivity },
@@ -34,11 +36,11 @@ export function MobileBottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white pb-[env(safe-area-inset-bottom)] lg:hidden"
       aria-label="Navegación principal"
     >
-      <div className="grid grid-cols-5">
+      <div className="grid grid-cols-6">
         {ITEMS.map((item) => {
           const active =
             item.href === pathname ||
-            (item.href === "/trabajos" && pathname.startsWith("/trabajos"));
+            (item.href === "/trabajos" && pathname.startsWith("/trabajos") && !pathname.startsWith("/trabajos/mi-ruta"));
           const Icon = item.icon;
           return (
             <Link

@@ -1,8 +1,9 @@
 import "server-only";
 
-import { computeOptimizedRoundTripCore, geocodeAddressCore } from "./google-maps-core";
+import { computeOptimizedRouteLatLngCore, computeOptimizedRoundTripCore, geocodeAddressCore } from "./google-maps-core";
+import type { LatLngWaypoint } from "./google-maps-core";
 
-function serverApiKey() {
+export function serverApiKey() {
   return process.env.GOOGLE_MAPS_SERVER_API_KEY?.trim() ?? "";
 }
 
@@ -16,4 +17,14 @@ export async function computeOptimizedRoundTrip(originPlaceId: string, intermedi
   const key = serverApiKey();
   if (!key) return null;
   return computeOptimizedRoundTripCore(originPlaceId, intermediatePlaceIds, key);
+}
+
+export async function computeTechnicianRoute(
+  origin: LatLngWaypoint,
+  destination: LatLngWaypoint,
+  intermediates: LatLngWaypoint[],
+) {
+  const key = serverApiKey();
+  if (!key) return null;
+  return computeOptimizedRouteLatLngCore(origin, destination, intermediates, key);
 }

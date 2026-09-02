@@ -8,6 +8,22 @@ export type OptimizedRoute = {
   duration: string;
 };
 
+export type LatLngWaypoint = {
+  latitude: number;
+  longitude: number;
+};
+
+function isValidLatLng(waypoint: LatLngWaypoint): boolean {
+  return (
+    Number.isFinite(waypoint.latitude)
+    && Number.isFinite(waypoint.longitude)
+    && waypoint.latitude >= -90
+    && waypoint.latitude <= 90
+    && waypoint.longitude >= -180
+    && waypoint.longitude <= 180
+  );
+}
+
 async function requestJson(
   fetchImpl: typeof fetch,
   url: string,
@@ -82,6 +98,61 @@ export async function computeOptimizedRoundTripCore(
     ? route.optimizedIntermediateWaypointIndex.map(Number)
     : [];
   if (indexes.length !== intermediatePlaceIds.length || indexes.some((index) => !Number.isInteger(index) || index < 0 || index >= intermediatePlaceIds.length)) return null;
+  return {
+    optimizedIntermediateWaypointIndex: indexes,
+    distanceMeters: Number(route.distanceMeters),
+    duration: route.duration,
+  };
+}
+
+/**
+ * Optimized round-trip over raw latitude/longitude waypoints (no Place ID),
+ * used by the technician GPS route. Same field mask, `requestJson`, and
+ * `optimizedIntermediateWaypointIndex` validation as
+ * `computeOptimizedRoundTripCore`, but origin/destination/intermediates are
+ * `location.latLng` objects instead of Place IDs.
+ */
+export async function computeOptimizedRouteLatLngCore(
+  origin: LatLngWaypoint,
+  destination: LatLngWaypoint,
+  intermediates: LatLngWaypoint[],
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 12_000,
+): Promise<OptimizedRoute | null> {
+  if (
+    !apiKey
+    || !isValidLatLng(origin)
+    || !isValidLatLng(destination)
+    || intermediates.length < 1
+    || intermediates.length > 25
+    || intermediates.some((waypoint) => !isValidLatLng(waypoint))
+  ) return null;
+
+  const response = await requestJson(fetchImpl, "https://routes.googleapis.com/directions/v2:computeRoutes", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "routes.optimizedIntermediateWaypointIndex,routes.distanceMeters,routes.duration",
+    },
+    body: JSON.stringify({
+      origin: { location: { latLng: { latitude: origin.latitude, longitude: origin.longitude } } },
+      destination: { location: { latLng: { latitude: destination.latitude, longitude: destination.longitude } } },
+      intermediates: intermediates.map((waypoint) => ({
+        location: { latLng: { latitude: waypoint.latitude, longitude: waypoint.longitude } },
+      })),
+      travelMode: "DRIVE",
+      optimizeWaypointOrder: true,
+    }),
+  }, timeoutMs);
+  if (!response.ok) return null;
+  const route = (response.json as { routes?: Array<Record<string, unknown>> } | null)?.routes?.[0];
+  if (!route || !Number.isFinite(Number(route.distanceMeters)) || typeof route.duration !== "string") return null;
+  const indexes = Array.isArray(route.optimizedIntermediateWaypointIndex)
+    ? route.optimizedIntermediateWaypointIndex.map(Number)
+    : [];
+  if (indexes.length !== intermediates.length || indexes.some((index) => !Number.isInteger(index) || index < 0 || index >= intermediates.length)) return null;
   return {
     optimizedIntermediateWaypointIndex: indexes,
     distanceMeters: Number(route.distanceMeters),

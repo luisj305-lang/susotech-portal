@@ -68,6 +68,9 @@ export interface Job {
   created_at: string;
   updated_at: string;
   parent_job_id: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  coordinates_geocoded_at?: string | null;
   partLabel?: string | null;
 }
 

@@ -12,6 +12,7 @@ import {
   IconCamera,
   IconDashboard,
   IconLogout,
+  IconRoute,
   type IconProps,
 } from "@/components/ui/icons";
 import { MobileBottomNav } from "./mobile-bottom-nav";
@@ -25,6 +26,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Inicio", icon: IconDashboard },
   { href: "/trabajos", label: "Mis trabajos", icon: IconBriefcase },
+  { href: "/trabajos/mi-ruta", label: "Mi ruta", icon: IconRoute },
   { href: "#evidencias", label: "Evidencias", icon: IconCamera },
   { href: "/jornada/iniciar", label: "Jornada", icon: IconActivity },
   { href: "/manual", label: "Trabajo manual", icon: IconActivity },
@@ -32,7 +34,7 @@ const NAV_ITEMS: NavItem[] = [
 
 function isActive(href: string, pathname: string): boolean {
   if (href === "/trabajos") {
-    return pathname === "/trabajos" || pathname.startsWith("/trabajos");
+    return pathname === "/trabajos" || (pathname.startsWith("/trabajos") && !pathname.startsWith("/trabajos/mi-ruta"));
   }
   return pathname === href;
 }
