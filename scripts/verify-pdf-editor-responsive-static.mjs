@@ -37,6 +37,27 @@ assert.match(value(panel, "className"), /lg:h-full lg:max-h-none lg:w-\[19rem\]/
 assert.match(editor, /flex h-dvh min-h-0 flex-col overflow-hidden/u, "the workspace must follow dynamic viewport height");
 for (const edge of ["top", "bottom", "left", "right"]) assert.ok(editor.includes(`env(safe-area-inset-${edge})`), `missing ${edge} safe area`);
 
+const feedback = region("status-feedback");
+const header = feedback.parent;
+assert.ok(ts.isJsxElement(header) && header.openingElement.tagName.getText(source) === "header", "feedback must be an unconditional header child");
+assert.equal(header.parent, region("workspace").parent, "feedback must live outside the conditional options panel");
+assert.ok(ts.isConditionalExpression(header.parent.parent));
+assert.equal(header.parent.parent.condition.getText(source), 'stage === "edit"', "feedback visibility depends only on the editing stage, not sheetOpen");
+assert.equal(value(feedback, "role"), '"status"');
+assert.equal(value(feedback, "aria-live"), '"polite"');
+assert.equal(value(feedback, "aria-atomic"), '"true"');
+for (const element of [feedback, header]) {
+  assert.ok(ts.isStringLiteral(attribute(element, "className")), "feedback visibility must not depend on state");
+  assert.doesNotMatch(value(element, "className"), /sr-only|hidden|invisible|truncate|line-clamp|overflow-|max-h-|h-0|text-transparent|opacity-0/u, "feedback must stay visible and unclipped at every breakpoint");
+}
+assert.match(value(feedback, "className"), /whitespace-pre-wrap break-words/u, "long or multiline messages must remain readable without truncation");
+assert.match(value(feedback, "className"), /text-xs leading-4/u, "short feedback should occupy just one compact line");
+const statusRegions = elements.filter((item) => value(item, "role") === '"status"');
+assert.equal(statusRegions.length, 2, "keep exactly one status announcement per mutually exclusive edit/allocation stage");
+for (const status of statusRegions) {
+  assert.deepEqual(status.children.filter(ts.isJsxExpression).map((item) => item.expression?.getText(source)), ["statusMessage"], "all feedback must display the shared message without classifying or filtering errors");
+}
+
 const toggle = elements.find((item) => value(item, "aria-controls") === '"pdf-context-panel"');
 assert.ok(toggle, "a persistent options toggle is required");
 assert.equal(toggle.parent, toolbar, "options must remain reachable even with the panel unmounted");

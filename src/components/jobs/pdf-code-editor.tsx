@@ -760,6 +760,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     </button>
   );
 
+  const statusMessage = message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`);
   const contextPanelTitle = selectedNote
     ? "Editar nota"
     : selected
@@ -821,7 +822,6 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
           <Button type="button" onClick={collapsePanel} variant="primary" className="px-3">Aplicar</Button>
         </div>
       </div>}
-      <p role="status" aria-live="polite" className="mt-4 min-h-4 text-xs text-ink-soft lg:hidden">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
     </div>
   </div>;
   return <main inert={submitting} aria-busy={submitting} className={`relative bg-surface-muted text-ink ${stage === "edit" ? "flex h-dvh min-h-0 flex-col overflow-hidden pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]" : "min-h-screen pb-[28rem] sm:pb-80"}`}>
@@ -836,10 +836,10 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
             </div>
           </div>
           <div className="flex min-w-0 items-center gap-3">
-            <p role="status" aria-live="polite" className="sr-only lg:not-sr-only lg:max-w-[24rem] lg:truncate lg:text-xs lg:text-ink-soft">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
             <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" size="sm" className="shrink-0 text-xs [--control-height-sm:2.75rem] sm:text-sm">{submitting ? "Confirmando…" : "Confirmar PDF"}</Button>
           </div>
         </div>
+        <p data-pdf-editor="status-feedback" role="status" aria-live="polite" aria-atomic="true" className="min-h-4 whitespace-pre-wrap break-words text-xs leading-4 text-ink-soft">{statusMessage}</p>
       </header>
 
       <div data-pdf-editor="workspace" className={`relative grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_auto] lg:grid-rows-1 ${sheetOpen ? "lg:grid-cols-[4.75rem_minmax(0,1fr)_19rem]" : "lg:grid-cols-[4.75rem_minmax(0,1fr)]"}`}>
@@ -943,7 +943,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
       </details>
       {!priceCategoryName && <p role="alert" className="border border-line bg-white p-2 text-sm font-bold text-ink">Tu categoría de precio no está configurada. Contacta a un administrador antes de entregar.</p>}
       {hasUnratedPlacement && <p role="alert" className="border border-line bg-white p-2 text-sm font-bold text-ink">El borrador contiene un código sin tarifa configurada para tu categoría.</p>}
-      <p role="status" aria-live="polite" className="min-h-5 text-sm">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
+      <p role="status" aria-live="polite" className="min-h-5 text-sm">{statusMessage}</p>
       <div className="grid gap-2 sm:grid-cols-2"><Button type="button" disabled={submitting} onClick={() => setStage("edit")} variant="secondary">Volver a editar el PDF</Button><Button type="button" disabled={submitting || !priceCategoryName || hasUnratedPlacement} onClick={() => void confirm()} variant="primary">{submitting ? "Enviando…" : "Entregar trabajo"}</Button></div>
     </div></div>
     </>}
