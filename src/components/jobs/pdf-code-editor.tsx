@@ -343,7 +343,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const [stage, setStage] = useState<"edit" | "allocation">("edit");
   const [noteText, setNoteText] = useState("");
   const [noteFontRatio, setNoteFontRatio] = useState(NOTE_FONT_RATIO);
-  const [lineColor, setLineColor] = useState(DEFAULT_CODE_COLOR);
+  const [lineColor, setLineColor] = useState("#000000");
   const [draftEntries, setDraftEntries] = useState<Array<{ catalogId: string; quantity: string }>>([{ catalogId: catalog[0]?.id ?? "", quantity: "1" }]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);

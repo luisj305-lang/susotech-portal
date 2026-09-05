@@ -11,6 +11,8 @@ import { confirmPhotoEvidence } from "@/lib/storage/core";
 import { createClient } from "@/lib/supabase/server";
 import { canTransition, INCIDENT_TYPES } from "./state";
 import { cleanupJobDeletionQueue, type JobDeletionCleanupRow } from "./deletion-core";
+import { enrichJobCoordinates } from "./geocoding";
+import { cleanWorkTypes } from "./work-types";
 import { validatePlacements, type PdfCodePlacement } from "./pdf-code-editor-core";
 import type { AssigneeType, IncidentType, JobCategory, JobStatus } from "./types";
 import {
@@ -33,6 +35,7 @@ type JobInput = {
   customerName?: string | null;
   requestDate?: string | null;
   jobType?: string | null;
+  workTypes?: string[] | null;
   description?: string | null;
   specialInstructions?: string | null;
   requiredMaterial?: string | null;
@@ -97,6 +100,9 @@ function jobPayload(input: JobInput): Record<string, unknown> {
   for (const [key, value] of Object.entries(textFields)) {
     if (value !== undefined) payload[key] = cleanText(value, key);
   }
+  if (input.workTypes !== undefined) {
+    payload.work_types = cleanWorkTypes(input.workTypes);
+  }
   for (const [key, value] of [["assignment_date", input.assignmentDate], ["deadline_date", input.deadlineDate]] as const) {
     if (value !== undefined) {
       if (value !== null && (typeof value !== "string" || Number.isNaN(Date.parse(value)))) throw new Error("La fecha no es válida.");
@@ -117,6 +123,18 @@ function jobPayload(input: JobInput): Record<string, unknown> {
 function refresh(jobId?: string) {
   revalidatePath("/trabajos");
   if (jobId) revalidatePath(`/trabajos/${jobId}`);
+}
+
+async function enrichCoordinatesBestEffort(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  jobId: string,
+  input: { address?: string | null; location?: string | null },
+) {
+  try {
+    await enrichJobCoordinates(supabase, jobId, input);
+  } catch {
+    // Free geocoding is best-effort: it never blocks job create/update.
+  }
 }
 
 const CREW_RETIREMENT_MESSAGE = "La administración de equipos fue retirada. Usa asignación individual.";
@@ -158,6 +176,7 @@ export async function createJob(input: JobInput): Promise<Result<{ id: string }>
     const { data, error } = await supabase.from("jobs").insert(jobPayload(input)).select("id").single();
     if (error || !data) return failure("No se pudo crear el trabajo.");
     refresh(data.id);
+    await enrichCoordinatesBestEffort(supabase, data.id, { address: input.address, location: input.location });
     return { success: true, message: "Trabajo creado.", data };
   } catch (error) {
     return failure(error instanceof Error ? error.message : "Datos inválidos.");
@@ -173,6 +192,9 @@ export async function updateJob(input: JobInput & { jobId: string }): Promise<Re
     const supabase = await createClient();
     const { error } = await supabase.from("jobs").update(payload).eq("id", input.jobId).select("id").single();
     if (error) return failure("No se pudo actualizar el trabajo.");
+    if (payload.address !== undefined || payload.location !== undefined) {
+      await enrichCoordinatesBestEffort(supabase, input.jobId, { address: input.address, location: input.location });
+    }
     refresh(input.jobId);
     return { success: true, message: "Trabajo actualizado.", data: null };
   } catch (error) {

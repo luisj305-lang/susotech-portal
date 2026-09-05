@@ -1,6 +1,11 @@
 import Link from "next/link";
 import type { Job } from "@/lib/jobs/types";
+import { workTypeLabels } from "@/lib/jobs/work-types";
 import { StatusBadge } from "@/components/ui/status-badge";
+
+function technicianStatus(status: Job["main_status"]): Job["main_status"] {
+  return status === "facturado" || status === "pagado" ? "aprobado" : status;
+}
 
 const dateFormatter = new Intl.DateTimeFormat("es-MX", {
   dateStyle: "medium",
@@ -10,16 +15,17 @@ const dateFormatter = new Intl.DateTimeFormat("es-MX", {
 export function JobHeader({
   job,
   mapUrl,
+  assignedAt,
 }: {
   job: Job;
   mapUrl: string | null;
+  assignedAt?: string | null;
 }) {
   const heading = job.prism_number ? `PRISM-${job.prism_number}` : job.address || job.location || "Sin dirección";
   const subtitle = job.prism_number ? job.address || job.location : null;
-  const relevantDate = job.submitted_at ?? job.deadline_date ?? job.assignment_date ?? job.updated_at;
   const tags: string[] = [
     job.category.replace("categoria_", "Categoría "),
-    job.job_type,
+    ...workTypeLabels(job),
     job.customer_name,
   ].filter((value): value is string => Boolean(value));
 
@@ -32,10 +38,10 @@ export function JobHeader({
         ← Volver a mis trabajos
       </Link>
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <StatusBadge status={job.main_status} />
-        {relevantDate ? (
+        <StatusBadge status={technicianStatus(job.main_status)} />
+        {assignedAt ? (
           <span className="text-sm text-ink-muted">
-            {dateFormatter.format(new Date(relevantDate))}
+            Asignado el {dateFormatter.format(new Date(assignedAt))}
           </span>
         ) : null}
       </div>

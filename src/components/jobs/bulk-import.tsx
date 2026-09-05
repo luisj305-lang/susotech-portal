@@ -14,6 +14,7 @@ import {
 import { AssigneeSelect } from "./assignee-select";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { FilterToggleChip } from "@/components/ui/filter-toggle-chip";
 
 const stateLabels: Record<ImportState, string> = {
   pending: "Pendiente", processing: "Procesando", imported: "Importado",
@@ -225,7 +226,13 @@ export function BulkImport({ options }: { options: AssigneeOption[] }) {
     {rows.length > 0 && <section className="rounded-2xl border border-line bg-white p-6 shadow-card">
       <div className="grid gap-3 lg:grid-cols-[2fr_1fr_2fr_auto]">
         <label className="grid gap-1 text-sm font-medium text-ink-soft">Buscar<input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Archivo, orden o dirección" className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
-        <label className="grid gap-1 text-sm font-medium text-ink-soft">Estado<select value={stateFilter} onChange={(event) => { setStateFilter(event.target.value as ImportState | "all"); setPage(1); }} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="all">Todos</option>{Object.entries(stateLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <div className="grid content-start gap-1 text-sm font-medium text-ink-soft">
+          <span>Estado</span>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por estado">
+            <FilterToggleChip label="Todos" active={stateFilter === "all"} onClick={() => { setStateFilter("all"); setPage(1); }} />
+            {Object.entries(stateLabels).map(([value, label]) => <FilterToggleChip key={value} label={label} active={stateFilter === value} onClick={() => { setStateFilter(value as ImportState); setPage(1); }} />)}
+          </div>
+        </div>
         <label className="grid gap-1 text-sm font-medium text-ink-soft">Asignación masiva<AssigneeSelect options={options} value={bulkAssignee} onChange={setBulkAssignee} /></label>
         <Button type="button" onClick={applyBulkAssignee} disabled={!selectedAssignable} className="self-end" variant="secondary" size="sm">Aplicar a {selectedAssignable}</Button>
       </div>

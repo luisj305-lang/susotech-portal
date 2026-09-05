@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { computeOptimizedRoundTrip, geocodeAddress } from "@/lib/maps/google-maps";
-import { enrichJobPlaceId } from "./geocoding";
+import { enrichJobCoordinates, enrichJobPlaceId } from "./geocoding";
 import { normalizeRouteJobIds, orderRouteRows } from "./route-planning-core";
 
 type Result<T> = { success: true; message: string; data: T } | { success: false; message: string };
@@ -54,6 +54,15 @@ export async function optimizeJobRoute(input: { jobIds: string[] }): Promise<Res
   }
   const unresolved = selected.filter((job) => !job.google_place_id);
   if (unresolved.length) return { success: false, message: `Google no pudo ubicar ${unresolved.length} trabajo(s). Corrige sus direcciones o ZIP y vuelve a intentar.` };
+
+  // Free Census coordinates for every selected job (best-effort, never blocks).
+  for (const job of selected) {
+    try {
+      await enrichJobCoordinates(supabase, job.id, { address: job.address, location: job.location, postalCode: job.postal_code });
+    } catch {
+      // Best-effort.
+    }
+  }
 
   const route = await computeOptimizedRoundTrip(settings.data.origin_place_id, selected.map((job) => job.google_place_id!));
   if (!route) return { success: false, message: "Google Routes no pudo optimizar el recorrido en este momento." };

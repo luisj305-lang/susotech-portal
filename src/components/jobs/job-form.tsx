@@ -4,11 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createJob, updateJob } from "@/lib/jobs/actions";
 import type { Job, JobCategory } from "@/lib/jobs/types";
+import { WORK_TYPES } from "@/lib/jobs/work-types";
 import { Button } from "@/components/ui/button";
 
 const fields = [
   ["prismNumber", "Número PRISM", "prism_number"], ["njunsNumber", "Número NJUNS", "njuns_number"],
-  ["address", "Dirección", "address"], ["location", "Ubicación", "location"], ["jobType", "Tipo de trabajo", "job_type"],
+  ["address", "Dirección", "address"], ["location", "Ubicación", "location"],
   ["customerName", "Cliente", "customer_name"],
   ["requiredMaterial", "Material requerido", "required_material"], ["projectMapUrl", "Enlace del mapa", "project_map_url"],
 ] as const;
@@ -21,11 +22,12 @@ export function JobForm({ job }: { job?: Job }) {
   function submit(formData: FormData) {
     const value = (name: string) => String(formData.get(name) ?? "");
     const total = value("estimatedTotal");
+    const workTypes = formData.getAll("workType").map(String);
     const input = {
       category: value("category") as JobCategory,
       prismNumber: value("prismNumber"), njunsNumber: value("njunsNumber"), address: value("address"),
       location: value("location"), customerName: value("customerName"), requestDate: value("requestDate") || null,
-      jobType: value("jobType"), description: value("description"),
+      workTypes, description: value("description"),
       specialInstructions: value("specialInstructions"), requiredMaterial: value("requiredMaterial"), projectMapUrl: value("projectMapUrl"),
       assignmentDate: value("assignmentDate") || null, deadlineDate: value("deadlineDate") || null, estimatedTotal: total ? Number(total) : null,
     };
@@ -41,6 +43,17 @@ export function JobForm({ job }: { job?: Job }) {
   return <form action={submit} className="grid gap-4 rounded-2xl border border-line bg-white p-6 shadow-card sm:grid-cols-2">
     <label className="grid gap-1 text-sm font-medium text-ink-soft">Categoría<select name="category" defaultValue={job?.category ?? "categoria_1"} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="categoria_1">Categoría 1</option><option value="categoria_2">Categoría 2</option><option value="categoria_3">Categoría 3</option></select></label>
     {fields.map(([name, label, key]) => <label key={name} className="grid gap-1 text-sm font-medium text-ink-soft">{label}<input name={name} defaultValue={job?.[key] ?? ""} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>)}
+    <fieldset className="grid content-start gap-2 text-sm font-medium text-ink-soft sm:col-span-2">
+      <legend className="text-sm font-medium text-ink-soft">Tipo de trabajo</legend>
+      <div className="flex flex-wrap gap-2">
+        {WORK_TYPES.map((type) => (
+          <label key={type} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink">
+            <input type="checkbox" name="workType" value={type} defaultChecked={job?.work_types?.includes(type)} className="accent-accent-500" />
+            {type}
+          </label>
+        ))}
+      </div>
+    </fieldset>
     <label className="grid gap-1 text-sm font-medium text-ink-soft">Fecha de solicitud<input name="requestDate" type="date" defaultValue={job?.request_date ?? ""} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
     <label className="grid gap-1 text-sm font-medium text-ink-soft">Fecha de asignación<input name="assignmentDate" type="datetime-local" defaultValue={job?.assignment_date?.slice(0, 16) ?? ""} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label><label className="grid gap-1 text-sm font-medium text-ink-soft">Fecha límite<input name="deadlineDate" type="datetime-local" defaultValue={job?.deadline_date?.slice(0, 16) ?? ""} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
     <label className="grid gap-1 text-sm font-medium text-ink-soft">Total estimado<input name="estimatedTotal" type="number" min="0" step="0.01" defaultValue={job?.estimated_total ?? ""} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>

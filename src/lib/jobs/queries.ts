@@ -97,11 +97,59 @@ export async function listTechnicianJobs(filters?: { query?: string; status?: st
     .filter((job) => !query || [job.prism_number, job.title, job.address, job.location].some((value) => value?.toLocaleLowerCase("es").includes(query)));
 }
 
+export async function listTechnicianQueueJobs(filters?: { query?: string; status?: string; tab?: string }): Promise<(Job & { assignedAt: string | null })[]> {
+  await requireActiveShift();
+  const supabase = await createClient();
+  const tab = filters?.tab === "revisados" ? "revisados" : "activos";
+  let request = supabase.from("jobs").select("*").is("archived_at", null);
+  if (tab === "revisados") {
+    request = request.eq("main_status", "aprobado");
+  } else {
+    request = request.in("main_status", ["asignado", "en_revision"]);
+  }
+  const status = filters?.status;
+  if (status === "asignado" || status === "en_revision" || status === "aprobado") {
+    request = request.eq("main_status", status);
+  }
+  const [jobsResult, assignmentsResult] = await Promise.all([
+    request,
+    supabase.from("job_assignments").select("job_id, assigned_at").eq("active", true).eq("is_primary", true),
+  ]);
+  if (jobsResult.error || assignmentsResult.error) throw new Error("No se pudieron cargar tus trabajos.");
+  const assignedAtByJob = new Map<string, string | null>(
+    ((assignmentsResult.data ?? []) as { job_id: string; assigned_at: string | null }[]).map((item) => [item.job_id, item.assigned_at] as const),
+  );
+  const query = filters?.query?.trim().toLocaleLowerCase("es") ?? "";
+  return ((jobsResult.data ?? []) as Job[])
+    .filter((job) => !query || [job.prism_number, job.title, job.address, job.location].some((value) => value?.toLocaleLowerCase("es").includes(query)))
+    .map((job) => ({ ...job, assignedAt: assignedAtByJob.get(job.id) ?? null }))
+    .sort((a, b) => {
+      if (a.assignedAt && b.assignedAt) {
+        const diff = b.assignedAt.localeCompare(a.assignedAt);
+        if (diff !== 0) return diff;
+      } else if (a.assignedAt) {
+        return -1;
+      } else if (b.assignedAt) {
+        return 1;
+      }
+      if (a.deadline_date && b.deadline_date) {
+        const diff = a.deadline_date.localeCompare(b.deadline_date);
+        if (diff !== 0) return diff;
+      } else if (a.deadline_date) {
+        return -1;
+      } else if (b.deadline_date) {
+        return 1;
+      }
+      return 0;
+    });
+}
+
 export async function getTechnicianJob(jobId: string) {
   await requireActiveShift();
   const supabase = await createClient();
-  const [job, history, codes, photos, documents, draft, deliveryVersion, catalog, allocations] = await Promise.all([
+  const [job, assignment, history, codes, photos, documents, draft, deliveryVersion, catalog, allocations] = await Promise.all([
     supabase.from("jobs").select("*").eq("id", jobId).maybeSingle(),
+    supabase.from("job_assignments").select("assigned_at").eq("job_id", jobId).eq("active", true).eq("is_primary", true).maybeSingle(),
     supabase.from("job_status_history").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
     supabase.from("job_production_codes").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
     supabase.from("job_photos").select("*").eq("job_id", jobId).is("deleted_at", null).order("created_at", { ascending: false }),
@@ -111,9 +159,9 @@ export async function getTechnicianJob(jobId: string) {
     supabase.rpc("list_my_production_catalog"),
     supabase.rpc("list_my_financial_allocations", { p_job_id: jobId }),
   ]);
-  if (job.error || history.error || codes.error || photos.error || documents.error || draft.error || deliveryVersion.error || catalog.error || allocations.error) throw new Error("No se pudo cargar el trabajo asignado.");
+  if (job.error || assignment.error || history.error || codes.error || photos.error || documents.error || draft.error || deliveryVersion.error || catalog.error || allocations.error) throw new Error("No se pudo cargar el trabajo asignado.");
   if (!job.data) return null;
-  return { job: job.data as Job, history: (history.data ?? []) as JobStatusHistoryEntry[], codes: (codes.data ?? []) as JobProductionCode[], photos: (photos.data ?? []) as JobPhoto[], documents: (documents.data ?? []) as JobDocument[], draft: draft.data as JobPdfDraft | null, deliveredDraftVersion: deliveryVersion.data?.draft_version as number | undefined, catalog: (catalog.data ?? []) as ProductionCatalogOption[], allocations: (allocations.data ?? []) as import("./types").MyFinancialAllocation[] };
+  return { job: job.data as Job, assignedAt: assignment.data?.assigned_at ?? null, history: (history.data ?? []) as JobStatusHistoryEntry[], codes: (codes.data ?? []) as JobProductionCode[], photos: (photos.data ?? []) as JobPhoto[], documents: (documents.data ?? []) as JobDocument[], draft: draft.data as JobPdfDraft | null, deliveredDraftVersion: deliveryVersion.data?.draft_version as number | undefined, catalog: (catalog.data ?? []) as ProductionCatalogOption[], allocations: (allocations.data ?? []) as import("./types").MyFinancialAllocation[] };
 }
 
 export async function getMyWeeklyProduction(referenceDate?: string | null) {

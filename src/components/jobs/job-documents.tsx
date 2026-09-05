@@ -16,12 +16,18 @@ import { StatusBadge } from "@/components/ui/status-badge";
 
 const PDF_LIMIT = 25 * 1024 * 1024;
 
+const deliveredDateFormatter = new Intl.DateTimeFormat("es-MX", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 export function JobDocuments({
   jobId,
   originalPath,
   deliveredPath,
   deliveredStatus,
   jobStatus,
+  deliveredAt,
   canRegenerate = false,
   canDelete = false,
   attachments,
@@ -31,6 +37,7 @@ export function JobDocuments({
   deliveredPath: string | null;
   deliveredStatus: DeliveredPdfStatus;
   jobStatus: JobStatus;
+  deliveredAt?: string | null;
   canRegenerate?: boolean;
   canDelete?: boolean;
   attachments?: ReactNode;
@@ -142,6 +149,7 @@ export function JobDocuments({
       </article>
       <article className="rounded-xl border border-line bg-white p-4">
         <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-ink">PDF entregado por técnico</h3><StatusBadge status={`pdf_${deliveredStatus}`} /></div>
+        {deliveredAt && <p className="mt-1 text-sm text-ink-soft">Entregado el {deliveredDateFormatter.format(new Date(deliveredAt))}</p>}
         <p className="mt-1 text-sm text-ink-soft">Original más las evidencias fotográficas confirmadas.</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {deliveredPath && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => open(deliveredPath)}>Ver PDF entregado</Button>}

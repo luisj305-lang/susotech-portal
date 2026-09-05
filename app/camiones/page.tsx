@@ -3,6 +3,7 @@ import { AppShell } from "@/components/dashboard/app-shell";
 import { FleetActionForm } from "@/components/fleet/fleet-action-form";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { buttonClasses } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { createFleetVehicleAction, runFleetAlertsAction, saveFleetSettingsAction } from "@/lib/fleet/actions";
 import { getFleetSettings, listFleetVehicles } from "@/lib/fleet/queries";
 import { requireSupervisor } from "@/lib/auth/session";
@@ -60,11 +61,21 @@ export default async function FleetPage({ searchParams }: { searchParams: Search
           <FleetActionForm action={runFleetAlertsAction} submitLabel={"Generar alertas ahora"} pendingLabel="Generando..." className="mt-4" />
         </div>
       </section>
-      <form className="grid gap-3 rounded-2xl border border-line bg-white p-4 shadow-card sm:grid-cols-[1fr_14rem_auto]">
-        <label className="grid gap-1 text-sm font-medium text-ink-soft">Buscar por unidad, VIN, matrícula, marca o modelo<input name="q" defaultValue={query} className={fieldClass} /></label>
-        <label className="grid gap-1 text-sm font-medium text-ink-soft">Estado<select name="status" defaultValue={status} className={fieldClass}><option value="">Todos</option>{FLEET_VEHICLE_STATUSES.map((entry) => <option key={entry} value={entry}>{statusLabels[entry]}</option>)}</select></label>
-        <button className={`${buttonClasses({ variant: "primary" })} self-end`}>Aplicar</button>
-      </form>
+      <div className="grid gap-4 rounded-2xl border border-line bg-white p-4 shadow-card">
+        <form className="flex flex-wrap items-end gap-2">
+          {status && <input type="hidden" name="status" value={status} />}
+          <label className="grid flex-1 gap-1 text-sm font-medium text-ink-soft">Buscar por unidad, VIN, matrícula, marca o modelo<input name="q" defaultValue={query} className={fieldClass} /></label>
+          <button className={buttonClasses({ variant: "secondary" })}>Buscar</button>
+        </form>
+        <form>
+          {query && <input type="hidden" name="q" value={query} />}
+          <span className="text-sm font-medium text-ink-soft">Estado</span>
+          <div className="mt-1 flex flex-wrap gap-2">
+            <FilterChip name="status" value="" label="Todos" active={!status} />
+            {FLEET_VEHICLE_STATUSES.map((entry) => <FilterChip key={entry} name="status" value={entry} label={statusLabels[entry]} active={status === entry} />)}
+          </div>
+        </form>
+      </div>
       {vehicles.length ? <div className="grid gap-4 lg:grid-cols-2">{vehicles.map((vehicle) => <article key={vehicle.id} className="rounded-2xl border border-line bg-white p-5 shadow-card"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-ink-muted">Unidad {vehicle.unit_number}</p><h2 className="mt-1 text-xl font-bold text-ink">{vehicle.make} {vehicle.model}{vehicle.model_year ? ` · ${vehicle.model_year}` : ""}</h2><p className="mt-1 text-sm text-ink-soft">{vehicle.license_plate ? `${vehicle.license_state ?? ""} ${vehicle.license_plate}`.trim() : "Sin matrícula"} · {Number(vehicle.current_odometer_miles).toLocaleString("en-US")} mi</p></div><StatusBadge status={vehicle.status} label={statusLabels[vehicle.status]} /></div><dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-ink-muted">Conductor principal</dt><dd className="font-semibold">{vehicle.primary_driver_name ?? "Sin asignar"}</dd></div><div><dt className="text-ink-muted">VIN</dt><dd className="font-semibold">{vehicle.vin ?? "Sin VIN"}</dd></div><div><dt className="text-ink-muted">Seguro</dt><dd className={`font-semibold ${alertClass(vehicle.insurance_alert.tone)}`}>{vehicle.insurance_alert.label}</dd></div><div><dt className="text-ink-muted">Mantenimiento</dt><dd className={`font-semibold ${alertClass(vehicle.maintenance_alert.tone)}`}>{vehicle.maintenance_alert.label}</dd></div></dl><Link href={`/camiones/${vehicle.id}`} className={`${buttonClasses({ variant: "secondary" })} mt-5`}>Administrar camión</Link></article>)}</div> : <section className="rounded-2xl border border-dashed border-line p-10 text-center"><h2 className="font-semibold">No hay camiones que coincidan</h2><p className="mt-2 text-sm text-ink-muted">Cambie los filtros o cree el primer camión.</p></section>}
     </div>
   </AppShell>;

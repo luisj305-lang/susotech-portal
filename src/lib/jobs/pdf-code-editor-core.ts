@@ -21,7 +21,7 @@ export type PdfCodePlacement = {
 export type PdfCodeDraft = { version: number; sourcePageCount: number; placements: PdfCodePlacement[] };
 
 export const CODE_COLOR_OPTIONS = ["#dc2626", "#d946ef", "#eab308", "#000000", "#f97316", "#2563eb"] as const;
-export const DEFAULT_CODE_COLOR = "#000000";
+export const DEFAULT_CODE_COLOR = "#2563eb";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export function placementsOverlap(a: PdfCodePlacement, b: PdfCodePlacement) {

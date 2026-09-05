@@ -14,6 +14,7 @@ import {
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonClasses } from "@/components/ui/button";
+import { FilterToggleChip } from "@/components/ui/filter-toggle-chip";
 import { IconSearch, IconUsers, IconX } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import {
@@ -159,16 +160,11 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
               className={cn(inputClass, "pl-9")}
             />
           </div>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-            aria-label="Filtrar por estado"
-            className={inputClass}
-          >
-            <option value="">Todos</option>
-            <option value="active">Activos</option>
-            <option value="inactive">Inactivos</option>
-          </select>
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filtrar por estado">
+            <FilterToggleChip label="Todos" active={status === ""} onClick={() => setStatus("")} />
+            <FilterToggleChip label="Activos" active={status === "active"} onClick={() => setStatus("active")} />
+            <FilterToggleChip label="Inactivos" active={status === "inactive"} onClick={() => setStatus("inactive")} />
+          </div>
           <button
             type="button"
             onClick={resetFilters}

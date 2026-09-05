@@ -34,7 +34,7 @@ import { getDeliveredPdfStatus } from "@/lib/jobs/delivered-status";
 async function TechnicianDetail({ id, canMutate, userName, shiftAccess }: { id: string; canMutate: boolean; userName: string; shiftAccess: Awaited<ReturnType<typeof requireActiveShiftPage>> }) {
   const detail = await getTechnicianJob(id);
   if (!detail) notFound();
-  const { job, history, codes, photos, documents, draft, deliveredDraftVersion, allocations } = detail;
+  const { job, history, codes, photos, documents, draft, deliveredDraftVersion, allocations, assignedAt } = detail;
   const currentAllocations = allocations.filter((allocation) => allocation.is_current);
   const mapUrl = getJobMapUrl({ address: job.address, location: job.location, projectMapUrl: job.project_map_url });
   const additionalDocs = documents.filter((document) => document.document_type === "additional");
@@ -42,7 +42,7 @@ async function TechnicianDetail({ id, canMutate, userName, shiftAccess }: { id: 
     <TechnicianAppShell userName={userName}>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <JobHeader job={job} mapUrl={mapUrl} />
+          <JobHeader job={job} mapUrl={mapUrl} assignedAt={assignedAt} />
           <div className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-20 lg:self-start">
             <ShiftStatusCard shift={shiftAccess.shift} active={shiftAccess.active} />
           </div>
@@ -60,7 +60,7 @@ async function TechnicianDetail({ id, canMutate, userName, shiftAccess }: { id: 
           </section>
           {canMutate && <TechnicianActions jobId={job.id} status={job.main_status} />}
           {currentAllocations.length > 0 && <section className="rounded-2xl border border-line bg-white p-6 shadow-card"><h2 className="text-xl font-bold text-ink">Tu reparto financiero</h2>{currentAllocations.map((allocation) => <p key={allocation.allocation_version_id} className="mt-3 rounded-lg border border-line bg-surface-muted p-3 text-ink"><strong>{((Number(allocation.percentage_basis_points)) / 100).toFixed(2)}%</strong> · ${(Number(allocation.allocated_cents) / 100).toFixed(2)} <span className="text-ink-soft">(pendiente)</span></p>)}<p className="mt-3 text-xs text-ink-soft">Monto visible desde la confirmación de la entrega. Se confirma al aprobar o facturar el trabajo.</p></section>}
-          <JobDocuments jobId={job.id} originalPath={job.project_pdf_url} deliveredPath={job.delivered_pdf_path} deliveredStatus={getDeliveredPdfStatus(job, photos.map((photo) => photo.id), documents.map((document) => document.id), draft?.version, deliveredDraftVersion)} jobStatus={job.main_status} attachments={<JobAttachments jobId={job.id} documents={additionalDocs} canManage={false} bare />} />
+          <JobDocuments jobId={job.id} originalPath={job.project_pdf_url} deliveredPath={job.delivered_pdf_path} deliveredStatus={getDeliveredPdfStatus(job, photos.map((photo) => photo.id), documents.map((document) => document.id), draft?.version, deliveredDraftVersion)} jobStatus={job.main_status} deliveredAt={job.delivered_pdf_generated_at} attachments={<JobAttachments jobId={job.id} documents={additionalDocs} canManage={false} bare />} />
           {canMutate && ["asignado", "en_revision"].includes(job.main_status) && <PhotoUpload jobId={job.id} />}
           <section id="evidencias" className="rounded-2xl border border-line bg-white p-6 shadow-card"><h2 className="text-xl font-bold text-ink">Evidencia guardada ({photos.length})</h2>{photos.length > 0 ? <JobEvidenceList photos={photos} canDelete={false} /> : <EmptyState icon={IconCamera} title="Todavía no hay fotografías" description="Agrega evidencia antes de entregar el trabajo." />}{job.comments && <p className="mt-3 rounded-lg border border-line bg-surface-muted p-3 text-ink"><strong>Comentario general:</strong> {job.comments}</p>}</section>
           {canMutate && <div className="lg:col-start-2 lg:row-start-2 lg:self-start"><IncidentCard jobId={job.id} incident={job.incident} /></div>}
@@ -98,7 +98,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           <p className="mt-1 text-ink-soft">Estado: {job.main_status.replaceAll("_", " ")}{job.incident ? ` · Incidencia: ${job.incident}` : ""}{job.invoice_number ? ` · Factura: ${job.invoice_number}` : ""}</p>
           {job.archived_at && <div className="mt-2 rounded-xl border border-line bg-surface-muted p-3 font-semibold text-ink"><p>Archivado: {job.archive_reason || "Sin motivo"}</p>{job.archive_notes && <p className="mt-1 font-normal">{job.archive_notes}</p>}</div>}
         </header>
-        <JobDocuments jobId={job.id} originalPath={job.project_pdf_url} deliveredPath={job.delivered_pdf_path} deliveredStatus={getDeliveredPdfStatus(job, photos.map((photo) => photo.id), documents.map((document) => document.id), draft?.version, deliveredDraftVersion)} jobStatus={job.main_status} canRegenerate={profile.role === "admin"} canDelete={profile.role === "admin"} />
+        <JobDocuments jobId={job.id} originalPath={job.project_pdf_url} deliveredPath={job.delivered_pdf_path} deliveredStatus={getDeliveredPdfStatus(job, photos.map((photo) => photo.id), documents.map((document) => document.id), draft?.version, deliveredDraftVersion)} jobStatus={job.main_status} deliveredAt={job.delivered_pdf_generated_at} canRegenerate={profile.role === "admin"} canDelete={profile.role === "admin"} />
         <JobAttachments jobId={job.id} documents={documents.filter((document) => document.document_type === "additional")} canManage={isOfficeRole(profile.role)} />
         <OfficeJobActions jobId={job.id} status={job.main_status} assignment={assignment} options={options} canArchive={isOfficeRole(profile.role)} archived={Boolean(job.archived_at)} invoiceNumber={job.invoice_number} invoicePath={job.invoice_path} />
         {isOfficeRole(profile.role) && !job.archived_at && job.parent_job_id === null && <PartActions jobId={job.id} parts={detail.parts} />}

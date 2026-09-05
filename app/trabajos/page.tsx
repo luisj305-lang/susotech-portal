@@ -4,16 +4,19 @@ import { ArchivedJobDeleteButton, RetryJobDeletionCleanupButton } from "@/compon
 import { AppShell } from "@/components/dashboard/app-shell";
 import { FieldShell } from "@/components/dashboard/field-shell";
 import { buttonClasses } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { displayName, initials, roleLabel } from "@/lib/dashboard/profile";
 import { requireProfile } from "@/lib/auth/session";
-import { listOfficeJobs, listTechnicianJobs } from "@/lib/jobs/queries";
+import { listOfficeJobs, listTechnicianQueueJobs } from "@/lib/jobs/queries";
 import { groupJobParts } from "@/lib/jobs/parts";
 import { getJobMapUrl } from "@/lib/jobs/maps";
 import { requireActiveShiftPage } from "@/lib/work-shifts/access";
+import { workTypeLabels } from "@/lib/jobs/work-types";
 import type { OfficeJobPreview } from "@/lib/jobs/types";
 
 const statusLabels: Record<string, string> = { sin_asignar: "Sin asignar", asignado: "Asignado", en_revision: "En revisión", aprobado: "Aprobado", facturado: "Facturado", pagado: "Pagado" };
+const categoryLabels: Record<string, string> = { categoria_1: "Categoría 1", categoria_2: "Categoría 2", categoria_3: "Categoría 3" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 function relevantDate(job: { submitted_at: string | null; deadline_date: string | null; assignment_date: string | null; updated_at: string }) {
@@ -29,7 +32,7 @@ function OfficeJobCard({ job, showDelete }: { job: OfficeJobPreview; showDelete:
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-widest text-ink-muted">{job.prism_number ? `PRISM ${job.prism_number}` : "Sin número PRISM"}</p>
           {mapUrl ? <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mt-1 block text-xl font-bold text-ink underline">{job.address || job.location || "Sin dirección"}</a> : <h2 className="mt-1 text-xl font-bold text-ink">{job.address || job.location || "Sin dirección"}</h2>}
-          <p className="mt-1 text-sm text-ink-soft">{job.job_type ?? ""}</p>
+          <p className="mt-1 text-sm text-ink-soft">{workTypeLabels(job).join(", ")}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {job.partLabel && <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink-soft">{job.partLabel}</span>}
@@ -59,8 +62,9 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
     await requireActiveShiftPage();
     const query = first("q");
     const status = first("status");
-    const jobs = await listTechnicianJobs({ query, status });
-    return <FieldShell userName={displayName(profile)}><JobList jobs={jobs} initialQuery={query ?? ""} initialStatus={status ?? ""} /></FieldShell>;
+    const tab = first("tab") === "revisados" ? "revisados" : "activos";
+    const jobs = await listTechnicianQueueJobs({ query, status, tab });
+    return <FieldShell userName={displayName(profile)}><JobList jobs={jobs} initialQuery={query ?? ""} initialStatus={status ?? ""} tab={tab} /></FieldShell>;
   }
   const filters = { q: first("q"), status: first("status"), category: first("category"), archived: first("archived") === "1", facturados: first("facturados") === "1" };
   const jobs = await listOfficeJobs({ query: filters.q, status: filters.status, category: filters.category, archived: filters.archived, facturados: filters.facturados });
@@ -85,14 +89,38 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
             <Link href="/trabajos/nuevo" className={buttonClasses({ variant: "secondary" })}>Creación manual</Link>
           </div>
         </header>
-        <form className="grid gap-3 rounded-[var(--radius-surface)] border border-line bg-white p-4 shadow-[var(--shadow-card-compact)] sm:grid-cols-4">
-          {filters.archived && <input type="hidden" name="archived" value="1" />}
-          {filters.facturados && <input type="hidden" name="facturados" value="1" />}
-          <label className="grid gap-1 text-sm font-medium text-ink-soft sm:col-span-2">Buscar por PRISM, título o dirección<input name="q" defaultValue={filters.q} className="min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
-          <label className="grid gap-1 text-sm font-medium text-ink-soft">Estado<select name="status" defaultValue={filters.status} className="min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Todos</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label className="grid gap-1 text-sm font-medium text-ink-soft">Categoría<select name="category" defaultValue={filters.category} className="min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Todas</option><option value="categoria_1">Categoría 1</option><option value="categoria_2">Categoría 2</option><option value="categoria_3">Categoría 3</option></select></label>
-          <button className={`${buttonClasses({ variant: "primary" })} sm:col-start-4`}>Aplicar filtros</button>
-        </form>
+        <div className="grid gap-4 rounded-[var(--radius-surface)] border border-line bg-white p-4 shadow-[var(--shadow-card-compact)]">
+          <form className="flex flex-wrap items-end gap-2">
+            {filters.archived && <input type="hidden" name="archived" value="1" />}
+            {filters.facturados && <input type="hidden" name="facturados" value="1" />}
+            {filters.status && <input type="hidden" name="status" value={filters.status} />}
+            {filters.category && <input type="hidden" name="category" value={filters.category} />}
+            <label className="grid flex-1 gap-1 text-sm font-medium text-ink-soft">Buscar por PRISM, título o dirección<input name="q" defaultValue={filters.q} className="min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
+            <button className={buttonClasses({ variant: "secondary" })}>Buscar</button>
+          </form>
+          <form>
+            {filters.archived && <input type="hidden" name="archived" value="1" />}
+            {filters.facturados && <input type="hidden" name="facturados" value="1" />}
+            {filters.q && <input type="hidden" name="q" value={filters.q} />}
+            {filters.category && <input type="hidden" name="category" value={filters.category} />}
+            <span className="text-sm font-medium text-ink-soft">Estado</span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <FilterChip name="status" value="" label="Todos" active={!filters.status} />
+              {Object.entries(statusLabels).map(([value, label]) => <FilterChip key={value} name="status" value={value} label={label} active={filters.status === value} />)}
+            </div>
+          </form>
+          <form>
+            {filters.archived && <input type="hidden" name="archived" value="1" />}
+            {filters.facturados && <input type="hidden" name="facturados" value="1" />}
+            {filters.q && <input type="hidden" name="q" value={filters.q} />}
+            {filters.status && <input type="hidden" name="status" value={filters.status} />}
+            <span className="text-sm font-medium text-ink-soft">Categoría</span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <FilterChip name="category" value="" label="Todas" active={!filters.category} />
+              {Object.entries(categoryLabels).map(([value, label]) => <FilterChip key={value} name="category" value={value} label={label} active={filters.category === value} />)}
+            </div>
+          </form>
+        </div>
         {groups.length ? <div className="grid gap-4 lg:grid-cols-2">{groups.map((group) => (
           <div key={group.root.id} className="grid content-start gap-4">
             <OfficeJobCard job={group.root} showDelete={showDelete} />

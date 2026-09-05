@@ -35,6 +35,7 @@ export interface Job {
   customer_name: string | null;
   request_date: string | null;
   job_type: string | null;
+  work_types: string[] | null;
   description: string | null;
   special_instructions: string | null;
   required_material: string | null;
