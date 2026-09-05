@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,10 +8,12 @@ import {
   prepareFuelPhotoUpload,
   startTechnicianShift,
 } from "@/lib/work-shifts/actions";
+import type { ShiftCompanion } from "@/lib/work-shifts/types";
 import { supabase } from "@/lib/supabase/client";
 
 const allowedPhotoTypes = ["image/jpeg", "image/png", "image/webp"];
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+const MAX_COMPANIONS = 20;
 const moneyPattern = /^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/u;
 
 export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }) {
@@ -21,8 +23,36 @@ export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }
   const [fuelChoice, setFuelChoice] = useState<"yes" | "no" | null>(null);
   const [amount, setAmount] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
+  const [companions, setCompanions] = useState<string[]>([]);
+  const [participants, setParticipants] = useState<ShiftCompanion[]>([]);
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const selfId = auth.user?.id;
+      const { data, error } = await supabase.rpc("list_delivery_allocation_participants");
+      if (!error && !cancelled) {
+        const list = ((data ?? []) as ShiftCompanion[]).filter((participant) => participant.id !== selfId);
+        setParticipants(list);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleCompanion = (id: string) => {
+    setCompanions((current) =>
+      current.includes(id)
+        ? current.filter((candidate) => candidate !== id)
+        : current.length >= MAX_COMPANIONS
+          ? current
+          : [...current, id],
+    );
+  };
 
   const clearPhoto = () => {
     setPhoto(null);
@@ -96,6 +126,7 @@ export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }
           noFuelToday: fuelChoice === "no",
           fuelAmount: fuelChoice === "no" ? "0" : amount,
           fuelPhotoPath: uploadedPath,
+          companionIds: companions.length > 0 ? companions : null,
         });
         setMessage(result.message);
         if (result.success) {
@@ -216,6 +247,44 @@ export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }
           Se registrará explícitamente que hoy no compraste gasolina, con monto $0.00.
         </p>
       )}
+
+      <fieldset className="grid gap-3 border-t border-line pt-5">
+        <legend className="mb-2 text-lg font-bold text-ink">
+          ¿Con quién inicias la jornada?
+        </legend>
+        <p className="text-sm text-ink-muted">
+          Opcional · selecciona hasta {MAX_COMPANIONS} compañeros.
+        </p>
+        {participants.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {participants.map((participant) => {
+              const checked = companions.includes(participant.id);
+              return (
+                <label
+                  key={participant.id}
+                  className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-4 transition disabled:cursor-not-allowed disabled:opacity-60 ${checked ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}
+                >
+                  <input
+                    type="checkbox"
+                    name="companion"
+                    value={participant.id}
+                    checked={checked}
+                    disabled={pending}
+                    onChange={() => toggleCompanion(participant.id)}
+                    className="h-4 w-4 shrink-0 accent-current"
+                  />
+                  <span className="min-w-0 truncate text-sm font-semibold">
+                    {participant.label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+        {participants.length === 0 && (
+          <p className="text-sm text-ink-soft">No hay otros técnicos o ayudantes activos para seleccionar.</p>
+        )}
+      </fieldset>
 
       <Button
         type="button"

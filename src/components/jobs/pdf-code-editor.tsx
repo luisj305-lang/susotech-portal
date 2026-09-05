@@ -103,14 +103,14 @@ function NoteFontSizePicker({ value, onChange }: { value: number; onChange: (rat
   const current = nearestNoteFontSize(value);
   return <div className="flex flex-wrap items-center gap-2">
     <span className="text-sm font-bold">Tamaño de fuente</span>
-    {NOTE_FONT_SIZES.map((option) => <button key={option.ratio} type="button" aria-pressed={current === option.ratio} onClick={() => onChange(option.ratio)} className={`min-h-9 rounded-lg border px-3 text-sm font-bold ${current === option.ratio ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink hover:bg-surface-muted"}`}>{option.label}</button>)}
+    {NOTE_FONT_SIZES.map((option) => <button key={option.ratio} type="button" aria-pressed={current === option.ratio} onClick={() => onChange(option.ratio)} className={`min-h-11 rounded-lg border px-3 text-sm font-bold ${current === option.ratio ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink hover:bg-surface-muted"}`}>{option.label}</button>)}
   </div>;
 }
 
 function LineColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
   return <div className="flex flex-wrap items-center gap-2">
     <span className="text-sm font-bold">Color</span>
-    {CODE_COLOR_OPTIONS.map((option) => <button key={option} type="button" aria-label={`Color ${option}`} onClick={() => onChange(option)} className={`h-8 w-8 rounded-full border-2 ${value === option ? "border-black ring-2 ring-black" : "border-line"}`} style={{ backgroundColor: option }} />)}
+    {CODE_COLOR_OPTIONS.map((option) => <button key={option} type="button" aria-label={`Color ${option}`} aria-pressed={value === option} onClick={() => onChange(option)} className="flex h-11 w-11 items-center justify-center rounded-lg border-0 bg-white"><span className={`h-7 w-7 rounded-full border-2 ${value === option ? "border-black ring-2 ring-black" : "border-line"}`} style={{ backgroundColor: option }} /></button>)}
   </div>;
 }
 
@@ -347,6 +347,7 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
   const [draftEntries, setDraftEntries] = useState<Array<{ catalogId: string; quantity: string }>>([{ catalogId: catalog[0]?.id ?? "", quantity: "1" }]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const panelToggleRef = useRef<HTMLButtonElement>(null);
   const [zoom, setZoom] = useState(1);
   const hasLegacyPlacements = placements.some((placement) => !placement.entries?.length);
   const [message, setMessage] = useState(hasLegacyPlacements ? "Completa la cantidad de cada código antes de entregar." : "Preparando los PDFs fuente…");
@@ -741,13 +742,18 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     setSheetOpen(true);
   };
 
+  const collapsePanel = () => {
+    setSheetOpen(false);
+    panelToggleRef.current?.focus();
+  };
+
   const renderToolButton = (nextTool: EditorTool, label: string) => (
     <button
       key={nextTool}
       type="button"
       aria-pressed={tool === nextTool}
       onClick={() => selectTool(nextTool)}
-      className={`flex min-h-14 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-bold transition-colors lg:min-h-16 lg:flex-col ${tool === nextTool ? "border-brand-900 bg-brand-900 text-white shadow-card" : "border-line bg-white text-ink hover:bg-surface-muted"}`}
+      className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-bold transition-colors lg:min-h-16 lg:flex-col ${tool === nextTool ? "border-brand-900 bg-brand-900 text-white" : "border-transparent bg-white text-ink hover:bg-surface-muted"}`}
     >
       <EditorToolIcon tool={nextTool} />
       <span>{label}</span>
@@ -767,13 +773,13 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
             : "Nuevo código";
 
   const contextPanel = <div className="flex h-full min-h-0 flex-col bg-white">
-    <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3">
-      <h2 className="text-base font-bold">{contextPanelTitle}</h2>
-      <button type="button" aria-label="Cerrar panel" onClick={() => { setSheetOpen(false); setSelectedId(null); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-ink hover:bg-surface-muted"><IconX /></button>
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-3">
+      <h2 id="pdf-context-title" className="text-sm font-bold">{contextPanelTitle}</h2>
+      <button type="button" aria-label="Minimizar panel" onClick={collapsePanel} className="flex h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg border-0 bg-white px-2 text-ink hover:bg-surface-muted"><span className="text-xs">Listo</span><IconX className="h-4 w-4 shrink-0" /></button>
     </div>
-    <div className="min-h-0 flex-1 overflow-y-auto touch-pan-y overscroll-contain p-4">
+    <div className="min-h-0 flex-1 overflow-y-auto touch-pan-y overscroll-contain p-3 text-sm [&_button]:min-h-11 [&_input]:min-h-11 [&_textarea]:text-base [&_input]:text-base [&_select]:text-base">
       {selectedNote ? <div className="grid gap-3">
-        <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={selectedNote.text} onChange={(event) => editNoteText(selectedNote.editorId, event.target.value)} rows={4} maxLength={2000} className="rounded-lg border border-line bg-white p-2" /></label>
+        <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={selectedNote.text} onChange={(event) => editNoteText(selectedNote.editorId, event.target.value)} rows={2} maxLength={2000} className="rounded-lg border border-line bg-white p-2" /></label>
         <NoteFontSizePicker value={selectedNote.fontSizeRatio} onChange={(ratio) => editNoteFontSize(selectedNote.editorId, ratio)} />
         <p className="text-xs text-ink-soft">Nota · pág. {selectedNote.page}. Arrastrá para mover; usá la esquina azul para redimensionar.</p>
         <Button type="button" onClick={() => { changeNotes(notes.filter((note) => note.editorId !== selectedNote.editorId)); setSelectedId(null); }} variant="secondary" className="justify-self-start">Eliminar nota</Button>
@@ -781,69 +787,70 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
         <LineColorPicker value={selectedLine.color} onChange={(color) => recolorLine(selectedLine.editorId, color)} />
         <p className="text-xs text-ink-soft">Línea · pág. {selectedLine.page}. Arrastrala para moverla.</p>
         <Button type="button" onClick={() => deleteLine(selectedLine.editorId)} variant="secondary" className="justify-self-start">Eliminar línea</Button>
-      </div> : selected ? <div className="grid gap-3">
-        {selected.entries.map((entry, index) => <div key={index} className="grid gap-2">
+      </div> : selected ? <div className="grid gap-2">
+        {selected.entries.map((entry, index) => <div key={index} data-pdf-editor="code-entry" className="grid grid-cols-[minmax(0,1fr)_4.5rem_2.75rem] items-center gap-1.5">
           <select aria-label={`Código ${index + 1}`} value={entry.catalogId} onChange={(event) => updateEntry(selected.id, index, { catalogId: event.target.value })} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.description}</option>)}</select>
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-            <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity || ""} onChange={(event) => updateEntry(selected.id, index, { quantity: Number(event.target.value) })} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
-            <Button type="button" disabled={selected.entries.length <= 1} onClick={() => removeEntry(selected.id, index)} variant="secondary" aria-label={`Quitar código ${index + 1}`}>Quitar</Button>
-          </div>
+          <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity || ""} onChange={(event) => updateEntry(selected.id, index, { quantity: Number(event.target.value) })} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
+          <button type="button" disabled={selected.entries.length <= 1} onClick={() => removeEntry(selected.id, index)} className="flex h-11 w-11 items-center justify-center rounded-lg border-0 bg-white text-ink disabled:opacity-40 hover:bg-surface-muted" aria-label={`Quitar código ${index + 1}`}><IconX className="h-4 w-4 shrink-0" /></button>
         </div>)}
-        <Button type="button" onClick={() => addEntry(selected.id)} variant="secondary" className="justify-self-start">+ Agregar otro código</Button>
-        <label className="grid gap-1 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-bold">Color</span>
-          {CODE_COLOR_OPTIONS.map((option) => <button key={option} type="button" aria-label={`Color ${option}`} onClick={() => update(selected.id, { color: option })} className={`h-8 w-8 rounded-full border-2 ${(selected.color ?? DEFAULT_CODE_COLOR) === option ? "border-black ring-2 ring-black" : "border-line"}`} style={{ backgroundColor: option }} />)}
-        </div>
-        <div className="flex items-center justify-between gap-3"><span className="text-xs text-ink-soft">Pág. {selected.page}</span><Button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} variant="secondary">Eliminar</Button></div>
+        <Button type="button" onClick={() => addEntry(selected.id)} variant="ghost" className="justify-self-start">+ Agregar otro código</Button>
+        <details key={selected.id}>
+          <summary className="min-h-11 cursor-pointer content-center rounded-lg text-sm font-bold focus-visible:outline-2 focus-visible:outline-accent-500">Tamaño, color y más</summary>
+          <div className="grid gap-3 py-2">
+            <label className="grid gap-1 text-sm font-bold">Tamaño<input aria-label="Tamaño del código seleccionado" type="range" min="4" max="30" value={Math.round(selected.width * 100)} onChange={(event) => update(selected.id, { width: Number(event.target.value) / 100, height: Number(event.target.value) / 240 })} className="w-full" /></label>
+            <LineColorPicker value={selected.color ?? DEFAULT_CODE_COLOR} onChange={(color) => update(selected.id, { color })} />
+            <div className="flex items-center justify-between gap-3"><span className="text-xs text-ink-soft">Pág. {selected.page}</span><Button type="button" onClick={() => { change(placements.filter((item) => item.id !== selected.id)); setSelectedId(null); }} variant="secondary">Eliminar</Button></div>
+          </div>
+        </details>
       </div> : tool === "note" ? <div className="grid gap-3">
-        <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} rows={4} maxLength={2000} placeholder="Escribí el texto y tocá el PDF para colocarla" className="rounded-lg border border-line bg-white p-2" /></label>
+        <label className="grid gap-1 text-sm font-bold">Texto de la nota<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} rows={2} maxLength={2000} placeholder="Escribe el texto y toca el PDF para colocarla" className="rounded-lg border border-line bg-white p-2" /></label>
         <NoteFontSizePicker value={noteFontRatio} onChange={setNoteFontRatio} />
-        <Button type="button" onClick={() => setSheetOpen(false)} variant="primary">Agregar nota</Button>
+        <Button type="button" onClick={collapsePanel} variant="primary">Agregar nota</Button>
       </div> : tool === "line" ? <div className="grid gap-3">
         <LineColorPicker value={lineColor} onChange={setLineColor} />
         <p className="text-xs text-ink-soft">Elegí un color y tocá «Listo». Después arrastrá el dedo sobre el PDF para dibujar el tramo.</p>
-        <Button type="button" onClick={() => setSheetOpen(false)} variant="primary">Listo</Button>
-      </div> : <div className="grid gap-3">
-        {draftEntries.map((entry, index) => <div key={index} className="grid gap-2">
-          <select aria-label={`Código ${index + 1}`} value={entry.catalogId} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, catalogId: event.target.value } : item))} className="min-h-12 w-full min-w-0 rounded-lg border border-line bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select>
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-            <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, quantity: event.target.value } : item))} className="min-h-12 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
-            <Button type="button" disabled={draftEntries.length <= 1} onClick={() => setDraftEntries((current) => current.filter((_, i) => i !== index))} variant="secondary" aria-label={`Quitar código ${index + 1}`}>Quitar</Button>
-          </div>
+        <Button type="button" onClick={collapsePanel} variant="primary">Listo</Button>
+      </div> : <div className="grid gap-2">
+        {draftEntries.map((entry, index) => <div key={index} data-pdf-editor="code-entry" className="grid grid-cols-[minmax(0,1fr)_4.5rem_2.75rem] items-center gap-1.5">
+          <select aria-label={`Código ${index + 1}`} value={entry.catalogId} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, catalogId: event.target.value } : item))} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2"><option value="">Selecciona un código</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.description} — {item.unit_rate == null ? "Sin tarifa configurada" : `$${Number(item.unit_rate).toFixed(3)}`}</option>)}</select>
+          <input aria-label={`Cantidad del código ${index + 1}`} inputMode="decimal" type="number" min="0.01" step="0.01" value={entry.quantity} onChange={(event) => setDraftEntries((current) => current.map((item, i) => i === index ? { ...item, quantity: event.target.value } : item))} className="min-h-11 w-full min-w-0 rounded-lg border border-line bg-white p-2" />
+          <button type="button" disabled={draftEntries.length <= 1} onClick={() => setDraftEntries((current) => current.filter((_, i) => i !== index))} className="flex h-11 w-11 items-center justify-center rounded-lg border-0 bg-white text-ink disabled:opacity-40 hover:bg-surface-muted" aria-label={`Quitar código ${index + 1}`}><IconX className="h-4 w-4 shrink-0" /></button>
         </div>)}
-        <Button type="button" onClick={() => setDraftEntries((current) => [...current, { catalogId: catalog[0]?.id ?? "", quantity: "1" }])} variant="secondary" className="justify-self-start">+ Agregar otro código</Button>
-        <Button type="button" onClick={() => setSheetOpen(false)} variant="primary">Aplicar</Button>
+        <div className="flex items-center justify-between gap-2">
+          <Button type="button" onClick={() => setDraftEntries((current) => [...current, { catalogId: catalog[0]?.id ?? "", quantity: "1" }])} variant="ghost" className="px-2">+ Agregar otro código</Button>
+          <Button type="button" onClick={collapsePanel} variant="primary" className="px-3">Aplicar</Button>
+        </div>
       </div>}
       <p role="status" aria-live="polite" className="mt-4 min-h-4 text-xs text-ink-soft lg:hidden">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
     </div>
   </div>;
-  return <main inert={submitting} aria-busy={submitting} className={`relative bg-surface-muted text-ink ${stage === "edit" ? "min-h-dvh lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden" : "min-h-screen pb-[28rem] sm:pb-80"}`}>
+  return <main inert={submitting} aria-busy={submitting} className={`relative bg-surface-muted text-ink ${stage === "edit" ? "flex h-dvh min-h-0 flex-col overflow-hidden pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]" : "min-h-screen pb-[28rem] sm:pb-80"}`}>
     {stage === "edit" ? <>
-      <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-white/95 px-3 py-2 backdrop-blur sm:px-5">
-        <div className="flex min-h-14 items-center justify-between gap-3">
+      <header className="shrink-0 border-b border-line bg-white px-3 pb-1 pt-[max(0.25rem,env(safe-area-inset-top))] sm:px-5">
+        <div className="flex min-h-11 items-center justify-between gap-2">
           <div className="min-w-0">
             <p className="hidden text-[11px] font-semibold uppercase tracking-widest text-ink-soft sm:block">Entrega del trabajo</p>
             <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-              <h1 className="truncate text-sm font-bold sm:text-lg">Marcá los códigos sobre el PDF</h1>
-              <span className="shrink-0 rounded-md border border-line bg-surface-muted px-2 py-1 text-[11px] font-bold text-ink-soft">{pageCount} {pageCount === 1 ? "página" : "páginas"}</span>
+              <h1 className="truncate text-sm font-bold sm:text-lg">Editar PDF</h1>
+              <span className="shrink-0 text-[11px] text-ink-soft" aria-label={`${pageCount} ${pageCount === 1 ? "página" : "páginas"}`}>{pageCount} pág.</span>
             </div>
           </div>
           <div className="flex min-w-0 items-center gap-3">
-            <p role="status" aria-live="polite" className="hidden max-w-[24rem] truncate text-xs text-ink-soft md:block">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
-            <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" className="min-h-10 shrink-0 px-3 sm:px-5">{submitting ? "Confirmando…" : "Confirmar PDF"}</Button>
+            <p role="status" aria-live="polite" className="sr-only lg:not-sr-only lg:max-w-[24rem] lg:truncate lg:text-xs lg:text-ink-soft">{message || (dirty ? "Cambios sin guardar" : `Borrador guardado · versión ${version}`)}</p>
+            <Button type="button" disabled={saving || submitting} onClick={() => void confirmPdf()} variant="primary" size="sm" className="shrink-0 text-xs [--control-height-sm:2.75rem] sm:text-sm">{submitting ? "Confirmando…" : "Confirmar PDF"}</Button>
           </div>
         </div>
       </header>
 
-      <div data-pdf-editor="workspace" className={`relative grid min-h-0 flex-1 grid-cols-1 ${sheetOpen ? "lg:grid-cols-[4.75rem_minmax(0,1fr)_19rem]" : "lg:grid-cols-[4.75rem_minmax(0,1fr)]"}`}>
+      <div data-pdf-editor="workspace" className={`relative grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_auto] lg:grid-rows-1 ${sheetOpen ? "lg:grid-cols-[4.75rem_minmax(0,1fr)_19rem]" : "lg:grid-cols-[4.75rem_minmax(0,1fr)]"}`}>
         <nav data-pdf-editor="desktop-tool-rail" aria-label="Herramientas del editor" className="hidden min-h-0 flex-col gap-2 border-r border-line bg-white p-2 lg:flex">
           {renderToolButton("code", "Código")}
           {renderToolButton("note", "Nota")}
           {renderToolButton("line", "Línea")}
         </nav>
 
-        <section aria-label="Lienzo del PDF" className={`relative min-w-0 overflow-x-auto px-2 py-3 sm:px-4 lg:min-h-0 lg:overflow-auto lg:p-5 ${sheetOpen ? "pb-[calc(35dvh_+_5.5rem)]" : "pb-28"} lg:pb-20`}>
+        <section aria-label="Lienzo del PDF" className="flex min-h-0 min-w-0 flex-col">
+          <div data-pdf-editor="canvas-scroll" className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 py-2 sm:px-4 lg:p-5">
           <div className="grid gap-6 lg:gap-8">{sourcePages.map((sourcePage) => <PdfPage
             key={sourcePage.page}
             jobId={jobId}
@@ -883,22 +890,29 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
             }}
           />)}</div>
 
-          <div data-pdf-editor="floating-controls" className={`fixed left-1/2 z-30 flex -translate-x-1/2 items-center overflow-hidden rounded-xl border border-line bg-white/95 shadow-card backdrop-blur ${sheetOpen ? "bottom-[calc(35dvh_+_5.25rem)] lg:left-[calc(4.75rem_+_(100vw_-_23.75rem)/2)]" : "bottom-[5.25rem] lg:left-[calc(4.75rem_+_(100vw_-_4.75rem)/2)]"} lg:bottom-4`}>
-            <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.05).toFixed(2)))} className="flex h-11 min-w-11 items-center justify-center text-lg font-bold hover:bg-surface-muted">−</button>
-            <button type="button" aria-label="Restablecer zoom" title="Restablecer zoom" onClick={() => setZoom(1)} className="h-11 min-w-[3.75rem] border-x border-line px-2 text-xs font-bold hover:bg-surface-muted">{Math.round(zoom * 100)}%</button>
-            <button type="button" aria-label="Acercar" onClick={() => setZoom((value) => Math.min(3, +(value + 0.05).toFixed(2)))} className="flex h-11 min-w-11 items-center justify-center text-lg font-bold hover:bg-surface-muted">+</button>
-            <span aria-hidden="true" className="h-7 w-px bg-line" />
-            <button type="button" aria-label="Deshacer último cambio" disabled={undoStackRef.current.length === 0 || submitting} onClick={undo} className="flex h-11 min-w-11 items-center justify-center disabled:cursor-not-allowed disabled:text-ink-muted hover:bg-surface-muted"><HistoryIcon direction="undo" /></button>
-            <button type="button" aria-label="Rehacer último cambio" disabled={redoStackRef.current.length === 0 || submitting} onClick={redo} className="flex h-11 min-w-11 items-center justify-center disabled:cursor-not-allowed disabled:text-ink-muted hover:bg-surface-muted"><HistoryIcon direction="redo" /></button>
+          </div>
+          <div data-pdf-editor="canvas-toolbar" className="flex shrink-0 items-center justify-between gap-1 border-t border-line bg-white px-1 lg:pb-[env(safe-area-inset-bottom)]">
+            <div role="group" aria-label="Zoom e historial" className="flex items-center [&_button]:border-0 [&_button]:bg-white [&_button]:text-ink [&_button:disabled]:opacity-40">
+              <button type="button" aria-label="Alejar" onClick={() => setZoom((value) => Math.max(0.5, +(value - 0.05).toFixed(2)))} className="flex h-11 min-w-11 items-center justify-center text-lg font-bold hover:bg-surface-muted">−</button>
+              <button type="button" aria-label="Restablecer zoom" title="Restablecer zoom" onClick={() => setZoom(1)} className="h-11 min-w-11 px-1 text-xs font-bold hover:bg-surface-muted">{Math.round(zoom * 100)}%</button>
+              <button type="button" aria-label="Acercar" onClick={() => setZoom((value) => Math.min(3, +(value + 0.05).toFixed(2)))} className="flex h-11 min-w-11 items-center justify-center text-lg font-bold hover:bg-surface-muted">+</button>
+              <span aria-hidden="true" className="h-7 w-px bg-line" />
+              <button type="button" aria-label="Deshacer último cambio" disabled={undoStackRef.current.length === 0 || submitting} onClick={undo} className="flex h-11 min-w-11 items-center justify-center disabled:cursor-not-allowed disabled:text-ink-muted hover:bg-surface-muted"><HistoryIcon direction="undo" /></button>
+              <button type="button" aria-label="Rehacer último cambio" disabled={redoStackRef.current.length === 0 || submitting} onClick={redo} className="flex h-11 min-w-11 items-center justify-center disabled:cursor-not-allowed disabled:text-ink-muted hover:bg-surface-muted"><HistoryIcon direction="redo" /></button>
+            </div>
+            <button ref={panelToggleRef} type="button" aria-controls="pdf-context-panel" aria-expanded={sheetOpen} aria-label={sheetOpen ? "Minimizar opciones de edición" : `${contextPanelTitle}: abrir opciones`} onClick={() => setSheetOpen((open) => !open)} className="flex h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg border-0 bg-white px-2 text-xs font-bold text-ink hover:bg-surface-muted">
+              {sheetOpen ? "Ocultar" : selectedId ? "Editar" : "Opciones"}
+              <svg aria-hidden="true" viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 ${sheetOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 15 6-6 6 6" /></svg>
+            </button>
           </div>
         </section>
 
-        {sheetOpen && <aside data-pdf-editor="context-panel" aria-label={contextPanelTitle} className="fixed inset-x-0 bottom-[4.75rem] z-40 h-[35dvh] max-h-[35dvh] overflow-hidden rounded-t-2xl border-t border-line bg-white shadow-card lg:static lg:bottom-auto lg:z-auto lg:h-full lg:max-h-none lg:w-[19rem] lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none">
+        {sheetOpen && <aside id="pdf-context-panel" data-pdf-editor="context-panel" aria-labelledby="pdf-context-title" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); collapsePanel(); } }} className="h-[30dvh] min-h-0 max-h-[15rem] overflow-hidden border-t border-line bg-white lg:h-full lg:max-h-none lg:w-[19rem] lg:border-l lg:border-t-0">
           {contextPanel}
         </aside>}
       </div>
 
-      <nav data-pdf-editor="mobile-tool-dock" aria-label="Herramientas del editor" className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-3 gap-2 border-t border-line bg-white/95 p-2 pb-[calc(0.5rem_+_env(safe-area-inset-bottom))] shadow-card backdrop-blur lg:hidden">
+      <nav data-pdf-editor="mobile-tool-dock" aria-label="Herramientas del editor" className="grid shrink-0 grid-cols-3 gap-1 border-t border-line bg-white px-2 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] lg:hidden">
         {renderToolButton("code", "Código")}
         {renderToolButton("note", "Nota")}
         {renderToolButton("line", "Línea")}

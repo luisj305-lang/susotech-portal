@@ -39,8 +39,8 @@ Preserve accounting/audit/RLS/independent-parts, `design.md#file-changes` contra
 - [ ] 4.3 R07 fix evidence-selected `r07-evidence.md` path; T4.3; same-document real-device parity; revert isolated fix; TBD.
 
 ## Phase 5: Attendance
-- [ ] 5.1 R09 `src/lib/work-shifts/actions.ts`, M(5.1): authorized companions; T5.1; denial/concurrency/fuel-once; disable companion-writes; 300–400.
-- [ ] 5.2 R09 `src/components/work-shifts/start-shift-form.tsx`: active presence; T5.2; solo/helpers/expiry/correction; revert presence; 200–350.
+- [x] 5.1 R09 `src/lib/work-shifts/actions.ts`, M(5.1): authorized companions; T5.1; denial/concurrency/fuel-once; disable companion-writes; 300–400.
+- [x] 5.2 R09 `src/components/work-shifts/start-shift-form.tsx`: active presence; T5.2; solo/helpers/expiry/correction; revert presence; 200–350.
 
 ## Phase 6: Export
 - [ ] 6.1 RED author T6.2/T6.4 route/RPC cases below before export production; co-deliver tests with behavior.

@@ -26,6 +26,11 @@ export type WorkShiftAccess = {
   shift: ActiveWorkShift | null;
 };
 
+export type ShiftCompanion = {
+  id: string;
+  label: string;
+};
+
 export type WorkShiftActionResult<T = null> =
   | { success: true; message: string; data: T }
   | { success: false; message: string; code?: "active_shift_required" | "invalid_input" | "unavailable" };

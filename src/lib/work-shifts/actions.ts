@@ -17,6 +17,7 @@ const photoExtensions = {
 } as const;
 const moneyPattern = /^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/u;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const MAX_COMPANIONS = 20;
 
 function validFuelPhotoPath(technicianId: string, path: string) {
   const escapedId = technicianId.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -68,6 +69,7 @@ export async function startTechnicianShift(input: {
   noFuelToday: boolean;
   fuelAmount: string;
   fuelPhotoPath?: string | null;
+  companionIds?: string[] | null;
 }): Promise<WorkShiftActionResult<{ activeUntil: string }>> {
   const profile = await requireProfile();
   if (profile.role !== "tecnico") {
@@ -91,10 +93,18 @@ export async function startTechnicianShift(input: {
     return { success: false, message: "La foto de gasolina no es válida.", code: "invalid_input" };
   }
 
+  const companionIds = input.companionIds ?? null;
+  if (companionIds
+    && (companionIds.length > MAX_COMPANIONS
+      || companionIds.some((id) => !id || !uuidPattern.test(id)))) {
+    return { success: false, message: "Selecciona compañeros válidos (máximo 20).", code: "invalid_input" };
+  }
+
   const { data, error } = await (await createClient()).rpc("start_technician_shift", {
     p_no_fuel_today: input.noFuelToday,
     p_fuel_amount: amount,
     p_fuel_photo_path: photoPath,
+    p_companion_ids: companionIds,
   });
   if (error || !data?.[0]) {
     const duplicate = error?.message.toLowerCase().includes("active shift already exists");
