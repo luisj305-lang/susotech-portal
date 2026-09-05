@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconCamera, IconInbox } from "@/components/ui/icons";
+import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
 
 const deliveryDateFormatter = new Intl.DateTimeFormat("es-MX", {
   timeZone: "America/New_York",
@@ -19,8 +20,51 @@ const pdfStatusLabels: Record<string, string> = {
 const smallPrimary =
   "inline-flex min-h-[var(--control-height-sm)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-brand-900 px-3 text-xs font-semibold text-white shadow-[var(--shadow-control)] transition-colors hover:bg-brand-950";
 
-export function PendingReview({ jobs }: { jobs: OfficeJobPreview[] }) {
+function PendingCard({ job }: { job: OfficeJobPreview }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-[var(--radius-control)] border border-line bg-surface-muted/50 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            {job.prism_number ? `PRISM ${job.prism_number}` : "Sin PRISM"}
+          </p>
+          <p className="truncate text-sm font-medium text-ink">
+            {job.address || job.location || "Sin dirección"}
+          </p>
+          <p className="text-xs text-ink-muted">
+            Técnico: {job.assignee_label}
+          </p>
+        </div>
+        <StatusBadge status="en_revision" />
+      </div>
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-ink-muted">
+        <span>
+          {deliveryDateFormatter.format(
+            new Date(job.submitted_at ?? job.updated_at),
+          )}
+        </span>
+        <span className="flex items-center gap-1">
+          <IconCamera className="h-4 w-4" />
+          {job.photo_count} fotos
+        </span>
+        <span>{pdfStatusLabels[job.delivered_pdf_status] ?? "Pendiente"}</span>
+      </div>
+      <Link href={`/trabajos/${job.id}`} className={smallPrimary}>
+        Revisar
+      </Link>
+    </div>
+  );
+}
+
+export function PendingReview({
+  jobs,
+  presentation = "default",
+}: {
+  jobs: OfficeJobPreview[];
+  presentation?: AdminDashboardPresentation;
+}) {
   const visible = jobs.slice(0, 8);
+  const isAdmin = presentation === "admin-dashboard";
 
   return (
     <Card>
@@ -42,6 +86,12 @@ export function PendingReview({ jobs }: { jobs: OfficeJobPreview[] }) {
             title="No hay trabajos pendientes de revisión"
             description="Los trabajos enviados por los técnicos aparecerán aquí."
           />
+        ) : isAdmin ? (
+          <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
+            {visible.map((job) => (
+              <PendingCard key={job.id} job={job} />
+            ))}
+          </div>
         ) : (
           <div className="divide-y divide-line px-5 sm:px-6">
             {visible.map((job) => (

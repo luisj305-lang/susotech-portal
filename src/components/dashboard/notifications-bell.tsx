@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { IconBell } from "@/components/ui/icons";
+import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
 
 type Notification = {
   id: string;
@@ -30,7 +31,11 @@ function relativeTime(iso: string): string {
   );
 }
 
-export function NotificationsBell() {
+export function NotificationsBell({
+  presentation = "default",
+}: {
+  presentation?: AdminDashboardPresentation;
+}) {
   const [userId, setUserId] = useState<string | null>(null);
   const [items, setItems] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
@@ -117,7 +122,10 @@ export function NotificationsBell() {
         aria-label="Notificaciones"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="relative rounded-full border border-line bg-white p-2.5 text-ink-soft"
+        className={cn(
+          "relative rounded-full border border-line bg-white text-ink-soft",
+          presentation === "admin-dashboard" ? "p-3" : "p-2.5",
+        )}
       >
         <IconBell className="h-5 w-5" />
         {unread > 0 ? (

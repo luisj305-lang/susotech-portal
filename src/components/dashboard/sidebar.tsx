@@ -17,6 +17,8 @@ import {
   IconUserCog,
   type IconProps,
 } from "@/components/ui/icons";
+import styles from "./admin-dashboard.module.css";
+import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
 
 type NavItem = {
   href: string;
@@ -55,12 +57,15 @@ function isActive(href: string, pathname: string): boolean {
 export function Sidebar({
   role,
   userName,
+  presentation = "default",
 }: {
   role: "admin" | "supervisor";
   userName: string;
+  presentation?: AdminDashboardPresentation;
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isAdmin = presentation === "admin-dashboard";
 
   const items: NavItem[] = [
     { href: "/dashboard", label: "Dashboard", icon: IconDashboard },
@@ -82,6 +87,9 @@ export function Sidebar({
       : []),
   ];
 
+  const operations = items.slice(0, 6);
+  const administration = items.slice(6);
+
   const handleLogout = async () => {
     for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
       const key = sessionStorage.key(index);
@@ -94,55 +102,122 @@ export function Sidebar({
     router.refresh();
   };
 
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-[4.5rem] shrink-0 items-center border-b border-line/70 px-5">
-        <Image
-          src="/login/susotech-logo.png"
-          alt="Susotech"
-          width={132}
-          height={48}
-          priority
-          className="h-auto w-[132px]"
-        />
-      </div>
-      <nav className="flex-1 space-y-1 px-3 py-4">
-        {items.map((item) => {
-          const active = isActive(item.href, pathname);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
+  const renderLink = (item: NavItem) => {
+    const active = isActive(item.href, pathname);
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={
+          isAdmin
+            ? cn(
+                "relative flex min-h-[var(--control-height)] items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium transition-colors",
+                active
+                  ? "bg-white/10 font-semibold text-white"
+                  : "text-brand-100/80 hover:bg-white/10 hover:text-white",
+              )
+            : cn(
                 "relative flex min-h-[var(--control-height)] items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium transition-colors",
                 active
                   ? "bg-brand-50 font-semibold text-brand-900"
                   : "text-ink-soft hover:bg-surface-muted hover:text-brand-900",
-              )}
-            >
-              {active ? (
-                <span
-                  className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded bg-brand-900"
-                  aria-hidden="true"
-                />
-              ) : null}
-              <Icon className={cn("h-5 w-5", active ? "text-brand-900" : undefined)} />
-              {item.label}
-            </Link>
-          );
-        })}
+              )
+        }
+      >
+        {active ? (
+          <span
+            className={cn(
+              "absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded",
+              isAdmin ? "bg-accent-500" : "bg-brand-900",
+            )}
+            aria-hidden="true"
+          />
+        ) : null}
+        <Icon
+          className={cn(
+            "h-5 w-5",
+            active ? (isAdmin ? "text-white" : "text-brand-900") : undefined,
+          )}
+        />
+        {item.label}
+      </Link>
+    );
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      <div
+        className={cn(
+          "flex h-[4.5rem] shrink-0 items-center border-b px-5",
+          isAdmin ? "border-white/10" : "border-line/70",
+        )}
+      >
+        {isAdmin ? (
+          <div className="rounded-[var(--radius-control)] bg-white px-3 py-1.5">
+            <Image
+              src="/login/susotech-logo.png"
+              alt="Susotech"
+              width={132}
+              height={48}
+              priority
+              className="h-auto w-[132px]"
+            />
+          </div>
+        ) : (
+          <Image
+            src="/login/susotech-logo.png"
+            alt="Susotech"
+            width={132}
+            height={48}
+            priority
+            className="h-auto w-[132px]"
+          />
+        )}
+      </div>
+      <nav className="flex-1 space-y-1 px-3 py-4">
+        {isAdmin ? (
+          <>
+            <p className={styles.sideGroupLabel}>Operación</p>
+            {operations.map(renderLink)}
+            {administration.length > 0 ? (
+              <>
+                <p className={styles.sideGroupLabel}>Administración</p>
+                {administration.map(renderLink)}
+              </>
+            ) : null}
+          </>
+        ) : (
+          items.map(renderLink)
+        )}
       </nav>
-      <div className="border-t border-line bg-surface-muted/60 px-3 py-4">
+      <div
+        className={cn(
+          "border-t px-3 py-4",
+          isAdmin ? "border-white/10 bg-white/5" : "border-line bg-surface-muted/60",
+        )}
+      >
         <button
           type="button"
           onClick={handleLogout}
-          className="flex min-h-[var(--control-height)] w-full items-center gap-3 rounded-[var(--radius-control)] border-0 bg-transparent px-3 text-left text-sm font-medium text-ink-soft hover:bg-white hover:text-brand-900"
+          className={cn(
+            "flex min-h-[var(--control-height)] w-full items-center gap-3 rounded-[var(--radius-control)] border-0 bg-transparent px-3 text-left text-sm font-medium",
+            isAdmin
+              ? "text-brand-100/80 hover:bg-white/10 hover:text-white"
+              : "text-ink-soft hover:bg-white hover:text-brand-900",
+          )}
         >
           <IconLogout className="h-5 w-5" />
           Cerrar sesión
         </button>
-        <p className="mt-3 truncate px-3 text-xs text-ink-muted">{userName}</p>
+        <p
+          className={cn(
+            "mt-3 truncate px-3 text-xs",
+            isAdmin ? "text-brand-100/50" : "text-ink-muted",
+          )}
+        >
+          {userName}
+        </p>
       </div>
     </div>
   );

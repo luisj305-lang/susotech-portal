@@ -8,6 +8,7 @@ import { WorkerActivityTable } from "./worker-activity-table";
 import { QuickActions } from "./quick-actions";
 import { PendingReview } from "./pending-review";
 import { formatWeekRange } from "@/lib/dashboard/format";
+import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
 
 const roleLabels = {
   admin: "Administrador",
@@ -57,6 +58,8 @@ export function AdminDashboard({
   weekOffset: number;
 }) {
   const role = profile.role as "admin" | "supervisor";
+  const presentation: AdminDashboardPresentation =
+    profile.role === "admin" ? "admin-dashboard" : "default";
   const emailLocal = profile.email.split("@")[0] ?? profile.email;
   const displayName = profile.full_name || emailLocal;
   const firstName = profile.full_name?.trim().split(/\s+/)[0] || emailLocal;
@@ -104,6 +107,42 @@ export function AdminDashboard({
       </Link>
     </nav>
   );
+
+  if (presentation === "admin-dashboard") {
+    return (
+      <AppShell
+        role={role}
+        userName={displayName}
+        roleLabel={roleLabel}
+        initials={initials}
+        presentation={presentation}
+      >
+        <div
+          lang="es"
+          className="mx-auto w-full max-w-[1600px] space-y-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7"
+        >
+          <PageHeader
+            greeting={`${computeGreeting()}, ${firstName}`}
+            title="Resumen operativo de esta semana"
+            description="Consulta el estado de los técnicos, la producción y la gasolina de la semana en curso."
+            weekLabel={`Semana: ${weekLabel}`}
+            weekControls={weekControls}
+          />
+          <StatCards
+            rows={workerOperations}
+            invoicedCents={weeklyInvoiced.invoiced_cents}
+            presentation={presentation}
+          />
+          <PendingReview jobs={pendingReview} presentation={presentation} />
+          <WorkerActivityTable
+            rows={workerOperations}
+            presentation={presentation}
+          />
+          <QuickActions role={role} presentation={presentation} />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell

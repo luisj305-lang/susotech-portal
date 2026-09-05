@@ -22,6 +22,9 @@ import {
   formatQuantity,
   formatWeekRange,
 } from "@/lib/dashboard/format";
+import { AdminDashboardDialog } from "./admin-dashboard-dialog";
+import styles from "./admin-dashboard.module.css";
+import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
 
 const timeZone = "America/New_York";
 
@@ -63,7 +66,14 @@ function formatShiftUntil(iso: string | null): string {
 const inputClass =
   "min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm focus:border-accent-500";
 
-export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
+export function WorkerActivityTable({
+  rows,
+  presentation = "default",
+}: {
+  rows: WorkerOperationsRow[];
+  presentation?: AdminDashboardPresentation;
+}) {
+  const isAdmin = presentation === "admin-dashboard";
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -132,6 +142,57 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
     setStatus("");
   };
 
+  const jobsModalBody = jobsModal ? (
+    <>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-lg font-bold">
+          Trabajos de {jobsModal.technicianName}
+        </h2>
+        <button
+          type="button"
+          aria-label="Cerrar"
+          onClick={() => setJobsModal(null)}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line text-ink hover:bg-surface-muted"
+        >
+          <IconX />
+        </button>
+      </div>
+      {jobsLoading ? (
+        <p className="py-8 text-center text-sm text-ink-muted">Cargando…</p>
+      ) : jobsError ? (
+        <p className="py-8 text-center text-sm text-ink">{jobsError}</p>
+      ) : jobs.length === 0 ? (
+        <p className="py-8 text-center text-sm text-ink-muted">
+          No tiene trabajos asignados.
+        </p>
+      ) : (
+        <ul className="grid max-h-[60vh] gap-2 overflow-y-auto">
+          {jobs.map((job) => (
+            <li key={job.id}>
+              <Link
+                href={`/trabajos/${job.id}`}
+                onClick={() => setJobsModal(null)}
+                className="block rounded-[var(--radius-control)] border border-line bg-surface-muted p-3 hover:bg-surface-muted/60"
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="font-semibold text-ink">
+                    {job.prism_number || job.address || "Sin PRISM"}
+                  </span>
+                  <StatusBadge
+                    status={job.archived_at ? "archivado" : job.main_status}
+                  />
+                </span>
+                <span className="mt-1 block text-sm text-ink-soft">
+                  {job.address || ""}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  ) : null;
+
   return (
     <Card>
       <CardHeader>
@@ -197,7 +258,14 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
         ) : (
           <>
             <div className="hidden md:block">
-              <div className="overflow-x-auto">
+              <div
+                role={isAdmin ? "region" : undefined}
+                aria-label={
+                  isAdmin ? "Tabla de actividad de trabajadores" : undefined
+                }
+                tabIndex={isAdmin ? 0 : undefined}
+                className={cn("overflow-x-auto", isAdmin && styles.scrollRegion)}
+              >
                 <table className="w-full min-w-[1080px] border-collapse text-sm">
                   <thead>
                     <tr className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
@@ -344,41 +412,69 @@ export function WorkerActivityTable({ rows }: { rows: WorkerOperationsRow[] }) {
                   </div>
                 );
               })}
+              {isAdmin ? (
+                <div className="rounded-[var(--radius-surface)] border border-line bg-brand-50 p-4">
+                  <p className="text-sm font-bold text-brand-900">TOTAL</p>
+                  <dl className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <dt className="text-xs text-ink-muted">Producción</dt>
+                      <dd className="font-semibold tabular-nums text-ink">
+                        {formatMoney(totals.productionAmount)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-ink-muted">Compañía</dt>
+                      <dd className="font-semibold tabular-nums text-ink">
+                        {formatMoney(totals.company)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-ink-muted">Entregados</dt>
+                      <dd className="font-semibold tabular-nums text-ink">
+                        {formatQuantity(totals.jobs)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-ink-muted">Gasolina</dt>
+                      <dd className="font-semibold tabular-nums text-ink">
+                        {formatMoney(totals.fuel)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-ink-muted">Ganancia</dt>
+                      <dd className="font-semibold tabular-nums text-ink">
+                        {formatMoney(totals.earnings / 100)}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : null}
             </div>
           </>
         )}
       </CardContent>
-      {jobsModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-brand-950/40 p-4" onClick={() => setJobsModal(null)}>
-          <div className="w-full max-w-lg rounded-[var(--radius-surface)] border border-line bg-white p-5 text-ink shadow-card sm:p-6" onClick={(event) => event.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-bold">Trabajos de {jobsModal.technicianName}</h2>
-              <button type="button" aria-label="Cerrar" onClick={() => setJobsModal(null)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line text-ink hover:bg-surface-muted"><IconX /></button>
-            </div>
-            {jobsLoading ? (
-              <p className="py-8 text-center text-sm text-ink-muted">Cargando…</p>
-            ) : jobsError ? (
-              <p className="py-8 text-center text-sm text-ink">{jobsError}</p>
-            ) : jobs.length === 0 ? (
-              <p className="py-8 text-center text-sm text-ink-muted">No tiene trabajos asignados.</p>
-            ) : (
-              <ul className="grid max-h-[60vh] gap-2 overflow-y-auto">
-                {jobs.map((job) => (
-                  <li key={job.id}>
-                    <Link href={`/trabajos/${job.id}`} onClick={() => setJobsModal(null)} className="block rounded-[var(--radius-control)] border border-line bg-surface-muted p-3 hover:bg-surface-muted/60">
-                      <span className="flex items-center justify-between gap-3">
-                        <span className="font-semibold text-ink">{job.prism_number || job.address || "Sin PRISM"}</span>
-                        <StatusBadge status={job.archived_at ? "archivado" : job.main_status} />
-                      </span>
-                      <span className="mt-1 block text-sm text-ink-soft">{job.address || ""}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+      {jobsModal && !isAdmin ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-brand-950/40 p-4"
+          onClick={() => setJobsModal(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-[var(--radius-surface)] border border-line bg-white p-5 text-ink shadow-card sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {jobsModalBody}
           </div>
         </div>
-      )}
+      ) : null}
+      {jobsModal && isAdmin ? (
+        <AdminDashboardDialog
+          open
+          onClose={() => setJobsModal(null)}
+          ariaLabel={`Trabajos de ${jobsModal.technicianName}`}
+        >
+          {jobsModalBody}
+        </AdminDashboardDialog>
+      ) : null}
     </Card>
   );
 }

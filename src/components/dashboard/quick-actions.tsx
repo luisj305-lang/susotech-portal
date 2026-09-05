@@ -9,8 +9,15 @@ import {
   IconUsers,
 } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
+import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
 
-export function QuickActions({ role }: { role: "admin" | "supervisor" }) {
+export function QuickActions({
+  role,
+  presentation = "default",
+}: {
+  role: "admin" | "supervisor";
+  presentation?: AdminDashboardPresentation;
+}) {
   const actions = [
     {
       href: "/trabajos/importar",
@@ -47,6 +54,32 @@ export function QuickActions({ role }: { role: "admin" | "supervisor" }) {
         ]
       : []),
   ];
+
+  if (presentation === "admin-dashboard") {
+    return (
+      <nav aria-label="Acciones rápidas" className="flex flex-wrap gap-2">
+        {actions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <Link
+              key={action.href}
+              href={action.href}
+              className={cn(
+                buttonClasses({
+                  variant: action.primary ? "primary" : "secondary",
+                  size: "md",
+                }),
+                "min-h-11",
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              {action.label}
+            </Link>
+          );
+        })}
+      </nav>
+    );
+  }
 
   return (
     <Card>
