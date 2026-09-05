@@ -87,6 +87,7 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
           <nav aria-label="Navegación de semana" className="mt-3 flex flex-wrap gap-3 text-sm font-medium text-accent-600">
             <Link href={`/dashboard?week=${weekOffset - 1}`} className="hover:text-accent-500 hover:underline">← Semana anterior</Link>
             {weekOffset !== 0 ? <Link href="/dashboard" className="hover:text-accent-500 hover:underline">Semana actual</Link> : null}
+            <a href={`/api/produccion/semanal/exportar?week=${weekOffset}`} className="hover:text-accent-500 hover:underline">Exportar semana</a>
           </nav>
           <p className="mt-3 text-sm text-ink-soft">{weeklyProduction[0] ? `${weeklyProduction[0].week_start} — ${weeklyProduction[0].week_end}` : "Viernes — jueves"}</p>
           <div className="mt-4 grid gap-1 text-sm text-ink-soft sm:grid-cols-2">

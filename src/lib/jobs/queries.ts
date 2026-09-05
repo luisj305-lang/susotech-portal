@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { listActiveTechniciansCore } from "./crew-core";
 import { getDeliveredPdfStatus } from "./delivered-status";
 import { requireActiveShift } from "@/lib/work-shifts/access";
-import type { AssigneeOption, CrewOfficeDto, FinancialHistoryBucket, Job, JobArchiveEvent, JobAssignment, JobCategory, JobDocument, JobFinancialAllocation, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyProductionLine, WorkerOperationsRow } from "./types";
+import type { AssigneeOption, CrewOfficeDto, FinancialHistoryBucket, Job, JobArchiveEvent, JobAssignment, JobCategory, JobDocument, JobFinancialAllocation, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyExportLine, WeeklyProductionLine, WorkerOperationsRow } from "./types";
 
 const statuses: JobStatus[] = ["sin_asignar", "asignado", "en_revision", "aprobado", "facturado", "pagado"];
 const categories: JobCategory[] = ["categoria_1", "categoria_2", "categoria_3"];
@@ -174,6 +174,17 @@ export async function getMyWeeklyFinancialAllocations(referenceDate?: string | n
   const { data, error } = await (await createClient()).rpc("get_my_weekly_financial_allocations", { p_reference_date: referenceDate ?? null });
   if (error) throw new Error("No se pudo cargar tu distribución financiera semanal.");
   return (data ?? []) as import("./types").WeeklyFinancialAllocation[];
+}
+
+export async function getMyWeeklyExport(referenceDate?: string | null): Promise<WeeklyExportLine[]> {
+  const { data, error } = await (await createClient()).rpc("get_my_weekly_export", { p_reference_date: referenceDate ?? null });
+  if (error) throw new Error("No se pudo exportar tu producción semanal.");
+  return ((data ?? []) as WeeklyExportLine[]).map((row) => ({
+    ...row,
+    source_amount_cents: Number(row.source_amount_cents),
+    percentage_basis_points: Number(row.percentage_basis_points),
+    allocated_cents: Number(row.allocated_cents),
+  }));
 }
 
 export async function getWorkerOperationsDashboard(referenceAt?: string | null) {

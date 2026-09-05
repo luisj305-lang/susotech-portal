@@ -202,6 +202,20 @@ export interface WeeklyFinancialAllocation {
   billing_state: "pending" | "confirmed";
 }
 
+export interface WeeklyExportLine {
+  week_start: string;
+  week_end: string;
+  job_id: string;
+  delivery_id: string;
+  prism_number: string | null;
+  source_amount_cents: number;
+  participant_name: string;
+  worker_specialty: string;
+  percentage_basis_points: number;
+  allocated_cents: number;
+  billing_state: "pending" | "confirmed";
+}
+
 export interface MyFinancialAllocation {
   allocation_version_id: string;
   delivery_id: string;

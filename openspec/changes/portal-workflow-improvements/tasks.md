@@ -49,6 +49,6 @@ Preserve accounting/audit/RLS/independent-parts, `design.md#file-changes` contra
 |---|---|---|---|---|
 | HTTP export | Forged viewer/week, inactive session, shared cache | Applicable | Derive viewer; validate period; deny invalid/unauthorized without data; private/no-store | Route/RPC RED: each case, cross-user body/cache leakage |
 
-- [ ] 6.2 R10 `src/lib/jobs/weekly-export.ts`, M(6.2): personal snapshot; reject partial/inconsistent snapshots; T6.2; normal/manual/participant/dedup; disable RPC; 300–400.
-- [ ] 6.3 R10 `src/lib/jobs/weekly-export.ts`: serialize PRISM/amount/coworkers/percentage; T6.3; cents/basis-points/Friday–Thursday/New_York/DST/empty; disable serializer; 200–350.
-- [ ] 6.4 R10 `app/api/produccion/semanal/exportar/route.ts`: wire dashboard download; T6.4; cross-user denial/cache; disable download; 200–350.
+- [x] 6.2 R10 `src/lib/jobs/weekly-export.ts`, M(6.2): personal snapshot; reject partial/inconsistent snapshots; T6.2; normal/manual/participant/dedup; disable RPC; 300–400.
+- [x] 6.3 R10 `src/lib/jobs/weekly-export.ts`: serialize PRISM/amount/coworkers/percentage; T6.3; cents/basis-points/Friday–Thursday/New_York/DST/empty; disable serializer; 200–350.
+- [x] 6.4 R10 `app/api/produccion/semanal/exportar/route.ts`: wire dashboard download; T6.4; cross-user denial/cache; disable download; 200–350.
