@@ -16,7 +16,6 @@ import { workTypeLabels } from "@/lib/jobs/work-types";
 import type { OfficeJobPreview } from "@/lib/jobs/types";
 
 const statusLabels: Record<string, string> = { sin_asignar: "Sin asignar", asignado: "Asignado", en_revision: "En revisión", aprobado: "Aprobado", facturado: "Facturado", pagado: "Pagado" };
-const categoryLabels: Record<string, string> = { categoria_1: "Categoría 1", categoria_2: "Categoría 2", categoria_3: "Categoría 3" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 function relevantDate(job: { submitted_at: string | null; deadline_date: string | null; assignment_date: string | null; updated_at: string }) {
@@ -40,7 +39,6 @@ function OfficeJobCard({ job, showDelete }: { job: OfficeJobPreview; showDelete:
         </div>
       </div>
       <dl className="mt-5 grid gap-2 text-sm sm:grid-cols-2">
-        <div><dt className="text-ink-muted">Categoría</dt><dd className="font-semibold">{job.category.replace("categoria_", "Categoría ")}</dd></div>
         <div><dt className="text-ink-muted">Asignado</dt><dd className="font-semibold">{job.assignee_label}</dd></div>
         <div><dt className="text-ink-muted">Fecha relevante</dt><dd className="font-semibold">{relevantDate(job)}</dd></div>
         <div><dt className="text-ink-muted">Evidencias</dt><dd className="font-semibold">{job.photo_count} foto(s)</dd></div>
@@ -66,8 +64,8 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
     const jobs = await listTechnicianQueueJobs({ query, status, tab });
     return <FieldShell userName={displayName(profile)}><JobList jobs={jobs} initialQuery={query ?? ""} initialStatus={status ?? ""} tab={tab} /></FieldShell>;
   }
-  const filters = { q: first("q"), status: first("status"), category: first("category"), archived: first("archived") === "1", facturados: first("facturados") === "1" };
-  const jobs = await listOfficeJobs({ query: filters.q, status: filters.status, category: filters.category, archived: filters.archived, facturados: filters.facturados });
+  const filters = { q: first("q"), status: first("status"), archived: first("archived") === "1", facturados: first("facturados") === "1" };
+  const jobs = await listOfficeJobs({ query: filters.q, status: filters.status, archived: filters.archived, facturados: filters.facturados });
   const groups = groupJobParts(jobs);
   const showDelete = filters.archived && (profile.role === "admin" || profile.role === "supervisor");
 
@@ -94,7 +92,6 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
             {filters.archived && <input type="hidden" name="archived" value="1" />}
             {filters.facturados && <input type="hidden" name="facturados" value="1" />}
             {filters.status && <input type="hidden" name="status" value={filters.status} />}
-            {filters.category && <input type="hidden" name="category" value={filters.category} />}
             <label className="grid flex-1 gap-1 text-sm font-medium text-ink-soft">Buscar por PRISM, título o dirección<input name="q" defaultValue={filters.q} className="min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none" /></label>
             <button className={buttonClasses({ variant: "secondary" })}>Buscar</button>
           </form>
@@ -102,22 +99,10 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
             {filters.archived && <input type="hidden" name="archived" value="1" />}
             {filters.facturados && <input type="hidden" name="facturados" value="1" />}
             {filters.q && <input type="hidden" name="q" value={filters.q} />}
-            {filters.category && <input type="hidden" name="category" value={filters.category} />}
             <span className="text-sm font-medium text-ink-soft">Estado</span>
             <div className="mt-1 flex flex-wrap gap-2">
               <FilterChip name="status" value="" label="Todos" active={!filters.status} />
               {Object.entries(statusLabels).map(([value, label]) => <FilterChip key={value} name="status" value={value} label={label} active={filters.status === value} />)}
-            </div>
-          </form>
-          <form>
-            {filters.archived && <input type="hidden" name="archived" value="1" />}
-            {filters.facturados && <input type="hidden" name="facturados" value="1" />}
-            {filters.q && <input type="hidden" name="q" value={filters.q} />}
-            {filters.status && <input type="hidden" name="status" value={filters.status} />}
-            <span className="text-sm font-medium text-ink-soft">Categoría</span>
-            <div className="mt-1 flex flex-wrap gap-2">
-              <FilterChip name="category" value="" label="Todas" active={!filters.category} />
-              {Object.entries(categoryLabels).map(([value, label]) => <FilterChip key={value} name="category" value={value} label={label} active={filters.category === value} />)}
             </div>
           </form>
         </div>
