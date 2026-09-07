@@ -29,6 +29,7 @@ export type WorkShiftAccess = {
 export type ShiftCompanion = {
   id: string;
   label: string;
+  usage_count?: number;
 };
 
 export type WorkShiftActionResult<T = null> =

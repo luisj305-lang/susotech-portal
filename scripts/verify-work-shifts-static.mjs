@@ -6,6 +6,7 @@ const primitives = read("supabase/migrations/20260813010000_technician_shift_pri
 const enforcement = read("supabase/migrations/20260813020000_enforce_active_technician_shifts.sql");
 const optionalShifts = read("supabase/migrations/20260814020000_make_technician_shifts_optional.sql");
 const fuelUploadFix = read("supabase/migrations/20260813021000_fix_shift_fuel_signed_upload.sql");
+const companionCandidates = read("supabase/migrations/20260906010000_shift_companion_candidates.sql");
 const access = read("src/lib/work-shifts/access.ts");
 const types = read("src/lib/work-shifts/types.ts");
 const actions = read("src/lib/work-shifts/actions.ts");
@@ -54,6 +55,13 @@ matches(form, /type="file"[\s\S]*capture="environment"/u, "shift form exposes th
 matches(form, /Elegir de galería[\s\S]*type="file"/u, "shift form exposes gallery selection");
 matches(actions, /fuelAmount: string/u, "server action receives decimal money as a string");
 matches(actions, /rpc\("start_technician_shift"/u, "server action delegates decimal validation to the database RPC");
+
+matches(companionCandidates, /create or replace function public\.list_shift_companion_candidates/u, "companion candidates RPC exists");
+matches(companionCandidates, /c\.recorded_by = auth\.uid\(\)/u, "companion usage is scoped to the current technician");
+matches(companionCandidates, /security definer\s+set search_path = ''/u, "companion candidates RPC fixes search_path");
+matches(form, /list_shift_companion_candidates/u, "shift form reads companion usage for the two-most-used view");
+matches(form, /Ver más técnicos/u, "shift form exposes an extra toggle for the remaining companion directory");
+matches(form, /favoriteIds[\s\S]*others[\s\S]*filter[\s\S]*!favoriteIds\.has/u, "expanded list excludes the two-most-used companions");
 
 matches(enforcement, /create or replace function public\.has_active_technician_shift/u, "active-shift predicate exists");
 matches(enforcement, /clock_timestamp\(\) as checked_at/u, "authorization uses the database clock");

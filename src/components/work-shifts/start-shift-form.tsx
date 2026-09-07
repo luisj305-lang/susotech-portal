@@ -25,6 +25,7 @@ export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }
   const [photo, setPhoto] = useState<File | null>(null);
   const [companions, setCompanions] = useState<string[]>([]);
   const [participants, setParticipants] = useState<ShiftCompanion[]>([]);
+  const [showAllCompanions, setShowAllCompanions] = useState(false);
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -33,7 +34,7 @@ export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }
     void (async () => {
       const { data: auth } = await supabase.auth.getUser();
       const selfId = auth.user?.id;
-      const { data, error } = await supabase.rpc("list_delivery_allocation_participants");
+      const { data, error } = await supabase.rpc("list_shift_companion_candidates");
       if (!error && !cancelled) {
         const list = ((data ?? []) as ShiftCompanion[]).filter((participant) => participant.id !== selfId);
         setParticipants(list);
@@ -138,6 +139,40 @@ export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }
         setMessage("No se pudo iniciar la jornada. Intenta nuevamente.");
       }
     });
+  };
+
+  const usageCount = (participant: ShiftCompanion) => Number(participant.usage_count ?? 0);
+  const favorites = participants
+    .filter((participant) => usageCount(participant) > 0)
+    .sort((a, b) => usageCount(b) - usageCount(a) || a.label.localeCompare(b.label, "es"))
+    .slice(0, 2);
+  const hasFavorites = favorites.length > 0;
+  const favoriteIds = new Set(favorites.map((participant) => participant.id));
+  const others = [...participants]
+    .filter((participant) => !favoriteIds.has(participant.id))
+    .sort((a, b) => a.label.localeCompare(b.label, "es"));
+
+  const renderCompanion = (participant: ShiftCompanion) => {
+    const checked = companions.includes(participant.id);
+    return (
+      <label
+        key={participant.id}
+        className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-4 transition disabled:cursor-not-allowed disabled:opacity-60 ${checked ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}
+      >
+        <input
+          type="checkbox"
+          name="companion"
+          value={participant.id}
+          checked={checked}
+          disabled={pending}
+          onChange={() => toggleCompanion(participant.id)}
+          className="h-4 w-4 shrink-0 accent-current"
+        />
+        <span className="min-w-0 truncate text-sm font-semibold">
+          {participant.label}
+        </span>
+      </label>
+    );
   };
 
   return (
@@ -256,30 +291,28 @@ export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }
           Opcional · selecciona hasta {MAX_COMPANIONS} compañeros.
         </p>
         {participants.length > 0 && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {participants.map((participant) => {
-              const checked = companions.includes(participant.id);
-              return (
-                <label
-                  key={participant.id}
-                  className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-4 transition disabled:cursor-not-allowed disabled:opacity-60 ${checked ? "border-brand-900 bg-brand-900 text-white" : "border-line bg-white text-ink"}`}
-                >
-                  <input
-                    type="checkbox"
-                    name="companion"
-                    value={participant.id}
-                    checked={checked}
-                    disabled={pending}
-                    onChange={() => toggleCompanion(participant.id)}
-                    className="h-4 w-4 shrink-0 accent-current"
-                  />
-                  <span className="min-w-0 truncate text-sm font-semibold">
-                    {participant.label}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
+          <>
+            {hasFavorites && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {favorites.map(renderCompanion)}
+              </div>
+            )}
+            {hasFavorites && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => setShowAllCompanions((current) => !current)}
+                className="w-fit text-sm font-semibold text-accent-600 underline"
+              >
+                {showAllCompanions ? "Ocultar técnicos" : "Ver más técnicos"}
+              </button>
+            )}
+            {(showAllCompanions || !hasFavorites) && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {others.map(renderCompanion)}
+              </div>
+            )}
+          </>
         )}
         {participants.length === 0 && (
           <p className="text-sm text-ink-soft">No hay otros técnicos o ayudantes activos para seleccionar.</p>
