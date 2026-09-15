@@ -523,3 +523,37 @@ export async function renderOriginalPdfPreview(originalPdf: Uint8Array, pageNumb
     } finally { closeDocument(pdfium, source); }
   } finally { release(); }
 }
+
+export async function renderDeliveredPdfPreview(deliveredPdf: Uint8Array, pageNumber: number) {
+  const previous = compositionTail;
+  let release!: () => void;
+  compositionTail = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    if (!deliveredPdf.length || deliveredPdf.length > MAX_OUTPUT_BYTES) throw new Error("El PDF entregado no es válido.");
+    const pdfium = await loadPdfium();
+    const source = openDocument(pdfium, deliveredPdf);
+    try {
+      const pageCount = pdfium.FPDF_GetPageCount(source.document);
+      if (pageCount < 1 || pageNumber < 1 || pageNumber > pageCount) throw new Error("La página solicitada no es válida.");
+      const rendered = renderPage(pdfium, source.document, pageNumber - 1);
+      const png = await sharp(rendered.rgba, { raw: { width: rendered.width, height: rendered.height, channels: 4 } }).png().toBuffer();
+      return { png, pageCount, width: rendered.width, height: rendered.height };
+    } finally { closeDocument(pdfium, source); }
+  } finally { release(); }
+}
+
+export async function removeDeliveredPdfPages(bytes: Uint8Array, pageNumbers: number[]) {
+  if (!bytes.length || bytes.length > MAX_OUTPUT_BYTES) throw new Error("El PDF entregado no es válido.");
+  const document = await PDFDocument.load(bytes);
+  const pageCount = document.getPageCount();
+  const toRemove = [...new Set(pageNumbers)]
+    .filter((page) => Number.isInteger(page) && page >= 1 && page <= pageCount)
+    .sort((left, right) => right - left);
+  if (!toRemove.length) throw new Error("No se seleccionaron páginas válidas para eliminar.");
+  if (toRemove.length >= pageCount) throw new Error("No se puede eliminar el PDF entregado por completo.");
+  for (const page of toRemove) document.removePage(page - 1);
+  const saved = await document.save({ useObjectStreams: false });
+  if (saved.length > MAX_OUTPUT_BYTES) throw new Error("El PDF generado supera el límite de 100 MB.");
+  return saved;
+}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JobForm } from "@/components/jobs/job-form";
 import { JobDocuments } from "@/components/jobs/job-documents";
+import { DeliveredPdfPageRemover } from "@/components/jobs/delivered-pdf-page-remover";
 import { JobAttachments } from "@/components/jobs/job-attachments";
 import { ArchiveHistory } from "@/components/jobs/archive-history";
 import { JobEvidenceList } from "@/components/jobs/job-evidence-list";
@@ -99,6 +100,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           {job.archived_at && <div className="mt-2 rounded-xl border border-line bg-surface-muted p-3 font-semibold text-ink"><p>Archivado: {job.archive_reason || "Sin motivo"}</p>{job.archive_notes && <p className="mt-1 font-normal">{job.archive_notes}</p>}</div>}
         </header>
         <JobDocuments jobId={job.id} originalPath={job.project_pdf_url} deliveredPath={job.delivered_pdf_path} deliveredStatus={getDeliveredPdfStatus(job, photos.map((photo) => photo.id), documents.map((document) => document.id), draft?.version, deliveredDraftVersion)} jobStatus={job.main_status} deliveredAt={job.delivered_pdf_generated_at} canRegenerate={profile.role === "admin"} canDelete={profile.role === "admin"} />
+        {isOfficeRole(profile.role) && job.delivered_pdf_path && ["asignado", "en_revision"].includes(job.main_status) && (
+          <section className="rounded-2xl border border-line bg-white p-6 shadow-card">
+            <h2 className="text-lg font-semibold text-ink">Quitar páginas del PDF entregado</h2>
+            <div className="mt-3"><DeliveredPdfPageRemover key={job.delivered_pdf_path} jobId={job.id} /></div>
+          </section>
+        )}
         <JobAttachments jobId={job.id} documents={documents.filter((document) => document.document_type === "additional")} canManage={isOfficeRole(profile.role)} />
         <OfficeJobActions jobId={job.id} status={job.main_status} assignment={assignment} options={options} canArchive={isOfficeRole(profile.role)} archived={Boolean(job.archived_at)} invoiceNumber={job.invoice_number} invoicePath={job.invoice_path} />
         {isOfficeRole(profile.role) && !job.archived_at && job.parent_job_id === null && <PartActions jobId={job.id} parts={detail.parts} />}
