@@ -9,11 +9,13 @@ import { QuickActions } from "./quick-actions";
 import { PendingReview } from "./pending-review";
 import { formatWeekRange } from "@/lib/dashboard/format";
 import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
+import type { ManualJob } from "@/lib/manual-jobs/types";
 
 const roleLabels = {
   admin: "Administrador",
   supervisor: "Supervisor",
   tecnico: "Técnico",
+  auditor: "Auditor",
 } as const;
 
 function computeGreeting(): string {
@@ -48,12 +50,14 @@ export function AdminDashboard({
   profile,
   workerOperations,
   pendingReview,
+  manualJobs = [],
   weeklyInvoiced,
   weekOffset,
 }: {
   profile: CurrentProfile;
   workerOperations: WorkerOperationsRow[];
   pendingReview: OfficeJobPreview[];
+  manualJobs?: ManualJob[];
   weeklyInvoiced: { invoiced_cents: number; delivered_jobs: number };
   weekOffset: number;
 }) {
@@ -133,9 +137,10 @@ export function AdminDashboard({
             invoicedCents={weeklyInvoiced.invoiced_cents}
             presentation={presentation}
           />
-          <PendingReview jobs={pendingReview} presentation={presentation} />
+          <PendingReview jobs={pendingReview} manualJobs={manualJobs} weekOffset={weekOffset} presentation={presentation} />
           <WorkerActivityTable
             rows={workerOperations}
+            manualJobs={manualJobs}
             presentation={presentation}
           />
           <QuickActions role={role} presentation={presentation} />
@@ -162,11 +167,11 @@ export function AdminDashboard({
         <StatCards rows={workerOperations} invoicedCents={weeklyInvoiced.invoiced_cents} />
         <div className="grid gap-5 xl:grid-cols-3">
           <div className="xl:col-span-2">
-            <WorkerActivityTable rows={workerOperations} />
+            <WorkerActivityTable rows={workerOperations} manualJobs={manualJobs} />
           </div>
           <div className="space-y-5">
             <QuickActions role={role} />
-            <PendingReview jobs={pendingReview} />
+            <PendingReview jobs={pendingReview} manualJobs={manualJobs} weekOffset={weekOffset} />
           </div>
         </div>
       </div>

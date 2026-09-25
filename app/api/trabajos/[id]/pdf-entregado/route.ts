@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { composeDeliveredPdf } from "@/lib/jobs/delivered-pdf";
-import { ensureVerifiedDocumentManifest } from "@/lib/jobs/document-manifest";
+import { downloadVerifiedSourceDocuments, ensureVerifiedDocumentManifest } from "@/lib/jobs/document-manifest";
 import { DEFAULT_CODE_COLOR, validatePlacements, type PdfCodePlacement } from "@/lib/jobs/pdf-code-editor-core";
 import { validatePdfTextNotes, type PdfTextNote } from "@/lib/jobs/pdf-text-note-core";
 import { validatePdfLines, type PdfLineAnnotation } from "@/lib/jobs/pdf-line-core";
@@ -44,13 +44,13 @@ export async function POST(
   const { id: jobId } = await context.params;
   if (!uuidPattern.test(jobId)) return json("Trabajo no disponible.", 404);
 
-  let input: { submit?: unknown; allocations?: unknown; allocationIdempotencyKey?: unknown };
+  let input: { submit?: unknown; allocations?: unknown; allocationIdempotencyKey?: unknown; expectedPath?: unknown; confirmReplacement?: unknown };
   try {
     input = await request.json();
   } catch {
     return json("La solicitud no es válida.", 400);
   }
-  if (typeof input.submit !== "boolean") return json("La solicitud no es válida.", 400);
+  if (!input || typeof input.submit !== "boolean") return json("La solicitud no es válida.", 400);
   const allocations = Array.isArray(input.allocations) ? input.allocations : [];
   const validAllocations = allocations.length > 0 && allocations.length <= 100
     && allocations.every((item): item is { participantId: string; percentageBasisPoints: number } => {
@@ -61,10 +61,10 @@ export async function POST(
         && Number(value.percentageBasisPoints) > 0 && Number(value.percentageBasisPoints) <= 10000;
     })
     && new Set(allocations.map((item) => (item as { participantId: string }).participantId)).size === allocations.length
-    && allocations.reduce((sum, item) => sum + Number((item as { percentageBasisPoints: number }).percentageBasisPoints), 0) === 10000;
+    && allocations.reduce((sum, item) => sum + Number((item as { percentageBasisPoints: number }).percentageBasisPoints), 0) <= 10000;
   if (input.submit && (!validAllocations || typeof input.allocationIdempotencyKey !== "string"
     || !uuidPattern.test(input.allocationIdempotencyKey))) {
-    return json("La distribución financiera debe sumar exactamente 100.00%.", 400);
+    return json("La distribución financiera no puede superar el 100.00%.", 400);
   }
 
   const supabase = await createClient();
@@ -83,7 +83,7 @@ export async function POST(
 
   const { data: job, error: jobError } = await supabase
     .from("jobs")
-    .select("id, main_status, project_pdf_url, delivered_pdf_path")
+    .select("id, main_status, project_pdf_url, delivered_pdf_path, archived_at")
     .eq("id", jobId)
     .maybeSingle();
   if (jobError || !job) return jobError?.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)
@@ -99,6 +99,18 @@ export async function POST(
     return json("El PDF solo puede regenerarse mientras el trabajo sea editable.", 409);
   }
   if (!isTechnician && !isAdmin) return json("Acceso denegado.", 403);
+  if (job.archived_at) return json("El trabajo está archivado.", 409);
+  if (job.delivered_pdf_path && input.confirmReplacement !== true) {
+    return NextResponse.json({
+      success: false,
+      requiresReplacementConfirmation: true,
+      expectedPath: job.delivered_pdf_path,
+      message: "Regenerar o volver a entregar reemplazará el PDF actual y restaurará las páginas quitadas desde los originales y las fotos actuales. ¿Deseas continuar?",
+    }, { status: 409 });
+  }
+  if (input.confirmReplacement === true && input.expectedPath !== job.delivered_pdf_path) {
+    return json("El PDF entregado cambió. Recarga el trabajo antes de continuar.", 409);
+  }
   if (isTechnician && !profile.price_category_id) {
     return json("Tu categoría de precio no está configurada. Contacta a un administrador.", 409);
   }
@@ -195,17 +207,12 @@ export async function POST(
       (uploaders ?? []).map((uploader) => [uploader.id, uploader.full_name?.trim() || uploader.email]),
     );
 
-    const sourceBytes: { id: string; bytes: Uint8Array }[] = [];
+    const sourceBytes = await downloadVerifiedSourceDocuments(service, sourceDocuments);
     let totalBytes = 0;
-    for (const document of sourceDocuments) {
-      const bytes = await downloadPrivateObject(service, "project-files", document.storage_path);
-      if (bytes.length > MAX_SOURCE_BYTES) throw new Error("Un PDF fuente supera el límite de 25 MB.");
-      if (createHash("sha256").update(bytes).digest("hex") !== document.file_hash) {
-        throw new Error("Un PDF fuente no coincide con su hash verificado.");
-      }
-      totalBytes += bytes.length;
+    for (const source of sourceBytes) {
+      if (source.bytes.length > MAX_SOURCE_BYTES) throw new Error("Un PDF fuente supera el límite de 25 MB.");
+      totalBytes += source.bytes.length;
       if (totalBytes > MAX_INPUT_BYTES) throw new Error("Los documentos de entrada superan el límite de 120 MB.");
-      sourceBytes.push({ id: document.id, bytes });
     }
     const photoBytes: Uint8Array[] = [];
     for (const photo of photos) {
@@ -244,6 +251,8 @@ export async function POST(
         metadata: {
           generator: "susotech-portal",
           job_id: jobId,
+          expected_path: job.delivered_pdf_path ?? "",
+          replacement_confirmed: input.confirmReplacement === true ? "true" : "false",
           source_photo_ids: delivered.sourcePhotoIds.join(","),
           source_document_ids: delivered.sourceDocumentIds.join(","),
           snapshot_hash: createHash("sha256").update(JSON.stringify(placements)).digest("hex"),
@@ -293,6 +302,9 @@ export async function POST(
       }
       confirmed = current?.delivered_pdf_path === deliveredPath;
       if (!confirmed) {
+        if (confirmationError.message.includes("Delivered PDF changed")) {
+          throw new Error("El PDF entregado cambió. Recarga el trabajo antes de continuar.");
+        }
         if (confirmationError.message.includes(ACTIVE_SHIFT_REQUIRED_MESSAGE)) {
           throw new Error(ACTIVE_SHIFT_REQUIRED_MESSAGE);
         }

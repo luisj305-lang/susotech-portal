@@ -15,6 +15,7 @@ export const FLEET_MAINTENANCE_STATUSES = [
   "cancelled",
 ] as const;
 export const FLEET_ODOMETER_SOURCES = ["weekly", "maintenance", "shift", "manual"] as const;
+export const FLEET_ENGINE_HOUR_SOURCES = ["manual", "technician"] as const;
 export const FLEET_EXPENSE_TYPES = [
   "registration",
   "toll",
@@ -41,6 +42,7 @@ export type FleetAssignmentRole = (typeof FLEET_ASSIGNMENT_ROLES)[number];
 export type FleetPolicyStatus = (typeof FLEET_POLICY_STATUSES)[number];
 export type FleetMaintenanceStatus = (typeof FLEET_MAINTENANCE_STATUSES)[number];
 export type FleetOdometerSource = (typeof FLEET_ODOMETER_SOURCES)[number];
+export type FleetEngineHourSource = (typeof FLEET_ENGINE_HOUR_SOURCES)[number];
 export type FleetExpenseType = (typeof FLEET_EXPENSE_TYPES)[number];
 export type FleetIncidentSeverity = (typeof FLEET_INCIDENT_SEVERITIES)[number];
 export type FleetIncidentStatus = (typeof FLEET_INCIDENT_STATUSES)[number];
@@ -68,6 +70,7 @@ export type FleetVehicle = FleetAuditFields & {
   acquired_on: string | null;
   retired_on: string | null;
   current_odometer_miles: number;
+  current_engine_hours: number;
   notes: string | null;
 };
 
@@ -131,6 +134,16 @@ export type FleetOdometerReading = FleetAuditFields & {
   recorded_on: string;
   source: FleetOdometerSource;
   shift_id: string | null;
+  notes: string | null;
+  submitted_by: string;
+};
+
+export type FleetEngineHourReading = FleetAuditFields & {
+  id: string;
+  vehicle_id: string;
+  reading_hours: number;
+  recorded_on: string;
+  source: FleetEngineHourSource;
   notes: string | null;
   submitted_by: string;
 };

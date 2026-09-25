@@ -31,13 +31,13 @@ function functionText(source, path, name, kind = ts.ScriptKind.TS) {
   return declaration.getText(file);
 }
 
-function assertOwnOfficeGate(source, path, expectedNames) {
+function assertOwnOfficeGate(source, path, expectedNames, gate = /await requireSupervisor\(\)/u) {
   const file = sourceFile(source, path);
   const functions = exportedAsyncFunctions(source, path);
   assert.deepEqual(functions.map((entry) => entry.name.text), expectedNames, `${path}: exported office function contract changed`);
   for (const declaration of functions) {
-    const hasOwnGate = declaration.body?.statements.some((statement) => /await requireSupervisor\(\)/u.test(statement.getText(file)));
-    assert.equal(hasOwnGate, true, `${path}: ${declaration.name.text} must establish its own supervisor gate`);
+    const hasOwnGate = declaration.body?.statements.some((statement) => gate.test(statement.getText(file)));
+    assert.equal(hasOwnGate, true, `${path}: ${declaration.name.text} must establish its own office gate`);
   }
 }
 
@@ -57,13 +57,20 @@ assert.match(fleetIcon, /<path data-part="worker-bucket"/u, "FleetIcon: worker b
 assert.match(fleetIcon, /<path data-part="utility-pole"/u, "FleetIcon: utility pole must establish working height");
 
 for (const page of [listPage, detailPage]) {
-  assert.match(page, /await requireSupervisor\(\)/u);
+  assert.match(page, /await requireOfficeViewer\(\)/u);
   assert.match(page, /<AppShell/u);
 }
 assert.match(listPage, /await searchParams/u);
 assert.match(listPage, /listFleetVehicles/u);
+assert.match(listPage, /listFleetFuelCorrectionCandidates/u);
+assert.match(listPage, /FleetShiftFuelEditor/u);
 assert.match(listPage, /createFleetVehicleAction/u);
+assert.match(listPage, /updateFleetVehicleStatusAction/u);
 const fleetListBody = functionText(listPage, "page.tsx", "FleetPage", ts.ScriptKind.TSX);
+assert.match(fleetListBody, /Correcciones de gasolina pendientes/u);
+assert.match(fleetListBody, /incluso si no tienen camión asociado/u);
+assert.match(fleetListBody, /<FleetShiftFuelEditor/u);
+assert.match(fleetListBody, /Paginación de correcciones de gasolina/u);
 assert.match(fleetListBody, /<details className="group relative">/u, "create vehicle flow must keep a native grouped details disclosure");
 const createSummaryMarkup = fleetListBody.match(/<summary[\s\S]*?<\/summary>/u)?.[0] ?? "";
 assert.match(createSummaryMarkup, /<span className="group-open:hidden lg:group-open:inline">\+ Nuevo camión<\/span>/u, "closed and desktop disclosure must show the create label");
@@ -103,6 +110,11 @@ for (const responsiveClass of [
 assert.ok(createPanelClass.includes("top-20"), "mobile create panel must reserve the top viewport band for its close toggle");
 assert.doesNotMatch(createPanelClass, /(?:^|\s)absolute(?:\s|$)/u, "create vehicle panel must be viewport-fixed below desktop");
 assert.match(fleetListBody, /action=\{createFleetVehicleAction\}[\s\S]*?className="grid gap-3 sm:grid-cols-2"/u, "create form must be one column on mobile and two columns from sm");
+assert.match(listPage, /function DraftVehicleActivationControl/u);
+assert.match(listPage, /vehicle\.status !== "draft"/u);
+assert.match(listPage, /Asigne un conductor principal vigente antes de activar este camión\./u);
+assert.match(listPage, /action=\{updateFleetVehicleStatusAction\}/u);
+assert.match(listPage, /name="status" value="active"/u);
 assert.match(detailPage, /const \{ id \} = await params/u);
 assert.match(detailPage, /getFleetVehicleDetail/u);
 assert.match(detailPage, /FleetDetailSections/u);
@@ -131,6 +143,7 @@ assert.match(actions, /^"use server";/u);
 const actionNames = [
   "createFleetVehicleAction",
   "updateFleetVehicleAction",
+  "updateFleetVehicleStatusAction",
   "deleteFleetVehicleAction",
   "saveFleetAssignmentAction",
   "endFleetAssignmentAction",
@@ -141,12 +154,14 @@ const actionNames = [
   "saveFleetExpenseAction",
   "saveFleetIncidentAction",
   "saveFleetOdometerAction",
+  "saveFleetEngineHoursAction",
   "deleteFleetRecordAction",
   "prepareFleetDocumentUpload",
   "confirmFleetDocumentUpload",
   "saveFleetDocumentMetadataAction",
   "deleteFleetDocumentAction",
   "setFleetShiftVehicleAction",
+  "setTechnicianShiftFuel",
   "saveFleetSettingsAction",
   "runFleetAlertsAction",
 ];
@@ -158,6 +173,11 @@ assert.match(actions, /revalidatePath\("\/camiones"\)/u);
 assert.match(actions, /createSignedUploadUrl/u);
 assert.match(actions, /fleet-documents/u);
 assert.match(actions, /function assertAffectedRow/u);
+const vehicleStatusAction = functionText(actions, "actions.ts", "updateFleetVehicleStatusAction");
+assert.match(vehicleStatusAction, /await requireSupervisor\(\)/u);
+assert.match(vehicleStatusAction, /enumValue\(formData, "status", FLEET_VEHICLE_STATUSES\)/u);
+assert.match(vehicleStatusAction, /\.update\(\{[\s\S]*?status,/u);
+assert.match(vehicleStatusAction, /revalidateFleet\(id\)/u);
 for (const action of [
   "saveFleetAssignmentAction",
   "endFleetAssignmentAction",
@@ -181,12 +201,21 @@ assert.match(functionText(actions, "actions.ts", "syncVehicleOdometer"), /readEr
 assert.match(functionText(actions, "actions.ts", "syncVehicleOdometer"), /assertAffectedRow/u);
 
 assert.match(queries, /import "server-only"/u);
-assertOwnOfficeGate(queries, "queries.ts", ["listFleetVehicles", "getFleetVehicleDetail", "getFleetSettings"]);
+assertOwnOfficeGate(queries, "queries.ts", ["listFleetVehicles", "listFleetFuelCorrectionCandidates", "getFleetVehicleDetail", "getFleetSettings"], /await requireOfficeViewer\(\)/u);
 assert.match(queries, /export async function listFleetVehicles/u);
+assert.match(queries, /export async function listFleetFuelCorrectionCandidates/u);
 assert.match(queries, /export async function getFleetVehicleDetail/u);
 assert.match(queries, /rpc\("list_fleet_cost_ledger"/u);
 assert.match(queries, /createSignedUrl/u);
 assert.match(queries, /profile\.role === "tecnico"/u);
+const fuelCorrectionsQuery = functionText(queries, "queries.ts", "listFleetFuelCorrectionCandidates");
+assert.match(fuelCorrectionsQuery, /await requireOfficeViewer\(\)/u);
+assert.match(fuelCorrectionsQuery, /\.gt\("fuel_amount", 200\)/u);
+assert.match(fuelCorrectionsQuery, /\.range\(offset, offset \+ FLEET_FUEL_CORRECTION_PAGE_SIZE - 1\)/u);
+assert.match(fuelCorrectionsQuery, /\.in\("id", technicianIds\)/u);
+assert.match(fuelCorrectionsQuery, /\.in\("id", vehicleIds\)/u);
+const vehicleDetailQuery = functionText(queries, "queries.ts", "getFleetVehicleDetail");
+assert.match(vehicleDetailQuery, /\.eq\("vehicle_id", vehicleId\)\.order\("started_at"/u, "fleet detail shifts must stay scoped to the current vehicle");
 
 assert.match(actionForm, /^"use client";/u);
 assert.match(actionForm, /useActionState/u);
@@ -201,5 +230,8 @@ assert.match(uploader, /finally \{/u);
 
 assert.match(sections, /ShiftAssociationsCard/u);
 assert.match(sections, /setFleetShiftVehicleAction/u);
+assert.match(sections, /VehicleStatusControl/u);
+assert.match(sections, /updateFleetVehicleStatusAction/u);
+assert.match(functionText(sections, "fleet-detail-sections.tsx", "VehicleStatusControl", ts.ScriptKind.TSX), /FLEET_VEHICLE_STATUSES/u);
 
-console.log("[fleet-office-static] PASS routes=2 tabs=7 actions=20 signed-storage=enabled office-gates=present");
+console.log("[fleet-office-static] PASS routes=2 tabs=7 actions=23 vehicle-status=activation+all-lifecycle-states fuel-corrections=paged vehicle-shifts=scoped signed-storage=enabled office-gates=present");

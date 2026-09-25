@@ -1,5 +1,7 @@
 "use client";
 
+import { requestDeliveredPdfGeneration } from "@/lib/jobs/delivered-pdf-replacement";
+
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { saveJobPdfAllocations, saveJobPdfDraft } from "@/lib/jobs/actions";
@@ -712,21 +714,26 @@ export function PdfCodeEditor({ jobId, actorId, participants, catalog, initialDr
     if (!requestedAllocations.length
       || requestedAllocations.some((item) => !Number.isInteger(item.percentageBasisPoints) || item.percentageBasisPoints <= 0)
       || new Set(requestedAllocations.map((item) => item.participantId)).size !== requestedAllocations.length
-      || requestedAllocations.reduce((sum, item) => sum + item.percentageBasisPoints, 0) !== 10000) {
-      setMessage("La distribución debe usar participantes únicos, porcentajes positivos y sumar exactamente 100.00%.");
+      || requestedAllocations.reduce((sum, item) => sum + item.percentageBasisPoints, 0) > 10000) {
+      setMessage("La distribución debe usar participantes únicos, porcentajes positivos y no superar el 100.00%.");
       return;
     }
     setSubmitting(true);
     if (!await persistStableDraft()) { setSubmitting(false); return; }
     setMessage("Generando y enviando el PDF final…");
-    const response = await fetch(`/api/trabajos/${jobId}/pdf-entregado`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-      submit: true,
-      allocations: requestedAllocations,
-      allocationIdempotencyKey: crypto.randomUUID(),
-    }) });
-    const result = await response.json().catch(() => ({ message: "No se pudo entregar el trabajo." }));
-    setMessage(result.message || "No se pudo entregar el trabajo."); setSubmitting(false);
-    if (response.ok) router.replace(`/trabajos/${jobId}`);
+    try {
+      const result = await requestDeliveredPdfGeneration(jobId, {
+        submit: true,
+        allocations: requestedAllocations,
+        allocationIdempotencyKey: crypto.randomUUID(),
+      });
+      setMessage(result.message || "No se pudo entregar el trabajo.");
+      if (result.ok) router.replace(`/trabajos/${jobId}`);
+    } catch {
+      setMessage("No se pudo entregar el trabajo.");
+    } finally {
+      setSubmitting(false);
+    }
   };
   const confirmPdf = async () => {
     setSubmitting(true);

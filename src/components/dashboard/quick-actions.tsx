@@ -15,16 +15,19 @@ export function QuickActions({
   role,
   presentation = "default",
 }: {
-  role: "admin" | "supervisor";
+  role: "admin" | "supervisor" | "auditor";
   presentation?: AdminDashboardPresentation;
 }) {
+  const canMutate = role !== "auditor";
   const actions = [
-    {
-      href: "/trabajos/importar",
-      label: "Importar trabajos",
-      icon: IconUpload,
-      primary: true,
-    },
+    ...(canMutate
+      ? [{
+          href: "/trabajos/importar",
+          label: "Importar trabajos",
+          icon: IconUpload,
+          primary: true,
+        }]
+      : []),
     {
       href: "/trabajos",
       label: "Ver todos los trabajos",
@@ -37,12 +40,14 @@ export function QuickActions({
       icon: IconClipboardCheck,
       primary: false,
     },
-    {
-      href: "/equipos",
-      label: "Administrar equipos",
-      icon: IconUsers,
-      primary: false,
-    },
+    ...(canMutate
+      ? [{
+          href: "/equipos",
+          label: "Administrar equipos",
+          icon: IconUsers,
+          primary: false,
+        }]
+      : []),
     ...(role === "admin"
       ? [
           {

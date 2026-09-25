@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/dashboard/app-shell";
 import { Button } from "@/components/ui/button";
 import { displayName, initials, roleLabel } from "@/lib/dashboard/profile";
-import { requireSupervisor } from "@/lib/auth/session";
+import { requireOfficeViewer } from "@/lib/auth/session";
 import { getFinancialAllocationReport, getProductionReport } from "@/lib/jobs/queries";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -17,7 +17,7 @@ function isoDate(date: Date) {
 }
 
 export default async function ProductionPage({ searchParams }: { searchParams: SearchParams }) {
-  const profile = await requireSupervisor();
+  const profile = await requireOfficeViewer();
   const values = await searchParams;
   const value = (key: string) => Array.isArray(values[key]) ? values[key][0] : values[key];
   const today = new Date();

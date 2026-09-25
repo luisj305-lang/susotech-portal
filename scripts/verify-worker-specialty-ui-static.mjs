@@ -6,7 +6,7 @@ const manager = readFileSync("src/components/users-manager.tsx", "utf8");
 const session = readFileSync("src/lib/auth/session.ts", "utf8");
 const actions = readFileSync("src/lib/users/actions.ts", "utf8");
 
-assert.match(page, /requireSupervisor\(\)/);
+assert.match(page, /requireOfficeViewer\(\)/);
 assert.match(page, /worker_specialty: WorkerSpecialty \| null/);
 assert.match(session, /worker_specialty: WorkerSpecialty \| null/);
 assert.match(session, /technician_type, worker_specialty, price_category_id/);

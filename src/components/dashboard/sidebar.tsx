@@ -43,6 +43,16 @@ function FleetIcon({ className }: IconProps) {
   );
 }
 
+function PayrollIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 12h.01M18 12h.01" />
+    </svg>
+  );
+}
+
 function isActive(href: string, pathname: string): boolean {
   if (href === "/trabajos/importar") return pathname === "/trabajos/importar";
   if (href === "/trabajos") {
@@ -50,6 +60,9 @@ function isActive(href: string, pathname: string): boolean {
   }
   if (href === "/camiones") {
     return pathname === "/camiones" || pathname.startsWith("/camiones/");
+  }
+  if (href === "/postulantes") {
+    return pathname === "/postulantes" || pathname.startsWith("/postulantes/");
   }
   return pathname === href;
 }
@@ -78,6 +91,8 @@ export function Sidebar({
       icon: IconClipboardCheck,
     },
     { href: "/manual", label: "Trabajos manuales", icon: IconClipboardCheck },
+    { href: "/nomina", label: "Nómina", icon: PayrollIcon },
+    { href: "/postulantes", label: "Postulantes", icon: IconUserCog },
     ...(role === "admin"
       ? [
           { href: "/catalogo", label: "Lista de precios", icon: IconTag },

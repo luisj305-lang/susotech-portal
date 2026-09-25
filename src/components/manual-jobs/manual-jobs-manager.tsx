@@ -7,25 +7,10 @@ import { IconClipboardCheck } from "@/components/ui/icons";
 import { EmptyState } from "@/components/ui/empty-state";
 import { supabase } from "@/lib/supabase/client";
 import { formatMoney } from "@/lib/dashboard/format";
-import { createManualJob, createManualJobPdfUrl, reviewManualJob } from "@/lib/manual-jobs/actions";
+import { createManualJob, createManualJobPdfUrl, reviewManualJob, updateManualJob } from "@/lib/manual-jobs/actions";
+import type { ManualJob, ManualJobCreationContext, ManualJobWorker } from "@/lib/manual-jobs/types";
 
-export type ManualJobWorker = {
-  technicianId: string;
-  name: string;
-  percentageBasisPoints: number;
-};
-
-export type ManualJob = {
-  id: string;
-  prism_number: string;
-  value_cents: number;
-  status: "pending" | "approved" | "rejected";
-  creator_name?: string | null;
-  created_at: string;
-  workers: ManualJobWorker[];
-  rejection_reason?: string | null;
-  pdf_path?: string | null;
-};
+export type { ManualJob, ManualJobWorker } from "@/lib/manual-jobs/types";
 
 type Participant = { id: string; label: string; worker_specialty: string | null };
 
@@ -58,16 +43,23 @@ function formatPercentage(basisPoints: number): string {
   return `${(basisPoints / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
 }
 
+export function manualWorkersForViewer(job: ManualJob, currentUserId: string, isTechnician: boolean): ManualJobWorker[] {
+  if (!isTechnician || job.created_by === currentUserId) return job.workers;
+  return job.workers.filter((worker) => worker.technicianId === currentUserId);
+}
+
 type WorkerRow = { technicianId: string; percentage: string };
 
 export function ManualJobsManager({
   role,
   currentUserId,
   initialJobs,
+  creationContext,
 }: {
-  role: "tecnico" | "admin" | "supervisor";
+  role: "tecnico" | "admin" | "supervisor" | "auditor";
   currentUserId: string;
   initialJobs: ManualJob[];
+  creationContext?: ManualJobCreationContext;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
@@ -76,16 +68,21 @@ export function ManualJobsManager({
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [prism, setPrism] = useState("");
   const [value, setValue] = useState("");
+  const [description, setDescription] = useState("");
+  const [workDate, setWorkDate] = useState(creationContext?.today ?? "");
+  const [financialWeek, setFinancialWeek] = useState(creationContext?.current_financial_week ?? "");
+  const [editing, setEditing] = useState<ManualJob | null>(null);
   const [rows, setRows] = useState<WorkerRow[]>([{ technicianId: "", percentage: "" }]);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
   useEffect(() => {
+    if (role === "auditor") return;
     void (async () => {
       const { data, error } = await supabase.rpc("list_delivery_allocation_participants");
       if (!error) setParticipants((data ?? []) as Participant[]);
     })();
-  }, []);
+  }, [role]);
 
   const totalBasisPoints = rows.reduce(
     (sum, row) => sum + (Number(row.percentage) > 0 ? Math.round(Number(row.percentage) * 100) : 0),
@@ -102,8 +99,34 @@ export function ManualJobsManager({
   const removeRow = (index: number) =>
     setRows((current) => (current.length > 1 ? current.filter((_, i) => i !== index) : current));
 
+  const resetForm = () => {
+    setEditing(null);
+    setPrism("");
+    setValue("");
+    setDescription("");
+    setWorkDate(creationContext?.today ?? "");
+    setFinancialWeek(creationContext?.current_financial_week ?? "");
+    setRows([{ technicianId: "", percentage: "" }]);
+  };
+
+  const edit = (job: ManualJob) => {
+    setEditing(job);
+    setPrism(job.prism_number);
+    setValue((job.value_cents / 100).toFixed(2));
+    setDescription(job.description ?? "");
+    setWorkDate(job.work_date ?? "");
+    setFinancialWeek(job.financial_week_start ?? "");
+    setRows(job.workers.map((worker) => ({ technicianId: worker.technicianId, percentage: String(worker.percentageBasisPoints / 100) })));
+    setMessage("Edita los datos en el formulario. El estado y la fecha de aprobación no cambiarán.");
+    document.getElementById("manual-job-form")?.scrollIntoView({ behavior: "smooth" });
+  };
+
   const submit = () => {
     setMessage("");
+    if (canReview && (!description.trim() || !workDate || !financialWeek)) {
+      setMessage("Completa la descripción, la fecha del trabajo y la semana financiera.");
+      return;
+    }
     if (!prism.trim()) {
       setMessage("El número de PRISM es obligatorio.");
       return;
@@ -128,19 +151,23 @@ export function ManualJobsManager({
     }
 
     startTransition(async () => {
-      const result = await createManualJob({
+      const input = {
         prismNumber: prism.trim(),
         valueCents: Math.round(dollars * 100),
+        description: description.trim(),
+        workDate,
+        financialWeek: canReview ? financialWeek : undefined,
         workers: rows.map((row) => ({
           technicianId: row.technicianId,
           percentageBasisPoints: Math.round(Number(row.percentage) * 100),
         })),
-      });
+      };
+      const result = editing && editing.revision != null
+        ? await updateManualJob({ ...input, id: editing.id, expectedRevision: editing.revision })
+        : await createManualJob(input);
       setMessage(result.message);
       if (result.success) {
-        setPrism("");
-        setValue("");
-        setRows([{ technicianId: "", percentage: "" }]);
+        resetForm();
         router.refresh();
       }
     });
@@ -178,6 +205,7 @@ export function ManualJobsManager({
     });
 
   const isTechnician = role === "tecnico";
+  const canReview = role === "admin" || role === "supervisor";
 
   return (
     <div className="space-y-6">
@@ -191,7 +219,9 @@ export function ManualJobsManager({
         <p className="mt-2 text-ink-soft">
           {isTechnician
             ? "Registra un trabajo hecho fuera del flujo normal. Queda pendiente hasta que un administrador o supervisor lo apruebe."
-            : "Aprobá o rechazá los trabajos manuales enviados por los técnicos."}
+            : canReview
+              ? "Registra, aprueba o rechaza trabajos manuales. La semana financiera es independiente de la fecha del trabajo."
+              : "Consulta los trabajos manuales enviados por los técnicos."}
         </p>
       </header>
 
@@ -201,8 +231,12 @@ export function ManualJobsManager({
         </p>
       ) : null}
 
-      {isTechnician ? (
-        <section className="grid gap-6 rounded-2xl border border-line bg-white p-6 shadow-card sm:p-8">
+      {isTechnician || canReview ? (
+        <section id="manual-job-form" aria-label={editing ? "Editar trabajo manual" : "Registrar trabajo manual"} className="grid gap-6 rounded-2xl border border-line bg-white p-6 shadow-card sm:p-8">
+          {editing ? <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-ink">Editar PRISM {editing.prism_number} · Revisión {editing.revision}</h2>
+            <Button type="button" variant="secondary" disabled={pending} onClick={resetForm}>Cancelar edición</Button>
+          </div> : null}
           <div className="grid gap-5 sm:grid-cols-2">
             <label className="grid gap-1 text-sm font-medium text-ink-soft">
               Número de PRISM
@@ -233,6 +267,29 @@ export function ManualJobsManager({
             </label>
           </div>
 
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
+            Descripción del trabajo{canReview ? " (obligatoria)" : " (opcional)"}
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)}
+              maxLength={2000} disabled={pending} className={inputClasses} />
+          </label>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <label className="grid gap-1 text-sm font-medium text-ink-soft">
+              Fecha en que se realizó el trabajo
+              <input type="date" value={workDate} max={creationContext?.today}
+                onChange={(event) => setWorkDate(event.target.value)} disabled={pending} className={inputClasses} />
+            </label>
+            {canReview ? <label className="grid gap-1 text-sm font-medium text-ink-soft">
+              Semana financiera (viernes de inicio)
+              <input type="date" value={financialWeek} min={creationContext?.first_financial_week} step={7}
+                onChange={(event) => setFinancialWeek(event.target.value)} disabled={pending} className={inputClasses} />
+            </label> : null}
+          </div>
+          <p className="text-xs text-ink-muted">
+            {canReview
+              ? `Corte de viernes a jueves. No se permiten semanas anteriores a ${creationContext?.first_financial_week ?? "la activación"}.`
+              : "La semana financiera se fija al registrar el trabajo, aunque se apruebe después del jueves."}
+          </p>
+
           <div className="grid gap-3">
             <div className="flex items-center justify-between">
               <p className="font-semibold text-ink">Reparto entre trabajadores</p>
@@ -247,6 +304,7 @@ export function ManualJobsManager({
             {rows.map((row, index) => (
               <div key={index} className="grid gap-3 sm:grid-cols-[1fr_9rem_auto] sm:items-center">
                 <select
+                  aria-label={`Trabajador ${index + 1}`}
                   value={row.technicianId}
                   onChange={(event) => updateRow(index, { technicianId: event.target.value })}
                   disabled={pending}
@@ -296,14 +354,14 @@ export function ManualJobsManager({
           </div>
 
           <Button type="button" variant="primary" size="lg" disabled={pending} onClick={submit} className="w-full">
-            {pending ? "Enviando…" : "Enviar trabajo manual"}
+            {pending ? "Guardando…" : editing ? "Guardar cambios" : "Enviar trabajo manual"}
           </Button>
         </section>
       ) : null}
 
       <section className="grid gap-3">
         <h2 className="text-xl font-bold text-ink">
-          {isTechnician ? "Mis trabajos manuales" : "Solicitudes"}
+          {isTechnician ? "Trabajo manual en el que participo" : "Solicitudes"}
         </h2>
         {initialJobs.length === 0 ? (
           <div className="rounded-2xl border border-line bg-white">
@@ -319,23 +377,44 @@ export function ManualJobsManager({
           </div>
         ) : (
           <div className="space-y-3">
-            {initialJobs.map((job) => (
-              <div key={job.id} className="rounded-2xl border border-line bg-white p-5 shadow-card">
+            {initialJobs.map((job) => {
+              const visibleWorkers = manualWorkersForViewer(job, currentUserId, isTechnician);
+              const ownWorker = visibleWorkers.find((worker) => worker.technicianId === currentUserId);
+              const isCreator = job.created_by === currentUserId;
+              const ownShareCents = ownWorker?.allocatedCents ?? (ownWorker
+                ? Math.round((job.value_cents * ownWorker.percentageBasisPoints) / 10000)
+                : null);
+
+              return <div key={job.id} id={`manual-${job.id}`} className="scroll-mt-6 rounded-2xl border border-line bg-white p-5 shadow-card">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                       PRISM {job.prism_number}
                     </p>
-                    <p className="text-lg font-bold text-ink">{formatMoney(job.value_cents / 100)}</p>
+                    {isTechnician && !isCreator && ownWorker && ownShareCents !== null ? (
+                      <p className="text-lg font-bold text-ink">Tu participación: {formatMoney(ownShareCents / 100)}</p>
+                    ) : (
+                      <p className="text-lg font-bold text-ink">{formatMoney(job.value_cents / 100)}</p>
+                    )}
                     {!isTechnician && job.creator_name ? (
                       <p className="text-sm text-ink-soft">Creado por: {job.creator_name}</p>
                     ) : null}
+                    {job.description ? <p className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">{job.description}</p> : null}
+                    {job.work_date ? <p className="text-sm text-ink-soft">Fecha del trabajo: {job.work_date}</p> : null}
+                    {job.financial_week_start ? <p className="text-sm text-ink-soft">Semana financiera desde: {job.financial_week_start} (viernes a jueves)</p> : null}
                   </div>
                   <ManualStatusBadge status={job.status} />
                 </div>
 
+                {canReview && job.revision != null && job.financial_week_start
+                  && creationContext && job.financial_week_start >= creationContext.first_financial_week ? (
+                  <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={() => edit(job)} className="mt-3">
+                    Editar trabajo
+                  </Button>
+                ) : null}
+
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {job.workers.map((worker) => (
+                  {visibleWorkers.map((worker) => (
                     <span
                       key={worker.technicianId}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface-muted px-2.5 py-1 text-xs text-ink-soft"
@@ -359,6 +438,13 @@ export function ManualJobsManager({
                     </Button>
                   </div>
                 ) : null}
+                {!isTechnician && job.revision != null && !job.pdf_path ? (
+                  <p className="mt-3 text-sm text-ink-muted">
+                    {job.revision > 1
+                      ? "PDF no disponible: el comprobante anterior quedó invalidado por la edición."
+                      : "PDF no disponible para este trabajo."}
+                  </p>
+                ) : null}
 
                 {job.status === "rejected" && job.rejection_reason ? (
                   <p className="mt-3 rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm text-ink-soft">
@@ -366,7 +452,7 @@ export function ManualJobsManager({
                   </p>
                 ) : null}
 
-                {!isTechnician && job.status === "pending" ? (
+                {canReview && job.status === "pending" ? (
                   <div className="mt-4 border-t border-line pt-3">
                     {rejectTarget === job.id ? (
                       <div className="grid gap-2">
@@ -417,8 +503,8 @@ export function ManualJobsManager({
                     )}
                   </div>
                 ) : null}
-              </div>
-            ))}
+              </div>;
+            })}
           </div>
         )}
       </section>

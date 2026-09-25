@@ -5,6 +5,9 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IconCamera, IconInbox } from "@/components/ui/icons";
 import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
+import type { ManualJob } from "@/lib/manual-jobs/types";
+import { combineWorkItems } from "@/lib/jobs/work-list";
+import { ManualWorkCard } from "@/components/jobs/manual-work-card";
 
 const deliveryDateFormatter = new Intl.DateTimeFormat("es-MX", {
   timeZone: "America/New_York",
@@ -58,12 +61,20 @@ function PendingCard({ job }: { job: OfficeJobPreview }) {
 
 export function PendingReview({
   jobs,
+  manualJobs = [],
+  weekOffset = 0,
   presentation = "default",
 }: {
   jobs: OfficeJobPreview[];
+  manualJobs?: ManualJob[];
+  weekOffset?: number;
   presentation?: AdminDashboardPresentation;
 }) {
-  const visible = jobs.slice(0, 8);
+  const visible = combineWorkItems(jobs, manualJobs.filter((job) => job.status === "pending"))
+    .sort((a, b) => {
+      const date = (entry: typeof a) => entry.source === "manual" ? entry.job.created_at : entry.job.submitted_at ?? entry.job.updated_at;
+      return Date.parse(date(b)) - Date.parse(date(a));
+    }).slice(0, 8);
   const isAdmin = presentation === "admin-dashboard";
 
   return (
@@ -72,7 +83,7 @@ export function PendingReview({
         <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
           <CardTitle>Pendientes de revisión</CardTitle>
           <Link
-            href="/trabajos?status=en_revision"
+            href={`/trabajos?status=en_revision&week=${weekOffset}`}
             className="text-sm font-medium text-accent-600 hover:text-accent-500"
           >
             Ver todos los trabajos pendientes →
@@ -88,15 +99,18 @@ export function PendingReview({
           />
         ) : isAdmin ? (
           <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
-            {visible.map((job) => (
-              <PendingCard key={job.id} job={job} />
-            ))}
+            {visible.map((entry) => entry.source === "manual"
+              ? <ManualWorkCard key={entry.key} job={entry.job} review />
+              : <PendingCard key={entry.key} job={entry.job} />)}
           </div>
         ) : (
           <div className="divide-y divide-line px-5 sm:px-6">
-            {visible.map((job) => (
+            {visible.map((entry) => {
+              if (entry.source === "manual") return <ManualWorkCard key={entry.key} job={entry.job} review />;
+              const job = entry.job;
+              return (
               <div
-                key={job.id}
+                key={entry.key}
                 className="flex flex-wrap items-center gap-3 py-3.5"
               >
                 <div className="min-w-0 flex-1">
@@ -132,7 +146,8 @@ export function PendingReview({
                   Revisar
                 </Link>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>

@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase/client";
 import type { DeliveredPdfStatus, JobStatus } from "@/lib/jobs/types";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { requestDeliveredPdfGeneration } from "@/lib/jobs/delivered-pdf-replacement";
 
 const PDF_LIMIT = 25 * 1024 * 1024;
 
@@ -67,15 +68,23 @@ export function JobDocuments({
       preview.close();
     });
   };
+  const openCompatibleView = (kind: "original" | "delivered") => {
+    const preview = window.open("about:blank", "_blank");
+    if (!preview) {
+      setMessage("El navegador bloqueó la ventana del PDF. Permite ventanas emergentes e inténtalo de nuevo.");
+      return;
+    }
+    preview.opener = null;
+    preview.location.replace(`/api/trabajos/${jobId}/pdf-view/${kind}`);
+  };
   const regenerate = () => startTransition(async () => {
-    const response = await fetch(`/api/trabajos/${jobId}/pdf-entregado`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ submit: false }),
-    });
-    const result = await response.json().catch(() => ({ message: "No se pudo generar el PDF entregado." }));
-    setMessage(result.message || "No se pudo generar el PDF entregado.");
-    if (response.ok) router.refresh();
+    try {
+      const result = await requestDeliveredPdfGeneration(jobId, { submit: false });
+      setMessage(result.message || "No se pudo generar el PDF entregado.");
+      if (result.ok) router.refresh();
+    } catch {
+      setMessage("No se pudo generar el PDF entregado.");
+    }
   });
   const remove = (documentKind: "original" | "delivered") => {
     const label = documentKind === "original" ? "PDF original" : "PDF entregado";
@@ -145,14 +154,14 @@ export function JobDocuments({
       <article className="rounded-xl border border-line bg-white p-4">
         <h3 className="font-bold text-ink">PDF original</h3>
         <p className="mt-1 text-sm text-ink-soft">Documento recibido, sin modificaciones.</p>
-        {originalPath ? <div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => open(originalPath)}>Ver PDF original</Button>{canDelete && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => remove("original")}>Eliminar PDF original</Button>}</div> : canDelete ? <div className="mt-4 grid gap-3"><p className="text-sm text-ink-soft">El original fue retirado. Sube un nuevo PDF para reiniciar el borrador de entrega.</p><input ref={originalInput} type="file" accept="application/pdf,.pdf" disabled={pending} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /><Button variant="primary" type="button" disabled={pending} onClick={uploadOriginal}>{pending ? "Procesando…" : "Subir nuevo PDF original"}</Button></div> : <p className="mt-4 text-sm text-ink-soft">No disponible</p>}
+        {originalPath ? <div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => openCompatibleView("original")}>Abrir vista compatible para móvil</Button><Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => open(originalPath)}>Abrir original sin modificar</Button>{canDelete && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => remove("original")}>Eliminar PDF original</Button>}</div> : canDelete ? <div className="mt-4 grid gap-3"><p className="text-sm text-ink-soft">El original fue retirado. Sube un nuevo PDF para reiniciar el borrador de entrega.</p><input ref={originalInput} type="file" accept="application/pdf,.pdf" disabled={pending} className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-accent-500 focus:outline-none" /><Button variant="primary" type="button" disabled={pending} onClick={uploadOriginal}>{pending ? "Procesando…" : "Subir nuevo PDF original"}</Button></div> : <p className="mt-4 text-sm text-ink-soft">No disponible</p>}
       </article>
       <article className="rounded-xl border border-line bg-white p-4">
         <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-ink">PDF entregado por técnico</h3><StatusBadge status={`pdf_${deliveredStatus}`} /></div>
         {deliveredAt && <p className="mt-1 text-sm text-ink-soft">Entregado el {deliveredDateFormatter.format(new Date(deliveredAt))}</p>}
-        <p className="mt-1 text-sm text-ink-soft">Original más las evidencias fotográficas confirmadas.</p>
+        <p className="mt-1 text-sm text-ink-soft">PDF de entrega, con los recortes de páginas realizados por oficina. Regenerar restaura las páginas desde los originales y las evidencias actuales.</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          {deliveredPath && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => open(deliveredPath)}>Ver PDF entregado</Button>}
+          {deliveredPath && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => openCompatibleView("delivered")}>Ver PDF entregado</Button>}
           {canDelete && deliveredPath && <Button variant="secondary" size="sm" type="button" disabled={pending} onClick={() => remove("delivered")}>Eliminar PDF entregado</Button>}
           {canRegenerate && editable && originalPath && <Button variant="primary" type="button" disabled={pending} onClick={regenerate}>{deliveredPath ? "Regenerar" : "Generar"}</Button>}
         </div>

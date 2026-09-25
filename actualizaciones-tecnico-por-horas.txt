@@ -1,0 +1,251 @@
+========================================================================
+ACTUALIZACIONES PENDIENTES — TÉCNICO POR HORAS Y REPARTO FINANCIERO MIXTO
+Portal susotech-portal
+========================================================================
+
+Este documento resume TODAS las actualizaciones que se van a hacer,
+con detalle de reglas, cambios técnicos y estado de avance.
+
+========================================================================
+1. RESUMEN GENERAL
+========================================================================
+
+Se implementan dos grandes cambios:
+
+  A) Modalidad de "técnico por horas": un técnico con los mismos
+     permisos y pantallas que el resto, pero al que se le paga por las
+     horas trabajadas (jornada) en lugar de por porcentaje de producción.
+
+  B) Reparto financiero mixto: permitir que en un mismo trabajo haya
+     técnicos que cobran por porcentaje y técnicos que cobran por horas,
+     sin mezclar ambos cálculos de pago.
+
+========================================================================
+2. REGLAS CONFIRMADAS — TÉCNICO POR HORAS
+========================================================================
+
+- Es un técnico NORMAL: mismos permisos, trabajos y pantallas que un
+  técnico actual. Solo cambia cómo se le paga.
+
+- Inicia su jornada usando el formulario "Iniciar jornada" actual
+  (con gasolina y compañeros).
+
+- Una sola jornada por día (día calendario en hora de Orlando /
+  America/New_York).
+
+- Debe cerrar la jornada EL MISMO DÍA.
+
+- Al cerrar, puede indicar una hora de salida ANTERIOR a la hora en que
+  está cerrando (por si se le olvidó cerrar a tiempo), pero NUNCA
+  anterior a la hora en que inició.
+
+- Máximo 14 horas por jornada.
+
+- Si NO cierra la jornada, a las 12:00 a.m. (hora de Orlando) del día
+  siguiente el sistema le asigna AUTOMÁTICAMENTE 4 horas y ya no puede
+  cerrarla él mismo.
+
+- Ventana fija de jornada: pasa de 10 a 14 horas para TODOS los
+  técnicos (no solo los de horas).
+
+- No se muestra NINGÚN "tiempo restante" en la pantalla del técnico.
+
+- Tarifa por hora: el administrador define una tarifa DISTINTA por cada
+  técnico.
+
+- Modalidad de pago: el administrador puede elegir entre pago por
+  porcentaje y pago por horas para cada técnico (se hará rara vez).
+
+- Cambios de tarifa o modalidad aplican desde la SIGUIENTE jornada.
+  El historial ya registrado NO se modifica (cada jornada guarda la
+  tarifa que estaba vigente al momento de iniciarla).
+
+- Semana de pago: de VIERNES a JUEVES. Lo generado en esa semana se
+  paga el VIERNES SIGUIENTE (nunca en la misma semana). Este calendario
+  aplica a TODOS los tipos de técnico.
+
+- Aprobación: el administrador o supervisor aprueba el pago de CADA
+  técnico de forma INDIVIDUAL antes del viernes.
+
+- Estados del pago: "Pendiente" y "Aprobado". Una vez aprobado, queda
+  INMUTABLE (no se puede modificar ni regresar a pendiente).
+
+- Redondeo de horas pagadas: al bloque de 15 minutos más cercano.
+    0-7 minutos  -> redondea hacia ABAJO
+    8-14 minutos -> redondea hacia ARRIBA
+
+- Correcciones del administrador: puede corregir una jornada u horas
+  registradas ANTES de aprobar. Cada corrección guarda auditoría:
+  quién la hizo, valor anterior, valor nuevo y motivo (opcional).
+
+- Visibilidad del técnico: ve sus horas acumuladas, el pago estimado de
+  la semana, el historial de semanas anteriores y el estado de cada pago
+  (pendiente/aprobado).
+
+========================================================================
+3. REGLAS CONFIRMADAS — REPARTO FINANCIERO MIXTO
+========================================================================
+
+- El técnico sigue haciendo el reparto financiero como lo hace hoy
+  (normalmente, con todos los participantes).
+
+- Debe agregar al trabajo a TODAS las personas que trabajaron,
+  incluidas las que cobran por horas.
+
+- El sistema NO le muestra al técnico la modalidad de pago de cada
+  participante.
+
+- A un participante que cobra por horas, el técnico puede ponerle un
+  porcentaje SI QUIERE, o no ponérselo.
+
+- El técnico PUEDE cerrar su reparto con MENOS del 100% (no está
+  obligado a llegar al 100%).
+
+- Los que cobran POR PORCENTAJE reciben dinero según el reparto.
+  Los que cobran POR HORAS reciben dinero solo por su jornada registrada.
+
+- Si a un técnico por horas le ponen un porcentaje, queda solo como
+  referencia del trabajo realizado y NO afecta su pago.
+
+- El reparto puede cerrarse aunque los porcentajes que sí generan pago
+  sumen MENOS del 100% (el resto del equipo es pagado por horas).
+
+- El administrador y el supervisor también pueden modificar el reparto
+  y definir quién participó en cada trabajo.
+
+========================================================================
+4. CAMBIOS TÉCNICOS YA ESCRITOS (no aplicados todavía)
+========================================================================
+
+Migraciones de base de datos (carpeta supabase/migrations/):
+
+  1) 20260907010000_hourly_payroll_primitives.sql
+     - Tabla technician_compensation_settings (modalidad + tarifa por
+       técnico).
+     - Columnas nuevas en technician_shifts (work_date, settlement_due_at,
+       finished_at, settled_at, settlement_kind, payable_minutes,
+       compensation_mode, hourly_rate_cents, payable_cents).
+     - Índice único: una jornada por día por técnico.
+     - Tabla technician_pay_period_records (semanas de pago,
+       pendiente/aprobado).
+     - Tabla technician_shift_corrections (auditoría de correcciones).
+
+  2) 20260910010000_shift_active_window_14_hours.sql
+     - Ventana fija de jornada: 10 horas -> 14 horas para todos.
+
+  3) 20260910020000_hourly_shift_lifecycle.sql
+     - start_technician_shift: guarda modalidad/tarifa, día de trabajo y
+       fecha límite de cierre.
+     - close_my_hourly_shift: cierra la jornada, valida la hora de
+       salida, redondea a 15 minutos y calcula el pago.
+     - refresh_hourly_pay_period: recalcula el total de la semana.
+
+  4) 20260911010000_hourly_shift_settlement.sql
+     - settle_due_hourly_shifts: cierra automáticamente con 4 horas las
+       jornadas que quedaron abiertas a medianoche.
+
+  5) 20260911020000_hourly_office_controls.sql
+     - set_technician_compensation: configurar modalidad/tarifa (admin).
+     - approve_hourly_pay_period_record: aprobar semana (admin/supervisor).
+     - correct_hourly_shift: corregir jornada con auditoría (admin).
+
+  6) 20260911030000_job_work_participants.sql
+     - Tabla job_work_participants (quién trabajó en cada trabajo).
+     - RPC set_job_work_participants (oficina).
+
+  7) 20260911040000_relax_allocation_total_and_office_revision.sql
+     - Relaja el total del reparto a <= 100% y corrige el cálculo de
+       dinero para repartos parciales.
+     - RPC revise_job_financial_allocations (revisión de oficina).
+
+  8) 20260911050000_technician_hourly_money_split.sql
+     - El reparto del técnico separa el dinero por modalidad: solo los
+       técnicos por porcentaje reciben dinero; los por horas no.
+
+Archivos de código ya cambiados:
+
+  - app/api/cron/hourly-payroll-settlement/route.ts (NUEVO)
+      Cron protegido que ejecuta el cierre automático.
+
+  - vercel.json
+      Schedule del cron (cada 15 minutos, idempotente).
+
+  - src/lib/work-shifts/types.ts
+      Tipos nuevos de jornada y resumen de nómina.
+
+  - src/lib/work-shifts/actions.ts
+      Acción closeMyHourlyShift (cerrar jornada).
+
+  - src/lib/work-shifts/queries.ts (NUEVO)
+      getMyHourlyPayrollSummary (resumen de horas/pago del técnico).
+
+  - src/lib/time/new-york-week.ts
+      Helpers de cálculo de semana (hora de Orlando).
+
+  - src/components/work-shifts/hourly-shift-panel.tsx (NUEVO)
+      Panel del técnico: cierre de jornada, horas, pago estimado,
+      historial y estado pendiente/aprobado.
+
+  - src/components/dashboard-client.tsx
+      Renderiza el panel solo para técnicos.
+
+  - app/dashboard/page.tsx
+      Carga el resumen de nómina del técnico.
+
+  - src/components/technician/shift-status-card.tsx
+      Se quitó la fila "Vence" (tiempo restante).
+
+  - src/lib/users/actions.ts
+      Acción setTechnicianCompensation (configurar modalidad/tarifa).
+
+  - src/components/users-manager.tsx
+      Columna "Pago" con control de modalidad/tarifa (solo admin).
+
+  - src/lib/payroll/{actions,queries,types}.ts (NUEVO)
+      Lógica de oficina: aprobar semana, corregir jornada, listar nómina.
+
+  - app/nomina/page.tsx (NUEVO)
+      Pantalla de nómina para admin/supervisor.
+
+  - src/components/payroll/office-payroll-table.tsx (NUEVO)
+      Tabla de nómina: aprobar, corregir, ver estado.
+
+  - src/components/dashboard/sidebar.tsx
+      Enlace "Nómina" para admin y supervisor.
+
+  - src/lib/jobs/allocation-office-actions.ts (NUEVO)
+      Acción reviseJobAllocations (revisión de reparto de oficina).
+
+  - src/lib/jobs/types.ts y src/lib/jobs/queries.ts
+      Tipos y consulta del editor de reparto de oficina.
+
+  - src/components/jobs/financial-allocation-editor.tsx (NUEVO)
+      Editor de reparto financiero para oficina.
+
+  - app/trabajos/[id]/page.tsx
+      Muestra el editor de reparto a admin/supervisor.
+
+  - src/components/jobs/pdf-code-editor.tsx
+      Relaja el reparto del técnico a <= 100%.
+
+  - app/api/trabajos/[id]/pdf-entregado/route.ts
+      Valida <= 100% en la entrega del técnico.
+
+  - scripts/verify-work-shifts-static.mjs
+      Actualizado para verificar la ventana de 14 horas.
+
+========================================================================
+5. PENDIENTES (trabajo restante)
+========================================================================
+
+  A) Aplicar las 8 migraciones a la base de datos (SOLO cuando se
+     autorice).
+
+  B) Probar con Supabase local (verificación en tiempo de ejecución) y
+     desplegar a producción (SOLO cuando se autorice).
+
+  NOTA: el typecheck de TypeScript y el lint ya pasan limpios, y el
+  verificador estático de jornadas pasa. Falta aplicar, probar en
+  entorno real y desplegar.
+
+========================================================================

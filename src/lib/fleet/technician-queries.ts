@@ -4,6 +4,7 @@ import { requireProfile } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import type {
   FleetDocument,
+  FleetEngineHourReading,
   FleetIncident,
   FleetInsurancePolicy,
   FleetMaintenanceRecord,
@@ -23,6 +24,7 @@ export type TechnicianFleetVehicle = {
   insuranceAlert: TechnicianFleetAlert;
   maintenanceAlert: TechnicianFleetAlert;
   recentOdometer: FleetOdometerReading[];
+  recentEngineHours: FleetEngineHourReading[];
   recentIncidents: FleetIncident[];
   recentDocuments: Array<FleetDocument & { signed_url: string | null }>;
 };
@@ -86,8 +88,12 @@ function insuranceAlert(policies: FleetInsurancePolicy[], timezone: string): Tec
 }
 
 function maintenanceAlert(records: FleetMaintenanceRecord[], odometer: number, timezone: string): TechnicianFleetAlert {
-  const nextDate = records.filter((record) => record.next_due_on).map((record) => record.next_due_on as string).sort()[0];
-  const nextMileage = records
+  const activeRecords = records.filter((record) => record.status !== "cancelled");
+  const nextDate = activeRecords
+    .map((record) => record.status === "completed" ? record.next_due_on : record.scheduled_for ?? record.next_due_on)
+    .filter((date): date is string => Boolean(date))
+    .sort()[0];
+  const nextMileage = activeRecords
     .filter((record) => record.next_due_odometer_miles !== null)
     .map((record) => Number(record.next_due_odometer_miles))
     .sort((left, right) => left - right)[0];
@@ -171,21 +177,23 @@ export async function getMyFleetWorkspace(): Promise<TechnicianFleetWorkspace> {
     return { primary: null, backups: [], weekly: weeklyStatus(settings, false, null) };
   }
 
-  const [vehiclesResult, policiesResult, maintenanceResult, odometerResult, incidentsResult, documentsResult] = await Promise.all([
+  const [vehiclesResult, policiesResult, maintenanceResult, odometerResult, engineHoursResult, incidentsResult, documentsResult] = await Promise.all([
     supabase.from("fleet_vehicles").select("*").in("id", vehicleIds).order("unit_number"),
     supabase.from("fleet_insurance_policies").select("*").in("vehicle_id", vehicleIds).order("expires_on"),
     supabase.from("fleet_maintenance_records").select("*").in("vehicle_id", vehicleIds).order("created_at", { ascending: false }),
     supabase.from("fleet_odometer_readings").select("*").in("vehicle_id", vehicleIds).order("recorded_on", { ascending: false }).order("created_at", { ascending: false }).limit(30),
+    supabase.from("fleet_engine_hour_readings").select("*").in("vehicle_id", vehicleIds).order("recorded_on", { ascending: false }).order("created_at", { ascending: false }).limit(30),
     supabase.from("fleet_incidents").select("*").in("vehicle_id", vehicleIds).order("occurred_at", { ascending: false }).limit(20),
     supabase.from("fleet_documents").select("*").in("vehicle_id", vehicleIds).order("created_at", { ascending: false }).limit(20),
   ]);
-  const firstError = [vehiclesResult, policiesResult, maintenanceResult, odometerResult, incidentsResult, documentsResult].find((result) => result.error)?.error;
+  const firstError = [vehiclesResult, policiesResult, maintenanceResult, odometerResult, engineHoursResult, incidentsResult, documentsResult].find((result) => result.error)?.error;
   if (firstError) throw new Error("No se pudo cargar la información de los camiones asignados.");
 
   const vehicles = (vehiclesResult.data ?? []) as FleetVehicle[];
   const policies = (policiesResult.data ?? []) as FleetInsurancePolicy[];
   const maintenance = (maintenanceResult.data ?? []) as FleetMaintenanceRecord[];
   const odometer = (odometerResult.data ?? []) as FleetOdometerReading[];
+  const engineHours = (engineHoursResult.data ?? []) as FleetEngineHourReading[];
   const incidents = (incidentsResult.data ?? []) as FleetIncident[];
   const signedDocuments = await Promise.all(((documentsResult.data ?? []) as FleetDocument[]).map(async (document) => {
     const { data } = await supabase.storage.from("fleet-documents").createSignedUrl(document.storage_path, 300);
@@ -210,6 +218,7 @@ export async function getMyFleetWorkspace(): Promise<TechnicianFleetWorkspace> {
       insuranceAlert: insuranceAlert(policies.filter((policy) => policy.vehicle_id === vehicle.id), settings.timezone),
       maintenanceAlert: maintenanceAlert(maintenance.filter((record) => record.vehicle_id === vehicle.id), Number(vehicle.current_odometer_miles), settings.timezone),
       recentOdometer: odometer.filter((reading) => reading.vehicle_id === vehicle.id).slice(0, 5),
+      recentEngineHours: engineHours.filter((reading) => reading.vehicle_id === vehicle.id).slice(0, 5),
       recentIncidents: incidents.filter((incident) => incident.vehicle_id === vehicle.id).slice(0, 5),
       recentDocuments: signedDocuments.filter((document) => document.vehicle_id === vehicle.id).slice(0, 5),
     } satisfies TechnicianFleetVehicle];

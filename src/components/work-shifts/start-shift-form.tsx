@@ -90,10 +90,15 @@ export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }
       setMessage("Indica si compraste gasolina hoy.");
       return;
     }
-    if (fuelChoice === "yes"
-      && (!moneyPattern.test(amount) || /^0(?:\.0{1,2})?$/u.test(amount))) {
-      setMessage("Ingresa un monto mayor que cero con máximo dos decimales.");
-      return;
+    if (fuelChoice === "yes") {
+      if (!moneyPattern.test(amount) || /^0(?:\.0{1,2})?$/u.test(amount)) {
+        setMessage("Ingresa un monto mayor que cero con máximo dos decimales.");
+        return;
+      }
+      if (Number(amount) > 200) {
+        setMessage("El monto de gasolina no puede superar $200.");
+        return;
+      }
     }
 
     startTransition(async () => {
@@ -232,7 +237,7 @@ export function StartShiftForm({ vehicleLabel }: { vehicleLabel: string | null }
                 className="min-w-0 flex-1 bg-transparent py-3 text-lg text-ink outline-none"
               />
             </div>
-            <span className="text-xs font-normal text-ink-muted">Máximo dos decimales.</span>
+            <span className="text-xs font-normal text-ink-muted">Máximo dos decimales · máximo $200.00.</span>
           </label>
 
           <div className="grid gap-3">

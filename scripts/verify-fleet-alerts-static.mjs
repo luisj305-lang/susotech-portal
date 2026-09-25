@@ -88,7 +88,7 @@ assert.match(settingsAction, /onConflict: "id"/u);
 assert.match(settingsAction, /alert_day_offsets: uniqueOffsets/u);
 
 const settingsQuery = functionText(queries, "queries.ts", "getFleetSettings");
-assert.match(settingsQuery, /await requireSupervisor\(\)/u);
+assert.match(settingsQuery, /await requireOfficeViewer\(\)/u);
 assert.match(settingsQuery, /from\("fleet_settings"\)/u);
 assert.match(page, /await Promise\.all\([\s\S]*getFleetSettings\(\)/u);
 assert.match(page, /action=\{saveFleetSettingsAction\}/u);

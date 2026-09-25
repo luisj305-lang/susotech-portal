@@ -2,20 +2,17 @@ import { AppShell } from "@/components/dashboard/app-shell";
 import { TechnicianAppShell } from "@/components/dashboard/technician-app-shell";
 import {
   ManualJobsManager,
-  type ManualJob,
 } from "@/components/manual-jobs/manual-jobs-manager";
 import { displayName, initials, roleLabel } from "@/lib/dashboard/profile";
 import { requireProfile } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { getManualJobCreationContext, getMyManualJobs, getOfficeManualJobs } from "@/lib/manual-jobs/queries";
 
 export default async function ManualJobsPage() {
   const profile = await requireProfile();
-  const supabase = await createClient();
+  const creationContext = profile.role === "auditor" ? undefined : await getManualJobCreationContext();
 
   if (profile.role === "tecnico") {
-    const { data, error } = await supabase.rpc("list_my_manual_jobs");
-    if (error) throw new Error("No se pudieron cargar los trabajos manuales.");
-    const initialJobs = (data ?? []) as ManualJob[];
+    const initialJobs = await getMyManualJobs();
 
     return (
       <TechnicianAppShell userName={displayName(profile)}>
@@ -24,15 +21,14 @@ export default async function ManualJobsPage() {
             role="tecnico"
             currentUserId={profile.id}
             initialJobs={initialJobs}
+            creationContext={creationContext}
           />
         </div>
       </TechnicianAppShell>
     );
   }
 
-  const { data, error } = await supabase.rpc("list_manual_jobs_for_office");
-  if (error) throw new Error("No se pudieron cargar los trabajos manuales.");
-  const initialJobs = (data ?? []) as ManualJob[];
+  const initialJobs = await getOfficeManualJobs();
 
   return (
     <AppShell
@@ -43,9 +39,10 @@ export default async function ManualJobsPage() {
     >
       <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
         <ManualJobsManager
-          role={profile.role as "admin" | "supervisor"}
+          role={profile.role as "admin" | "supervisor" | "auditor"}
           currentUserId={profile.id}
           initialJobs={initialJobs}
+          creationContext={creationContext}
         />
       </div>
     </AppShell>

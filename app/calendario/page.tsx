@@ -2,7 +2,7 @@ import { AppShell } from "@/components/dashboard/app-shell";
 import { RemindersCard, localDateTime, type CalendarReminder } from "@/components/calendar/reminders-card";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireSupervisor } from "@/lib/auth/session";
+import { requireOfficeViewer } from "@/lib/auth/session";
 import { displayName, initials, roleLabel } from "@/lib/dashboard/profile";
 import { createClient } from "@/lib/supabase/server";
 import { disconnectGoogleCalendar, selectGoogleCalendar, updateReminder } from "@/lib/calendar/actions";
@@ -11,7 +11,7 @@ import { getCalendarConnection, googleCalendarConfiguration, listGoogleCalendars
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function CalendarPage({ searchParams }: { searchParams: SearchParams }) {
-  const profile = await requireSupervisor();
+  const profile = await requireOfficeViewer();
   const isAdmin = profile.role === "admin";
   const query = await searchParams;
   const configuration = isAdmin ? googleCalendarConfiguration() : null;

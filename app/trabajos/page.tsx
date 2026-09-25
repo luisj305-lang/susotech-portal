@@ -14,6 +14,10 @@ import { getJobMapUrl } from "@/lib/jobs/maps";
 import { requireActiveShiftPage } from "@/lib/work-shifts/access";
 import { workTypeLabels } from "@/lib/jobs/work-types";
 import type { OfficeJobPreview } from "@/lib/jobs/types";
+import { getMyManualJobs, getOfficeManualJobs } from "@/lib/manual-jobs/queries";
+import { combineWorkItems, filterManualWork, isInWorkWeek, manualFilterLabels } from "@/lib/jobs/work-list";
+import { referenceAtForNewYorkWeek } from "@/lib/time/new-york-week";
+import { ManualWorkCard } from "@/components/jobs/manual-work-card";
 
 const statusLabels: Record<string, string> = { sin_asignar: "Sin asignar", asignado: "Asignado", en_revision: "En revisión", aprobado: "Aprobado", facturado: "Facturado", pagado: "Pagado" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -56,23 +60,37 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
   const profile = await requireProfile();
   const values = await searchParams;
   const first = (key: string) => { const value = values[key]; return Array.isArray(value) ? value[0] : value; };
+  const rawWeek = first("week");
+  const weekOffset = rawWeek !== undefined && Number.isInteger(Number(rawWeek)) ? Number(rawWeek) : undefined;
+  const referenceAt = weekOffset === undefined ? undefined : new Date(referenceAtForNewYorkWeek(weekOffset));
+  const weekSuffix = weekOffset === undefined ? "" : `&week=${weekOffset}`;
   if (profile.role === "tecnico") {
     await requireActiveShiftPage();
     const query = first("q");
     const status = first("status");
     const tab = first("tab") === "revisados" ? "revisados" : "activos";
-    const jobs = await listTechnicianQueueJobs({ query, status, tab });
-    return <FieldShell userName={displayName(profile)}><JobList jobs={jobs} initialQuery={query ?? ""} initialStatus={status ?? ""} tab={tab} /></FieldShell>;
+    const [regularJobs, manuals] = await Promise.all([
+      status?.startsWith("manual:") ? Promise.resolve([]) : listTechnicianQueueJobs({ query, status, tab }),
+      getMyManualJobs(),
+    ]);
+    const jobs = regularJobs.filter((job) => !referenceAt || isInWorkWeek(job.assignedAt, referenceAt));
+    const manualJobs = filterManualWork(manuals, { query, status, tab, referenceAt });
+    return <FieldShell userName={displayName(profile)}><JobList jobs={jobs} manualJobs={manualJobs} initialQuery={query ?? ""} initialStatus={status ?? ""} tab={tab} weekOffset={weekOffset} /></FieldShell>;
   }
   const filters = { q: first("q"), status: first("status"), archived: first("archived") === "1", facturados: first("facturados") === "1" };
-  const jobs = await listOfficeJobs({ query: filters.q, status: filters.status, archived: filters.archived, facturados: filters.facturados });
-  const groups = groupJobParts(jobs);
+  const [regularJobs, manuals] = await Promise.all([
+    filters.status?.startsWith("manual:") ? Promise.resolve([]) : listOfficeJobs({ query: filters.q, status: filters.status, archived: filters.archived, facturados: filters.facturados }),
+    getOfficeManualJobs(),
+  ]);
+  const jobs = regularJobs.filter((job) => !referenceAt || isInWorkWeek(job.assignedAt, referenceAt));
+  const manualJobs = filterManualWork(manuals, { ...filters, query: filters.q, referenceAt });
+  const entries = combineWorkItems(groupJobParts(jobs).map((group) => ({ ...group, id: group.root.id })), manualJobs);
   const showDelete = filters.archived && (profile.role === "admin" || profile.role === "supervisor");
 
   return (
     <AppShell role={profile.role as "admin" | "supervisor"} userName={displayName(profile)} roleLabel={roleLabel(profile.role)} initials={initials(profile)}>
       <div className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-        <Link href="/dashboard" className="text-sm font-medium text-accent-600 hover:text-accent-500">← Dashboard</Link>
+        <Link href={weekOffset === undefined ? "/dashboard" : `/dashboard?week=${weekOffset}`} className="text-sm font-medium text-accent-600 hover:text-accent-500">← Dashboard</Link>
         <header className="flex flex-wrap items-end justify-between gap-4 rounded-[var(--radius-surface)] bg-white p-5 shadow-[var(--shadow-card-compact)] sm:p-6">
           <div>
             <p className="text-sm font-semibold uppercase tracking-widest text-ink-muted">Operaciones</p>
@@ -81,14 +99,15 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
           </div>
           <div className="flex flex-wrap gap-3">
             {filters.archived && profile.role === "admin" && <RetryJobDeletionCleanupButton />}
-            {!filters.archived && !filters.facturados && <Link href="/trabajos?facturados=1" className={buttonClasses({ variant: "secondary" })}>Ver facturados</Link>}
-            {filters.archived || filters.facturados ? <Link href="/trabajos" className={buttonClasses({ variant: "secondary" })}>Ver activos</Link> : <Link href="/trabajos?archived=1" className={buttonClasses({ variant: "secondary" })}>Ver archivados</Link>}
+            {!filters.archived && !filters.facturados && <Link href={`/trabajos?facturados=1${weekSuffix}`} className={buttonClasses({ variant: "secondary" })}>Ver facturados</Link>}
+            {filters.archived || filters.facturados ? <Link href={weekOffset === undefined ? "/trabajos" : `/trabajos?week=${weekOffset}`} className={buttonClasses({ variant: "secondary" })}>Ver activos</Link> : <Link href={`/trabajos?archived=1${weekSuffix}`} className={buttonClasses({ variant: "secondary" })}>Ver archivados</Link>}
             <Link href="/trabajos/importar" className={buttonClasses({ variant: "primary" })}>Importar PDF</Link>
             <Link href="/trabajos/nuevo" className={buttonClasses({ variant: "secondary" })}>Creación manual</Link>
           </div>
         </header>
         <div className="grid gap-4 rounded-[var(--radius-surface)] border border-line bg-white p-4 shadow-[var(--shadow-card-compact)]">
           <form className="flex flex-wrap items-end gap-2">
+            {weekOffset !== undefined && <input type="hidden" name="week" value={weekOffset} />}
             {filters.archived && <input type="hidden" name="archived" value="1" />}
             {filters.facturados && <input type="hidden" name="facturados" value="1" />}
             {filters.status && <input type="hidden" name="status" value={filters.status} />}
@@ -96,22 +115,23 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
             <button className={buttonClasses({ variant: "secondary" })}>Buscar</button>
           </form>
           <form>
+            {weekOffset !== undefined && <input type="hidden" name="week" value={weekOffset} />}
             {filters.archived && <input type="hidden" name="archived" value="1" />}
             {filters.facturados && <input type="hidden" name="facturados" value="1" />}
             {filters.q && <input type="hidden" name="q" value={filters.q} />}
             <span className="text-sm font-medium text-ink-soft">Estado</span>
             <div className="mt-1 flex flex-wrap gap-2">
               <FilterChip name="status" value="" label="Todos" active={!filters.status} />
-              {Object.entries(statusLabels).map(([value, label]) => <FilterChip key={value} name="status" value={value} label={label} active={filters.status === value} />)}
+              {Object.entries({ ...statusLabels, ...manualFilterLabels }).map(([value, label]) => <FilterChip key={value} name="status" value={value} label={label} active={filters.status === value} />)}
             </div>
           </form>
         </div>
-        {groups.length ? <div className="grid gap-4 lg:grid-cols-2">{groups.map((group) => (
-          <div key={group.root.id} className="grid content-start gap-4">
-            <OfficeJobCard job={group.root} showDelete={showDelete} />
-            {group.children.length > 0 && (
+        {entries.length ? <div className="grid gap-4 lg:grid-cols-2">{entries.map((entry) => entry.source === "manual" ? <ManualWorkCard key={entry.key} job={entry.job} /> : (
+          <div key={entry.key} data-work-source="regular" className="grid content-start gap-4">
+            <OfficeJobCard job={entry.job.root} showDelete={showDelete} />
+            {entry.job.children.length > 0 && (
               <div className="grid gap-4 border-l-2 border-line pl-4">
-                {group.children.map((child) => <OfficeJobCard key={child.id} job={child} showDelete={showDelete} />)}
+                {entry.job.children.map((child) => <OfficeJobCard key={`regular:${child.id}`} job={child} showDelete={showDelete} />)}
               </div>
             )}
           </div>

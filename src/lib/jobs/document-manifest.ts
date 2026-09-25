@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { inspectPdfDocument } from "./delivered-pdf";
+import { inspectPdfDocument, type DeliveredPdfSource } from "./delivered-pdf";
 
 export type VerifiedJobDocument = {
   id: string;
@@ -80,4 +80,22 @@ export function buildSourcePages(documents: VerifiedJobDocument[]) {
     documentId: document.id,
     sourcePage: index + 1,
   })));
+}
+
+export async function downloadVerifiedSourceDocuments(
+  service: SupabaseClient,
+  documents: readonly Pick<VerifiedJobDocument, "id" | "storage_path" | "file_hash">[],
+): Promise<DeliveredPdfSource[]> {
+  const sources: DeliveredPdfSource[] = [];
+  for (const document of documents) {
+    if (!document.file_hash) throw new Error("Un PDF fuente no tiene un hash verificado.");
+    const downloaded = await service.storage.from("project-files").download(document.storage_path);
+    if (downloaded.error || !downloaded.data) throw new Error("No se pudo descargar un PDF fuente privado.");
+    const bytes = new Uint8Array(await downloaded.data.arrayBuffer());
+    if (createHash("sha256").update(bytes).digest("hex") !== document.file_hash) {
+      throw new Error("Un PDF fuente no coincide con su hash verificado.");
+    }
+    sources.push({ id: document.id, bytes });
+  }
+  return sources;
 }

@@ -14,6 +14,7 @@ import {
   FLEET_POLICY_STATUSES,
   FLEET_VEHICLE_STATUSES,
 } from "@/lib/fleet/types";
+import type { FleetActionResult } from "@/lib/fleet/types";
 
 export type FleetFormState = {
   success: boolean | null;
@@ -30,6 +31,7 @@ type FleetDeleteKind =
   | "odometer";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const moneyPattern = /^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/u;
 const documentMimeTypes = {
   "application/pdf": "pdf",
   "image/jpeg": "jpg",
@@ -223,6 +225,24 @@ export async function updateFleetVehicleAction(_previous: FleetFormState, formDa
   }
 }
 
+export async function updateFleetVehicleStatusAction(_previous: FleetFormState, formData: FormData): Promise<FleetFormState> {
+  await requireSupervisor();
+  try {
+    const id = value(formData, "vehicle_id");
+    if (!validUuid(id)) throw new Error("El camión no es válido.");
+    const status = enumValue(formData, "status", FLEET_VEHICLE_STATUSES);
+    const result = await (await createClient()).from("fleet_vehicles").update({
+      status,
+      retired_on: status === "retired" ? new Date().toISOString().slice(0, 10) : null,
+    }).eq("id", id).select("id").maybeSingle();
+    assertAffectedRow(result, "No se pudo actualizar el estado del camión o ya no existe.");
+    revalidateFleet(id);
+    return { success: true, message: "Estado del camión actualizado." };
+  } catch (error) {
+    return failure(error, "No se pudo actualizar el estado del camión.");
+  }
+}
+
 export async function deleteFleetVehicleAction(_previous: FleetFormState, formData: FormData): Promise<FleetFormState> {
   await requireSupervisor();
   try {
@@ -363,17 +383,23 @@ export async function saveFleetMaintenanceAction(_previous: FleetFormState, form
     const vehicleId = value(formData, "vehicle_id");
     if (!validUuid(vehicleId) || (id && !validUuid(id))) throw new Error("El mantenimiento no es válido.");
     const status = enumValue(formData, "status", FLEET_MAINTENANCE_STATUSES);
+    const scheduledFor = dateValue(formData, "scheduled_for");
+    const nextDueOn = dateValue(formData, "next_due_on");
+    const nextDueOdometerMiles = integerValue(formData, "next_due_odometer_miles");
+    if ((status === "scheduled" || status === "in_progress") && !scheduledFor && !nextDueOn && nextDueOdometerMiles === null) {
+      throw new Error("Defina una fecha programada o un próximo vencimiento para el mantenimiento.");
+    }
     const payload = {
       vehicle_id: vehicleId,
       service_type: requiredText(formData, "service_type", "El tipo de servicio", 200),
       status,
-      scheduled_for: dateValue(formData, "scheduled_for"),
+      scheduled_for: scheduledFor,
       completed_on: status === "completed" ? dateValue(formData, "completed_on", true) : dateValue(formData, "completed_on"),
       odometer_miles: integerValue(formData, "odometer_miles"),
       vendor: nullable(formData, "vendor"),
       cost_cents: moneyCents(formData, "cost_dollars") ?? 0,
-      next_due_on: dateValue(formData, "next_due_on"),
-      next_due_odometer_miles: integerValue(formData, "next_due_odometer_miles"),
+      next_due_on: nextDueOn,
+      next_due_odometer_miles: nextDueOdometerMiles,
       description: nullable(formData, "description"),
       notes: optionalText(formData, "notes"),
     };
@@ -484,6 +510,37 @@ export async function saveFleetOdometerAction(_previous: FleetFormState, formDat
     return { success: true, message: id ? "Lectura corregida." : "Lectura registrada." };
   } catch (error) {
     return failure(error, "No se pudo guardar la lectura.");
+  }
+}
+
+export async function saveFleetEngineHoursAction(_previous: FleetFormState, formData: FormData): Promise<FleetFormState> {
+  const actor = await requireSupervisor();
+  try {
+    const vehicleId = value(formData, "vehicle_id");
+    if (!validUuid(vehicleId)) throw new Error("El camión no es válido.");
+    const readingHours = integerValue(formData, "reading_hours", { required: true });
+    if (readingHours === null) throw new Error("Complete las horas de motor.");
+    const supabase = await createClient();
+    const vehicle = await supabase.from("fleet_vehicles").select("current_engine_hours").eq("id", vehicleId).maybeSingle();
+    if (vehicle.error || !vehicle.data) throw new Error("No se pudieron verificar las horas de motor actuales.");
+    if (readingHours < Number(vehicle.data.current_engine_hours)) {
+      throw new Error(`Las horas de motor no pueden ser menores que ${Number(vehicle.data.current_engine_hours).toLocaleString("en-US")} h.`);
+    }
+    const result = await supabase.from("fleet_engine_hour_readings").insert({
+      vehicle_id: vehicleId,
+      reading_hours: readingHours,
+      recorded_on: dateValue(formData, "recorded_on", true),
+      source: "manual",
+      notes: optionalText(formData, "notes", 2000),
+      submitted_by: actor.id,
+    }).select("id").maybeSingle();
+    assertAffectedRow(result, "No se pudieron registrar las horas de motor.");
+    revalidateFleet(vehicleId);
+    revalidatePath("/camiones/mi-camion");
+    revalidatePath("/dashboard");
+    return { success: true, message: "Horas de motor registradas." };
+  } catch (error) {
+    return failure(error, "No se pudieron registrar las horas de motor.");
   }
 }
 
@@ -657,6 +714,53 @@ export async function setFleetShiftVehicleAction(_previous: FleetFormState, form
     return { success: true, message: corrected.vehicle_id ? "Jornada asociada al camión seleccionado." : "Asociación de camión eliminada de la jornada." };
   } catch (error) {
     return failure(error, "No se pudo corregir la asociación de la jornada.");
+  }
+}
+
+export async function setTechnicianShiftFuel(input: {
+  shiftId: string;
+  fuelAmount: string;
+  noFuelToday: boolean;
+}): Promise<FleetActionResult<{ fuelAmount: number; noFuelToday: boolean }>> {
+  await requireSupervisor();
+  try {
+    const shiftId = (input.shiftId ?? "").trim();
+    const amount = (input.fuelAmount ?? "").trim();
+    if (!validUuid(shiftId) || !moneyPattern.test(amount)) {
+      return { success: false, message: "El monto de gasolina no es válido.", code: "invalid_input" };
+    }
+    const numericAmount = Number(amount);
+    if (input.noFuelToday) {
+      if (numericAmount !== 0) {
+        return { success: false, message: "Si no cargó gasolina, el monto debe ser $0.", code: "invalid_input" };
+      }
+    } else if (numericAmount <= 0 || numericAmount > 200) {
+      return { success: false, message: "El monto de gasolina no puede superar $200.", code: "invalid_input" };
+    }
+    const { data, error } = await (await createClient()).rpc("set_technician_shift_fuel", {
+      p_shift_id: shiftId,
+      p_fuel_amount: amount,
+      p_no_fuel_today: input.noFuelToday,
+    });
+    const updated = data?.[0] as { shift_id: string; fuel_amount: string | number; no_fuel_today: boolean } | undefined;
+    if (error || !updated) {
+      return { success: false, message: "No se pudo corregir la gasolina de la jornada.", code: "unavailable" };
+    }
+    revalidatePath("/camiones");
+    revalidatePath("/camiones/[id]", "page");
+    return {
+      success: true,
+      message: updated.no_fuel_today
+        ? "Gasolina corregida: sin carga ($0)."
+        : `Gasolina corregida: $${Number(updated.fuel_amount).toFixed(2)}.`,
+      data: { fuelAmount: Number(updated.fuel_amount), noFuelToday: updated.no_fuel_today },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "No se pudo corregir la gasolina de la jornada.",
+      code: "unavailable",
+    };
   }
 }
 

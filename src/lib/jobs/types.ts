@@ -231,6 +231,10 @@ export interface MyFinancialAllocation {
   state: "voided" | "superseded" | "current";
 }
 
+export interface JobWorkParticipation {
+  informational_basis_points: number;
+}
+
 export interface JobFinancialAllocation {
   allocation_version_id: string;
   delivery_id: string;
@@ -245,6 +249,21 @@ export interface JobFinancialAllocation {
   created_at: string;
   is_current: boolean;
   state: "voided" | "superseded" | "current";
+}
+
+export interface OfficeAllocationEditorTechnician {
+  id: string;
+  label: string;
+  compensationMode: "percentage" | "hourly";
+}
+
+export interface OfficeAllocationEditorData {
+  jobId: string;
+  mainStatus: JobStatus;
+  locked: boolean;
+  allocations: Array<{ participantId: string; percentageBasisPoints: number }>;
+  participantIds: string[];
+  technicians: OfficeAllocationEditorTechnician[];
 }
 
 export interface TechnicianJobSummary {

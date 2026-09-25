@@ -25,6 +25,8 @@ import {
 import { AdminDashboardDialog } from "./admin-dashboard-dialog";
 import styles from "./admin-dashboard.module.css";
 import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
+import type { ManualJob } from "@/lib/manual-jobs/types";
+import { combineWorkItems, manualJobHref, manualJobsForWorkerWeek, manualStatusLabels } from "@/lib/jobs/work-list";
 
 const timeZone = "America/New_York";
 
@@ -68,29 +70,64 @@ const inputClass =
 
 export function WorkerActivityTable({
   rows,
+  manualJobs = [],
   presentation = "default",
 }: {
   rows: WorkerOperationsRow[];
+  manualJobs?: ManualJob[];
   presentation?: AdminDashboardPresentation;
 }) {
   const isAdmin = presentation === "admin-dashboard";
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [jobsModal, setJobsModal] = useState<{ technicianId: string; technicianName: string } | null>(null);
-  const [jobs, setJobs] = useState<TechnicianJobSummary[]>([]);
-  const [jobsLoading, setJobsLoading] = useState(false);
-  const [jobsError, setJobsError] = useState("");
+  const [jobsModal, setJobsModal] = useState<{
+    technicianId: string;
+    technicianName: string;
+    weekStartAt: string;
+    weekEndExclusiveAt: string;
+    jobs: TechnicianJobSummary[];
+    loading: boolean;
+    error: string;
+  } | null>(null);
+  const modalWorker = rows.find((row) => row.technician_id === jobsModal?.technicianId);
+  // Close before committing a render for a different week or a removed worker.
+  if (jobsModal && (modalWorker?.week_start_at !== jobsModal.weekStartAt
+    || modalWorker?.week_end_exclusive_at !== jobsModal.weekEndExclusiveAt)) {
+    setJobsModal(null);
+  }
+  const { jobs = [], loading: jobsLoading = false, error: jobsError = "" } = jobsModal ?? {};
+  const workItems = combineWorkItems(jobs, jobsModal ? manualJobsForWorkerWeek(
+    manualJobs, jobsModal.technicianId, jobsModal.weekStartAt, jobsModal.weekEndExclusiveAt,
+  ) : []);
 
   const showJobs = async (technicianId: string, technicianName: string) => {
-    setJobsModal({ technicianId, technicianName });
-    setJobs([]);
-    setJobsError("");
-    setJobsLoading(true);
-    const { data, error } = await supabase.rpc("list_technician_assigned_jobs", { p_technician_id: technicianId });
-    setJobsLoading(false);
-    if (error) setJobsError(`No se pudieron cargar los trabajos asignados. ${error.message}`);
-    else setJobs((data ?? []) as TechnicianJobSummary[]);
+    const worker = rows.find((row) => row.technician_id === technicianId);
+    if (!worker) return;
+    const request: NonNullable<typeof jobsModal> = {
+      technicianId, technicianName,
+      weekStartAt: worker.week_start_at,
+      weekEndExclusiveAt: worker.week_end_exclusive_at,
+      jobs: [], loading: true, error: "",
+    };
+    setJobsModal(request);
+    let jobs: TechnicianJobSummary[] = [];
+    let jobsError = "";
+    try {
+      const { data, error } = await supabase.rpc("list_technician_assigned_jobs", {
+        p_technician_id: technicianId,
+        p_week_start_at: request.weekStartAt,
+        p_week_end_exclusive_at: request.weekEndExclusiveAt,
+      });
+      if (error) throw new Error(error.message);
+      jobs = (data ?? []) as TechnicianJobSummary[];
+    } catch (error) {
+      jobsError = `No se pudieron cargar los trabajos asignados.${error instanceof Error ? ` ${error.message}` : ""}`;
+    }
+    // Only the exact still-open request may publish data, including on reopen.
+    setJobsModal((current) => current === request
+      ? { ...request, jobs, loading: false, error: jobsError }
+      : current);
   };
 
   const filtered = useMemo(() => {
@@ -161,29 +198,29 @@ export function WorkerActivityTable({
         <p className="py-8 text-center text-sm text-ink-muted">Cargando…</p>
       ) : jobsError ? (
         <p className="py-8 text-center text-sm text-ink">{jobsError}</p>
-      ) : jobs.length === 0 ? (
+      ) : workItems.length === 0 ? (
         <p className="py-8 text-center text-sm text-ink-muted">
-          No tiene trabajos asignados.
+          No tiene trabajos asignados ni manuales registrados en esta semana.
         </p>
       ) : (
         <ul className="grid max-h-[60vh] gap-2 overflow-y-auto">
-          {jobs.map((job) => (
-            <li key={job.id}>
+          {workItems.map((entry) => (
+            <li key={entry.key} data-work-source={entry.source}>
               <Link
-                href={`/trabajos/${job.id}`}
+                href={entry.source === "manual" ? manualJobHref(entry.job.id) : `/trabajos/${entry.job.id}`}
                 onClick={() => setJobsModal(null)}
                 className="block rounded-[var(--radius-control)] border border-line bg-surface-muted p-3 hover:bg-surface-muted/60"
               >
                 <span className="flex items-center justify-between gap-3">
                   <span className="font-semibold text-ink">
-                    {job.prism_number || job.address || "Sin PRISM"}
+                    {entry.job.prism_number || (entry.source === "regular" && entry.job.address) || "Sin PRISM"}
                   </span>
-                  <StatusBadge
-                    status={job.archived_at ? "archivado" : job.main_status}
-                  />
+                  {entry.source === "manual" ? <span className="text-sm font-semibold text-ink-soft">Manual · {manualStatusLabels[entry.job.status]}</span> : <StatusBadge
+                    status={entry.job.archived_at ? "archivado" : entry.job.main_status}
+                  />}
                 </span>
                 <span className="mt-1 block text-sm text-ink-soft">
-                  {job.address || ""}
+                  {entry.source === "manual" ? `Registro: ${fullDateTimeFormatter.format(new Date(entry.job.created_at))}` : entry.job.address || ""}
                 </span>
               </Link>
             </li>

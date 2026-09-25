@@ -32,9 +32,9 @@ function optionalText(formData: FormData, key: string, max: number): string | nu
 
 function integerValue(formData: FormData, key: string): number {
   const input = formValue(formData, key);
-  if (!/^\d+$/u.test(input)) throw new Error("Ingrese un millaje entero válido.");
+  if (!/^\d+$/u.test(input)) throw new Error("Ingrese un número entero válido.");
   const parsed = Number(input);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error("El millaje está fuera del rango permitido.");
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error("El número está fuera del rango permitido.");
   return parsed;
 }
 
@@ -120,6 +120,44 @@ export async function submitMyFleetOdometerAction(
     return { success: true, message: "Millaje registrado correctamente." };
   } catch (error) {
     return failure(error, "No se pudo registrar el millaje.");
+  }
+}
+
+export async function submitMyFleetEngineHoursAction(
+  _previous: TechnicianFleetFormState,
+  formData: FormData,
+): Promise<TechnicianFleetFormState> {
+  const profile = await requireProfile();
+  if (profile.role !== "tecnico") return { success: false, message: "Solo los técnicos pueden reportar horas de motor." };
+  try {
+    const vehicleId = formValue(formData, "vehicle_id");
+    if (!uuidPattern.test(vehicleId)) throw new Error("El camión no es válido.");
+    const readingHours = integerValue(formData, "reading_hours");
+    const supabase = await createClient();
+    await requireCurrentFleetAssignment(supabase, profile.id, vehicleId);
+    const vehicle = await supabase.from("fleet_vehicles").select("current_engine_hours").eq("id", vehicleId).maybeSingle();
+    if (vehicle.error || !vehicle.data) throw new Error("No se pudieron verificar las horas de motor actuales.");
+    if (readingHours < Number(vehicle.data.current_engine_hours)) {
+      throw new Error(`Las horas de motor no pueden ser menores que ${Number(vehicle.data.current_engine_hours).toLocaleString("en-US")} h.`);
+    }
+    const timezone = await fleetTimezone(supabase);
+    const result = await supabase.from("fleet_engine_hour_readings").insert({
+      vehicle_id: vehicleId,
+      reading_hours: readingHours,
+      recorded_on: currentDate(timezone),
+      source: "technician",
+      notes: optionalText(formData, "notes", 2000),
+      submitted_by: profile.id,
+      created_by: profile.id,
+      updated_by: profile.id,
+    }).select("id").maybeSingle();
+    assertInsertedRow(result, "No se pudieron registrar las horas de motor. Intente nuevamente.");
+    revalidatePath("/camiones/mi-camion");
+    revalidatePath("/camiones");
+    revalidatePath("/dashboard");
+    return { success: true, message: "Horas de motor registradas correctamente." };
+  } catch (error) {
+    return failure(error, "No se pudieron registrar las horas de motor.");
   }
 }
 

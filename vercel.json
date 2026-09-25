@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/fleet-alerts",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/hourly-payroll-settlement",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

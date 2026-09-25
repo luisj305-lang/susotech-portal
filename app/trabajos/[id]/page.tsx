@@ -7,6 +7,7 @@ import { JobAttachments } from "@/components/jobs/job-attachments";
 import { ArchiveHistory } from "@/components/jobs/archive-history";
 import { JobEvidenceList } from "@/components/jobs/job-evidence-list";
 import { OfficeJobActions } from "@/components/jobs/office-job-actions";
+import { FinancialAllocationEditor } from "@/components/jobs/financial-allocation-editor";
 import { PartActions } from "@/components/jobs/part-actions";
 import { PhotoUpload } from "@/components/jobs/photo-upload";
 import { TechnicianActions } from "@/components/jobs/technician-actions";
@@ -21,10 +22,11 @@ import { ShiftStatusCard } from "@/components/technician/shift-status-card";
 import { JobProgress } from "@/components/technician/job-progress";
 import { IncidentCard } from "@/components/technician/incident-card";
 import { CollapsibleTimeline } from "@/components/technician/collapsible-timeline";
+import { JobParticipationCard } from "@/components/technician/job-participation-card";
 import { displayName, initials, roleLabel } from "@/lib/dashboard/profile";
 import { requireProfile } from "@/lib/auth/session";
 import { isOperationalFieldWorker } from "@/lib/auth/capabilities";
-import { getOfficeJob, getTechnicianJob } from "@/lib/jobs/queries";
+import { getOfficeAllocationEditorData, getOfficeJob, getTechnicianJob } from "@/lib/jobs/queries";
 import { isOfficeRole } from "@/lib/jobs/state";
 import { getJobMapUrl } from "@/lib/jobs/maps";
 import { requireActiveShiftPage } from "@/lib/work-shifts/access";
@@ -35,8 +37,9 @@ import { getDeliveredPdfStatus } from "@/lib/jobs/delivered-status";
 async function TechnicianDetail({ id, canMutate, userName, shiftAccess }: { id: string; canMutate: boolean; userName: string; shiftAccess: Awaited<ReturnType<typeof requireActiveShiftPage>> }) {
   const detail = await getTechnicianJob(id);
   if (!detail) notFound();
-  const { job, history, codes, photos, documents, draft, deliveredDraftVersion, allocations, assignedAt } = detail;
+  const { job, history, codes, photos, documents, draft, deliveredDraftVersion, allocations, assignedAt, workParticipation } = detail;
   const currentAllocations = allocations.filter((allocation) => allocation.is_current);
+  const canPerformOperations = canMutate && workParticipation === null;
   const mapUrl = getJobMapUrl({ address: job.address, location: job.location, projectMapUrl: job.project_map_url });
   const additionalDocs = documents.filter((document) => document.document_type === "additional");
   return (
@@ -59,12 +62,13 @@ async function TechnicianDetail({ id, canMutate, userName, shiftAccess }: { id: 
               {mapUrl && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-12 items-center font-bold text-accent-600 underline">Abrir mapa del proyecto</a>}
             </section>
           </section>
-          {canMutate && <TechnicianActions jobId={job.id} status={job.main_status} />}
-          {currentAllocations.length > 0 && <section className="rounded-2xl border border-line bg-white p-6 shadow-card"><h2 className="text-xl font-bold text-ink">Tu reparto financiero</h2>{currentAllocations.map((allocation) => <p key={allocation.allocation_version_id} className="mt-3 rounded-lg border border-line bg-surface-muted p-3 text-ink"><strong>{((Number(allocation.percentage_basis_points)) / 100).toFixed(2)}%</strong> · ${(Number(allocation.allocated_cents) / 100).toFixed(2)} <span className="text-ink-soft">(pendiente)</span></p>)}<p className="mt-3 text-xs text-ink-soft">Monto visible desde la confirmación de la entrega. Se confirma al aprobar o facturar el trabajo.</p></section>}
-          <JobDocuments jobId={job.id} originalPath={job.project_pdf_url} deliveredPath={job.delivered_pdf_path} deliveredStatus={getDeliveredPdfStatus(job, photos.map((photo) => photo.id), documents.map((document) => document.id), draft?.version, deliveredDraftVersion)} jobStatus={job.main_status} deliveredAt={job.delivered_pdf_generated_at} attachments={<JobAttachments jobId={job.id} documents={additionalDocs} canManage={false} bare />} />
-          {canMutate && ["asignado", "en_revision"].includes(job.main_status) && <PhotoUpload jobId={job.id} />}
-          <section id="evidencias" className="rounded-2xl border border-line bg-white p-6 shadow-card"><h2 className="text-xl font-bold text-ink">Evidencia guardada ({photos.length})</h2>{photos.length > 0 ? <JobEvidenceList photos={photos} canDelete={false} /> : <EmptyState icon={IconCamera} title="Todavía no hay fotografías" description="Agrega evidencia antes de entregar el trabajo." />}{job.comments && <p className="mt-3 rounded-lg border border-line bg-surface-muted p-3 text-ink"><strong>Comentario general:</strong> {job.comments}</p>}</section>
-          {canMutate && <div className="lg:col-start-2 lg:row-start-2 lg:self-start"><IncidentCard jobId={job.id} incident={job.incident} /></div>}
+           {canPerformOperations && <TechnicianActions jobId={job.id} status={job.main_status} />}
+           {currentAllocations.length > 0 && <section className="rounded-2xl border border-line bg-white p-6 shadow-card"><h2 className="text-xl font-bold text-ink">Tu reparto financiero</h2>{currentAllocations.map((allocation) => <p key={allocation.allocation_version_id} className="mt-3 rounded-lg border border-line bg-surface-muted p-3 text-ink"><strong>{((Number(allocation.percentage_basis_points)) / 100).toFixed(2)}%</strong> · ${(Number(allocation.allocated_cents) / 100).toFixed(2)} <span className="text-ink-soft">(pendiente)</span></p>)}<p className="mt-3 text-xs text-ink-soft">Monto visible desde la confirmación de la entrega. Se confirma al aprobar o facturar el trabajo.</p></section>}
+           {workParticipation && <JobParticipationCard informationalBasisPoints={workParticipation.informational_basis_points} />}
+           <JobDocuments jobId={job.id} originalPath={job.project_pdf_url} deliveredPath={job.delivered_pdf_path} deliveredStatus={getDeliveredPdfStatus(job, photos.map((photo) => photo.id), documents.map((document) => document.id), draft?.version, deliveredDraftVersion)} jobStatus={job.main_status} deliveredAt={job.delivered_pdf_generated_at} attachments={<JobAttachments jobId={job.id} documents={additionalDocs} canManage={false} bare />} />
+           {canPerformOperations && ["asignado", "en_revision"].includes(job.main_status) && <PhotoUpload jobId={job.id} />}
+           <section id="evidencias" className="rounded-2xl border border-line bg-white p-6 shadow-card"><h2 className="text-xl font-bold text-ink">Evidencia guardada ({photos.length})</h2>{photos.length > 0 ? <JobEvidenceList photos={photos} canDelete={false} /> : <EmptyState icon={IconCamera} title="Todavía no hay fotografías" description="Agrega evidencia antes de entregar el trabajo." />}{job.comments && <p className="mt-3 rounded-lg border border-line bg-surface-muted p-3 text-ink"><strong>Comentario general:</strong> {job.comments}</p>}</section>
+           {canPerformOperations && <div className="lg:col-start-2 lg:row-start-2 lg:self-start"><IncidentCard jobId={job.id} incident={job.incident} /></div>}
           {codes.length > 0 && <section className="rounded-2xl border border-line bg-white p-6 shadow-card"><h2 className="text-xl font-bold text-ink">Producción histórica</h2><p className="text-sm text-ink-soft">Los nuevos códigos y cantidades se registran dentro del editor de entrega.</p><ul className="mt-3 grid gap-2">{codes.map((code) => <li key={code.id} className="rounded-lg border border-line p-3 text-ink"><strong>{code.code}</strong> · {code.quantity}{code.notes ? ` · ${code.notes}` : ""}</li>)}</ul></section>}
           <CollapsibleTimeline entries={history} />
         </div>
@@ -80,7 +84,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     const shiftAccess = await requireActiveShiftPage();
     return <TechnicianDetail id={id} canMutate={isOperationalFieldWorker(profile)} userName={displayName(profile)} shiftAccess={shiftAccess} />;
   }
-  const detail = await getOfficeJob(id);
+  const [detail, allocationEditor] = await Promise.all([
+    getOfficeJob(id),
+    getOfficeAllocationEditorData(id),
+  ]);
   if (!detail) notFound();
   const { job, assignment, history, archiveEvents, options, photos, codes, documents, draft, deliveredDraftVersion, allocations } = detail;
   const currentAllocations = allocations.filter((allocation) => allocation.is_current);
@@ -100,14 +107,15 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           {job.archived_at && <div className="mt-2 rounded-xl border border-line bg-surface-muted p-3 font-semibold text-ink"><p>Archivado: {job.archive_reason || "Sin motivo"}</p>{job.archive_notes && <p className="mt-1 font-normal">{job.archive_notes}</p>}</div>}
         </header>
         <JobDocuments jobId={job.id} originalPath={job.project_pdf_url} deliveredPath={job.delivered_pdf_path} deliveredStatus={getDeliveredPdfStatus(job, photos.map((photo) => photo.id), documents.map((document) => document.id), draft?.version, deliveredDraftVersion)} jobStatus={job.main_status} deliveredAt={job.delivered_pdf_generated_at} canRegenerate={profile.role === "admin"} canDelete={profile.role === "admin"} />
-        {isOfficeRole(profile.role) && job.delivered_pdf_path && ["asignado", "en_revision"].includes(job.main_status) && (
+        {isOfficeRole(profile.role) && !job.archived_at && job.delivered_pdf_path && ["asignado", "en_revision"].includes(job.main_status) && (
           <section className="rounded-2xl border border-line bg-white p-6 shadow-card">
             <h2 className="text-lg font-semibold text-ink">Quitar páginas del PDF entregado</h2>
-            <div className="mt-3"><DeliveredPdfPageRemover key={job.delivered_pdf_path} jobId={job.id} /></div>
+            <div className="mt-3"><DeliveredPdfPageRemover key={job.delivered_pdf_path} jobId={job.id} deliveredPath={job.delivered_pdf_path} /></div>
           </section>
         )}
         <JobAttachments jobId={job.id} documents={documents.filter((document) => document.document_type === "additional")} canManage={isOfficeRole(profile.role)} />
         <OfficeJobActions jobId={job.id} status={job.main_status} assignment={assignment} options={options} canArchive={isOfficeRole(profile.role)} archived={Boolean(job.archived_at)} invoiceNumber={job.invoice_number} invoicePath={job.invoice_path} />
+        {isOfficeRole(profile.role) && allocationEditor && <FinancialAllocationEditor data={allocationEditor} />}
         {isOfficeRole(profile.role) && !job.archived_at && job.parent_job_id === null && <PartActions jobId={job.id} parts={detail.parts} />}
         {currentAllocations.length > 0 && <section className="rounded-2xl border border-line bg-white p-6 shadow-card"><h2 className="mb-3 text-lg font-semibold text-ink">Reparto financiero</h2><div className="grid gap-2">{currentAllocations.map((allocation) => <div key={`${allocation.allocation_version_id}-${allocation.participant_id}`} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-muted p-3 text-ink"><div><strong>{allocation.participant_name}</strong><span className="text-ink-soft"> · {allocation.worker_specialty}</span></div><div className="text-right"><strong>{((Number(allocation.percentage_basis_points)) / 100).toFixed(2)}%</strong> · ${(Number(allocation.allocated_cents) / 100).toFixed(2)}</div></div>)}</div><p className="mt-3 text-xs text-ink-soft">Distribución registrada al confirmar la entrega. Se confirma al aprobar o facturar el trabajo.</p></section>}
         <section className="rounded-2xl border border-line bg-white p-6 shadow-card"><h2 className="mb-3 text-lg font-semibold text-ink">Datos del trabajo</h2><div className="text-ink"><JobForm job={job} /></div></section>

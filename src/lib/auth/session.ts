@@ -75,3 +75,18 @@ export async function requireSupervisor() {
 
   return profile.role === "admin" ? profile : requireRole("supervisor");
 }
+
+/**
+ * Read-only office access: admin, supervisor, and the new auditor role. Auditor
+ * sees office data but must never reach a write surface — write guards keep
+ * using requireSupervisor()/requireAdmin().
+ */
+export async function requireOfficeViewer() {
+  const profile = await requireProfile();
+
+  if (profile.role !== "admin" && profile.role !== "supervisor" && profile.role !== "auditor") {
+    redirect("/acceso-denegado");
+  }
+
+  return profile;
+}

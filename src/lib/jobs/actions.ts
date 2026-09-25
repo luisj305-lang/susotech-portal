@@ -7,6 +7,7 @@ import {
   isOperationalFieldWorker,
   READ_ONLY_HELPER_MESSAGE,
 } from "@/lib/auth/capabilities";
+import type { UserRole } from "@/lib/auth/capabilities";
 import { confirmPhotoEvidence } from "@/lib/storage/core";
 import { createClient } from "@/lib/supabase/server";
 import { canTransition, INCIDENT_TYPES } from "./state";
@@ -53,7 +54,7 @@ function failure(message: string): Result<never> {
   return { success: false, message };
 }
 
-async function requireTechnicianShift(role: "admin" | "supervisor" | "tecnico") {
+async function requireTechnicianShift(role: UserRole) {
   if (role !== "tecnico") return null;
   try {
     await requireActiveShift();

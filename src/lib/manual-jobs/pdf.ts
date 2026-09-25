@@ -61,7 +61,7 @@ export async function composeManualJobPdf(input: {
 
   field("PRISM", input.prismNumber);
   field("Fecha", input.dateLabel);
-  field("Tecnico", input.creatorName);
+  field("Creado por", input.creatorName);
   field("Valor total", money(input.valueCents), 30);
 
   page.drawText("Reparto", { x: margin, y, size: 13, font: bold, color: rgb(0.1, 0.1, 0.1) });

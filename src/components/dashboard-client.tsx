@@ -4,17 +4,25 @@ import { WORKER_SPECIALTY_LABELS } from "@/lib/auth/capabilities";
 import { LogoutButton } from "@/components/logout-button";
 import type { WeeklyFinancialAllocation, WeeklyProductionLine, WorkerOperationsRow } from "@/lib/jobs/types";
 import { WorkerOperationsTable } from "@/components/worker-operations-table";
+import { HourlyShiftPanel } from "@/components/work-shifts/hourly-shift-panel";
+import type { HourlyPayrollSummary } from "@/lib/work-shifts/types";
+import type { ManualJob, WeeklyManualEarning } from "@/lib/manual-jobs/types";
+import type { Job } from "@/lib/jobs/types";
+import { WorkJobCards } from "@/components/jobs/job-list";
 
 const roleLabels = {
   admin: "Administrador",
   supervisor: "Supervisor",
   tecnico: "Técnico",
+  auditor: "Auditor",
 };
 
-export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancial = [], workerOperations = [], weekOffset = 0 }: { profile: CurrentProfile; weeklyProduction?: WeeklyProductionLine[]; weeklyFinancial?: WeeklyFinancialAllocation[]; workerOperations?: WorkerOperationsRow[]; weekOffset?: number }) {
+export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancial = [], weeklyManualEarnings = [], jobs = [], manualJobs = [], workerOperations = [], weekOffset = 0, hourlySummary }: { profile: CurrentProfile; weeklyProduction?: WeeklyProductionLine[]; weeklyFinancial?: WeeklyFinancialAllocation[]; weeklyManualEarnings?: WeeklyManualEarning[]; jobs?: Job[]; manualJobs?: ManualJob[]; workerOperations?: WorkerOperationsRow[]; weekOffset?: number; hourlySummary?: HourlyPayrollSummary }) {
   const canCreateJobs =
     profile.role === "admin" || profile.role === "supervisor";
-  const confirmed = weeklyFinancial.filter((line) => line.billing_state === "confirmed").reduce((sum, line) => sum + Number(line.allocated_cents), 0) / 100;
+  const confirmedDeliveries = weeklyFinancial.filter((line) => line.billing_state === "confirmed").reduce((sum, line) => sum + Number(line.allocated_cents), 0) / 100;
+  const approvedManual = weeklyManualEarnings.reduce((sum, line) => sum + Number(line.allocated_cents), 0) / 100;
+  const approvedTotal = confirmedDeliveries + approvedManual;
   const pendingAmount = weeklyFinancial.filter((line) => line.billing_state === "pending").reduce((sum, line) => sum + Number(line.allocated_cents), 0) / 100;
 
   return (
@@ -46,7 +54,7 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
         )}
 
         <Link
-          href="/trabajos"
+          href={`/trabajos?week=${weekOffset}`}
           className="inline-flex min-h-[var(--control-height)] items-center justify-center rounded-[var(--radius-control)] border border-brand-900 bg-white px-4 text-sm font-semibold text-brand-900 hover:bg-brand-50"
         >
           Ver trabajos
@@ -86,16 +94,20 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
           <h2 className="text-xl font-bold text-ink">Producción semanal</h2>
           <nav aria-label="Navegación de semana" className="mt-3 flex flex-wrap gap-3 text-sm font-medium text-accent-600">
             <Link href={`/dashboard?week=${weekOffset - 1}`} className="hover:text-accent-500 hover:underline">← Semana anterior</Link>
+            <Link href={`/dashboard?week=${weekOffset + 1}`} className="hover:text-accent-500 hover:underline">Semana siguiente →</Link>
             {weekOffset !== 0 ? <Link href="/dashboard" className="hover:text-accent-500 hover:underline">Semana actual</Link> : null}
             <a href={`/api/produccion/semanal/exportar?week=${weekOffset}`} className="hover:text-accent-500 hover:underline">Exportar semana</a>
           </nav>
           <p className="mt-3 text-sm text-ink-soft">{weeklyProduction[0] ? `${weeklyProduction[0].week_start} — ${weeklyProduction[0].week_end}` : "Viernes — jueves"}</p>
           <div className="mt-4 grid gap-1 text-sm text-ink-soft sm:grid-cols-2">
-            <p>Confirmado: <strong className="text-ink">${confirmed.toFixed(2)}</strong></p>
+            <p>Entregas confirmadas: <strong className="text-ink">${confirmedDeliveries.toFixed(2)}</strong></p>
+            <p>Trabajo manual aprobado: <strong className="text-ink">${approvedManual.toFixed(2)}</strong></p>
+            <p>Total aprobado: <strong className="text-ink">${approvedTotal.toFixed(2)}</strong></p>
             <p>Pendiente: <strong className="text-ink">${pendingAmount.toFixed(2)}</strong></p>
           </div>
-          <p className="mt-2 text-sm text-ink-muted">{weeklyProduction.length} línea(s) operativas · {weeklyFinancial.length} distribución(es) financieras</p>
+          <p className="mt-2 text-sm text-ink-muted">{weeklyProduction.length} línea(s) operativas · {weeklyFinancial.length} distribución(es) de entrega · {weeklyManualEarnings.length} participación(es) manual(es) aprobada(s)</p>
           {weeklyFinancial.length > 0 && <div className="mt-4 overflow-x-auto rounded-[var(--radius-control)] border border-line">
+            <p className="border-b border-line px-3 py-2 text-sm font-semibold text-ink">Distribuciones de entrega</p>
             <table className="w-full min-w-[520px] border-collapse text-sm">
               <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-ink-muted"><tr><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">PRISM</th><th className="px-3 py-2 text-right">Porcentaje</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2">Estado</th></tr></thead>
               <tbody>{weeklyFinancial.map((line) => <tr key={`${line.delivery_id}-${line.job_id}`} className="border-t border-line">
@@ -107,7 +119,33 @@ export function DashboardClient({ profile, weeklyProduction = [], weeklyFinancia
             </tr>)}</tbody>
           </table>
           </div>}
+          {weeklyManualEarnings.length > 0 && <div className="mt-4 overflow-x-auto rounded-[var(--radius-control)] border border-line">
+            <p className="border-b border-line px-3 py-2 text-sm font-semibold text-ink">Trabajo manual aprobado</p>
+            <table className="w-full min-w-[520px] border-collapse text-sm">
+              <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-ink-muted"><tr><th className="px-3 py-2">Fecha financiera</th><th className="px-3 py-2">PRISM</th><th className="px-3 py-2 text-right">Porcentaje</th><th className="px-3 py-2 text-right">Tu monto</th><th className="px-3 py-2">Estado</th></tr></thead>
+              <tbody>{weeklyManualEarnings.map((line) => <tr key={line.manual_job_id} className="border-t border-line">
+                <td className="px-3 py-2">{line.financial_date ?? line.approval_date}</td>
+                <td className="px-3 py-2">{line.prism_number}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{(Number(line.percentage_basis_points) / 100).toFixed(2)}%</td>
+                <td className="px-3 py-2 text-right tabular-nums">${(Number(line.allocated_cents) / 100).toFixed(2)}</td>
+                <td className="px-3 py-2">Aprobado</td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
         </section>}
+
+        {profile.role === "tecnico" && <section className="rounded-[var(--radius-surface)] border border-line bg-white p-5 shadow-[var(--shadow-card-compact)] sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-ink">Trabajos de la semana</h2>
+              <p className="mt-1 text-sm text-ink-soft">Órdenes por fecha de asignación y trabajos manuales por fecha de registro. Las órdenes requieren una jornada activa para consultarse.</p>
+            </div>
+            <Link href={`/trabajos?week=${weekOffset}`} className="text-sm font-semibold text-accent-600 hover:text-accent-500 hover:underline">Ver trabajos</Link>
+          </div>
+          <div className="mt-4"><WorkJobCards jobs={jobs} manualJobs={manualJobs} /></div>
+        </section>}
+
+        {profile.role === "tecnico" && hourlySummary && <HourlyShiftPanel summary={hourlySummary} />}
 
         {profile.role !== "tecnico" && <WorkerOperationsTable rows={workerOperations} />}
 

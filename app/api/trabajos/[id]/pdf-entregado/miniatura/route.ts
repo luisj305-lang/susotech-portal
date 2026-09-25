@@ -12,8 +12,10 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
-  const page = Number(new URL(request.url).searchParams.get("page") ?? "1");
-  if (!uuidPattern.test(id) || !Number.isInteger(page)) return new Response("Not found", { status: 404 });
+  const searchParams = new URL(request.url).searchParams;
+  const page = Number(searchParams.get("page") ?? "1");
+  const expectedPath = searchParams.get("expectedPath");
+  if (!uuidPattern.test(id) || !Number.isInteger(page) || page < 1 || !expectedPath) return new Response("Not found", { status: 404 });
 
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -31,11 +33,13 @@ export async function GET(
 
   const { data: job, error: jobError } = await supabase
     .from("jobs")
-    .select("delivered_pdf_path")
+    .select("delivered_pdf_path, main_status, archived_at")
     .eq("id", id)
     .maybeSingle();
   if (jobError) return new Response("Forbidden", { status: 403 });
   if (!job?.delivered_pdf_path?.startsWith(`${id}/`)) return new Response("Not found", { status: 404 });
+  if (job.archived_at || !["asignado", "en_revision"].includes(job.main_status)) return new Response("Job is not editable", { status: 409 });
+  if (job.delivered_pdf_path !== expectedPath) return new Response("Delivered PDF changed", { status: 409 });
 
   const service = createServiceClient();
   const downloaded = await service.storage.from("project-files").download(job.delivered_pdf_path);

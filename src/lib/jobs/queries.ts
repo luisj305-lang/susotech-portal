@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { listActiveTechniciansCore } from "./crew-core";
 import { getDeliveredPdfStatus } from "./delivered-status";
 import { requireActiveShift } from "@/lib/work-shifts/access";
-import type { AssigneeOption, CrewOfficeDto, FinancialHistoryBucket, Job, JobArchiveEvent, JobAssignment, JobCategory, JobDocument, JobFinancialAllocation, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyExportLine, WeeklyProductionLine, WorkerOperationsRow } from "./types";
+import { requireOfficeViewer } from "@/lib/auth/session";
+import type { AssigneeOption, CrewOfficeDto, FinancialHistoryBucket, Job, JobArchiveEvent, JobAssignment, JobCategory, JobDocument, JobFinancialAllocation, JobPdfDraft, JobPhoto, JobProductionCode, JobStatus, JobStatusHistoryEntry, JobWorkParticipation, OfficeAllocationEditorData, OfficeJobPreview, ProductionCatalogOption, ProductionReportLine, WeeklyExportLine, WeeklyProductionLine, WorkerOperationsRow } from "./types";
 
 const statuses: JobStatus[] = ["sin_asignar", "asignado", "en_revision", "aprobado", "facturado", "pagado"];
 const categories: JobCategory[] = ["categoria_1", "categoria_2", "categoria_3"];
@@ -48,7 +49,7 @@ export async function listOfficeJobs(filters: { query?: string; status?: string;
   if (categories.includes(filters.category as JobCategory)) request = request.eq("category", filters.category);
   const [jobsResult, assignmentsResult, photosResult, documentsResult, draftsResult, deliveryVersionsResult, options, crewsResult] = await Promise.all([
     request,
-    supabase.from("job_assignments").select("job_id, assignee_type, technician_id, crew_id").eq("active", true).eq("is_primary", true),
+    supabase.from("job_assignments").select("job_id, assignee_type, technician_id, crew_id, assigned_at").eq("active", true).eq("is_primary", true),
     supabase.from("job_photos").select("id, job_id").is("deleted_at", null),
     supabase.from("job_documents").select("id,job_id,position").eq("status", "active").is("deleted_at", null).order("position", { ascending: true }),
     supabase.from("job_pdf_drafts").select("job_id,version"),
@@ -71,12 +72,13 @@ export async function listOfficeJobs(filters: { query?: string; status?: string;
   const query = filters.query?.trim().toLocaleLowerCase("es") ?? "";
   return ((jobsResult.data ?? []) as Job[])
     .filter((job) => !query || [job.prism_number, job.title, job.address, job.location].some((value) => value?.toLocaleLowerCase("es").includes(query)))
-    .map((job): OfficeJobPreview => {
+    .map((job): OfficeJobPreview & { assignedAt: string | null } => {
       const assignment = assignments.get(job.id);
       const key = assignment ? `${assignment.assignee_type}:${assignment.assignee_type === "crew" ? assignment.crew_id : assignment.technician_id}` : "";
       const currentIds = [...(photoIds.get(job.id) ?? [])].sort();
       return {
         ...job,
+        assignedAt: assignment?.assigned_at ?? null,
         assignee_label: (key && labels.get(key)) || "Sin asignar",
         photo_count: currentIds.length,
         delivered_pdf_status: getDeliveredPdfStatus(job, currentIds, documentIds.get(job.id) ?? [], draftVersions.get(job.id), deliveryVersions.get(job.id)),
@@ -100,10 +102,12 @@ export async function listTechnicianJobs(filters?: { query?: string; status?: st
 export async function listTechnicianQueueJobs(filters?: { query?: string; status?: string; tab?: string }): Promise<(Job & { assignedAt: string | null })[]> {
   await requireActiveShift();
   const supabase = await createClient();
-  const tab = filters?.tab === "revisados" ? "revisados" : "activos";
+  const tab = filters?.tab ?? "activos";
   let request = supabase.from("jobs").select("*").is("archived_at", null);
   if (tab === "revisados") {
     request = request.eq("main_status", "aprobado");
+  } else if (tab === "todos") {
+    request = request.in("main_status", ["asignado", "en_revision", "aprobado", "facturado", "pagado"]);
   } else {
     request = request.in("main_status", ["asignado", "en_revision"]);
   }
@@ -147,7 +151,7 @@ export async function listTechnicianQueueJobs(filters?: { query?: string; status
 export async function getTechnicianJob(jobId: string) {
   await requireActiveShift();
   const supabase = await createClient();
-  const [job, assignment, history, codes, photos, documents, draft, deliveryVersion, catalog, allocations] = await Promise.all([
+  const [job, assignment, history, codes, photos, documents, draft, deliveryVersion, catalog, allocations, workParticipation] = await Promise.all([
     supabase.from("jobs").select("*").eq("id", jobId).maybeSingle(),
     supabase.from("job_assignments").select("assigned_at").eq("job_id", jobId).eq("active", true).eq("is_primary", true).maybeSingle(),
     supabase.from("job_status_history").select("*").eq("job_id", jobId).order("created_at", { ascending: false }),
@@ -158,10 +162,12 @@ export async function getTechnicianJob(jobId: string) {
     supabase.from("job_pdf_delivery_versions").select("draft_version").eq("job_id", jobId).maybeSingle(),
     supabase.rpc("list_my_production_catalog"),
     supabase.rpc("list_my_financial_allocations", { p_job_id: jobId }),
+    supabase.rpc("get_my_job_work_participation", { p_job_id: jobId }),
   ]);
-  if (job.error || assignment.error || history.error || codes.error || photos.error || documents.error || draft.error || deliveryVersion.error || catalog.error || allocations.error) throw new Error("No se pudo cargar el trabajo asignado.");
+  if (job.error || assignment.error || history.error || codes.error || photos.error || documents.error || draft.error || deliveryVersion.error || catalog.error || allocations.error || workParticipation.error) throw new Error("No se pudo cargar el trabajo asignado.");
   if (!job.data) return null;
-  return { job: job.data as Job, assignedAt: assignment.data?.assigned_at ?? null, history: (history.data ?? []) as JobStatusHistoryEntry[], codes: (codes.data ?? []) as JobProductionCode[], photos: (photos.data ?? []) as JobPhoto[], documents: (documents.data ?? []) as JobDocument[], draft: draft.data as JobPdfDraft | null, deliveredDraftVersion: deliveryVersion.data?.draft_version as number | undefined, catalog: (catalog.data ?? []) as ProductionCatalogOption[], allocations: (allocations.data ?? []) as import("./types").MyFinancialAllocation[] };
+  const participation = ((workParticipation.data ?? [])[0] ?? null) as JobWorkParticipation | null;
+  return { job: job.data as Job, assignedAt: assignment.data?.assigned_at ?? null, history: (history.data ?? []) as JobStatusHistoryEntry[], codes: (codes.data ?? []) as JobProductionCode[], photos: (photos.data ?? []) as JobPhoto[], documents: (documents.data ?? []) as JobDocument[], draft: draft.data as JobPdfDraft | null, deliveredDraftVersion: deliveryVersion.data?.draft_version as number | undefined, catalog: (catalog.data ?? []) as ProductionCatalogOption[], allocations: (allocations.data ?? []) as import("./types").MyFinancialAllocation[], workParticipation: participation ? { informational_basis_points: Number(participation.informational_basis_points) } : null };
 }
 
 export async function getMyWeeklyProduction(referenceDate?: string | null) {
@@ -285,5 +291,64 @@ export async function getOfficeJob(jobId: string) {
     deliveredDraftVersion: deliveryVersionResult.data?.draft_version as number | undefined,
     allocations: (allocationsResult.data ?? []) as JobFinancialAllocation[],
     options,
+  };
+}
+
+type CompensationModeRow = {
+  technician_id: string;
+  mode: "percentage" | "hourly";
+  hourly_rate_cents: number | null;
+};
+
+/**
+ * Office-side editor data for the financial allocation + work-participant
+ * roster. Read-only and supervisor-guarded. The current submitted allocation
+ * (money participants) comes from `list_job_financial_allocations`; the full
+ * roster (percentage + hourly) comes from `job_work_participants`; the
+ * eligible technician directory and its compensation mode come from
+ * `list_active_technicians_for_office` and `technician_compensation_settings`.
+ */
+export async function getOfficeAllocationEditorData(jobId: string): Promise<OfficeAllocationEditorData | null> {
+  await requireOfficeViewer();
+
+  const supabase = await createClient();
+  const [jobResult, allocationsResult, rosterResult, directory, settingsResult] = await Promise.all([
+    supabase.from("jobs").select("main_status, archived_at").eq("id", jobId).maybeSingle(),
+    supabase.rpc("list_job_financial_allocations", { p_job_id: jobId }),
+    supabase.from("job_work_participants").select("technician_id").eq("job_id", jobId),
+    listActiveTechniciansCore(supabase),
+    supabase.from("technician_compensation_settings").select("technician_id, mode, hourly_rate_cents"),
+  ]);
+
+  if (jobResult.error) throw new Error("No se pudo cargar el trabajo.");
+  if (allocationsResult.error) throw new Error("No se pudo cargar la distribución.");
+  if (rosterResult.error) throw new Error("No se pudo cargar la lista de participantes.");
+  if (settingsResult.error) throw new Error("No se pudo cargar la configuración de pago.");
+  if (!jobResult.data) return null;
+
+  const job = jobResult.data as { main_status: JobStatus; archived_at: string | null };
+
+  const modeByTechnician = new Map<string, "percentage" | "hourly">(
+    ((settingsResult.data ?? []) as CompensationModeRow[]).map((row) => [row.technician_id, row.mode]),
+  );
+
+  const allocations = ((allocationsResult.data ?? []) as JobFinancialAllocation[])
+    .filter((item) => item.is_current)
+    .map((item) => ({ participantId: item.participant_id, percentageBasisPoints: item.percentage_basis_points }));
+
+  const participantIds = ((rosterResult.data ?? []) as Array<{ technician_id: string }>)
+    .map((row) => row.technician_id);
+
+  return {
+    jobId,
+    mainStatus: job.main_status,
+    locked: job.archived_at !== null || ["aprobado", "facturado", "pagado"].includes(job.main_status),
+    allocations,
+    participantIds,
+    technicians: directory.map((item) => ({
+      id: item.id,
+      label: item.label,
+      compensationMode: modeByTechnician.get(item.id) ?? "percentage",
+    })),
   };
 }

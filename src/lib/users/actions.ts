@@ -10,7 +10,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/lib/auth/session";
 
-const allowedRoles: UserRole[] = ["admin", "supervisor", "tecnico"];
+const allowedRoles: UserRole[] = ["admin", "supervisor", "tecnico", "auditor"];
 
 type ActionResult =
   | { success: true; message: string }
@@ -353,6 +353,78 @@ export async function updateTechnicianPriceCategory(input: { userId: string; pri
   } catch (error) {
     if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error;
     return { success: false, message: "No se pudo actualizar la categoría de precio." };
+  }
+}
+
+function mapCompensationError(raw: string | undefined): string {
+  const message = raw ?? "";
+  if (message.includes("Admin access required")) {
+    return "Solo un administrador puede configurar el pago.";
+  }
+  if (message.includes("Hourly rate required")) {
+    return "Ingresa una tarifa por hora válida.";
+  }
+  if (message.includes("Active technician required")) {
+    return "El técnico debe estar activo para configurar su pago.";
+  }
+  if (message.includes("Invalid compensation mode")) {
+    return "El modo de pago no es válido.";
+  }
+  return "No se pudo actualizar la compensación.";
+}
+
+export async function setTechnicianCompensation(input: {
+  technicianId: string;
+  mode: "percentage" | "hourly";
+  hourlyRateCents: number | null;
+}): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+        input.technicianId,
+      )
+    ) {
+      return { success: false, message: "El técnico no es válido." };
+    }
+
+    const mode = input.mode;
+    if (mode !== "percentage" && mode !== "hourly") {
+      return { success: false, message: "El modo de pago no es válido." };
+    }
+
+    let hourlyRateCents: number | null = null;
+    if (mode === "hourly") {
+      const rate = input.hourlyRateCents;
+      if (typeof rate !== "number" || !Number.isSafeInteger(rate) || rate <= 0) {
+        return { success: false, message: "Ingresa una tarifa por hora válida." };
+      }
+      hourlyRateCents = rate;
+    }
+
+    const { error } = await (await createClient()).rpc(
+      "set_technician_compensation",
+      {
+        p_technician_id: input.technicianId,
+        p_mode: mode,
+        p_hourly_rate_cents: hourlyRateCents,
+      },
+    );
+
+    if (error) {
+      return { success: false, message: mapCompensationError(error.message) };
+    }
+
+    revalidatePath("/usuarios");
+    revalidatePath("/nomina");
+    return { success: true, message: "Compensación actualizada correctamente." };
+  } catch (error) {
+    if (error instanceof Error && error.message === "NEXT_REDIRECT") {
+      throw error;
+    }
+
+    return { success: false, message: "No se pudo actualizar la compensación." };
   }
 }
 

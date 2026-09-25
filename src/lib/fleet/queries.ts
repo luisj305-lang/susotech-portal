@@ -1,10 +1,11 @@
 import "server-only";
 
-import { requireSupervisor } from "@/lib/auth/session";
+import { requireOfficeViewer } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import type {
   FleetCostLedgerEntry,
   FleetDocument,
+  FleetEngineHourReading,
   FleetExpense,
   FleetIncident,
   FleetInsurancePayment,
@@ -50,6 +51,16 @@ export type FleetShiftAssociation = {
   vehicle_unit_number: string | null;
 };
 
+export type FleetFuelCorrectionPage = {
+  shifts: FleetShiftAssociation[];
+  page: number;
+  total: number;
+  has_previous_page: boolean;
+  has_next_page: boolean;
+};
+
+const FLEET_FUEL_CORRECTION_PAGE_SIZE = 25;
+
 export type FleetOperationalSettings = Pick<
   FleetSettings,
   "weekly_odometer_day" | "weekly_odometer_required" | "alert_day_offsets" | "timezone"
@@ -63,6 +74,7 @@ export type FleetVehicleDetail = {
   insurancePayments: FleetInsurancePayment[];
   maintenance: FleetMaintenanceRecord[];
   odometer: FleetOdometerReading[];
+  engineHours: FleetEngineHourReading[];
   expenses: FleetExpense[];
   incidents: Array<FleetIncident & { reporter_name: string }>;
   documents: Array<FleetDocument & { signed_url: string | null }>;
@@ -92,8 +104,12 @@ function insuranceSummary(policies: FleetInsurancePolicy[]): FleetAlertSummary {
 }
 
 function maintenanceSummary(records: FleetMaintenanceRecord[], odometer: number): FleetAlertSummary {
-  const dueDates = records.filter((record) => record.next_due_on).map((record) => record.next_due_on as string).sort();
-  const dueMiles = records.filter((record) => record.next_due_odometer_miles !== null).map((record) => Number(record.next_due_odometer_miles)).sort((a, b) => a - b);
+  const activeRecords = records.filter((record) => record.status !== "cancelled");
+  const dueDates = activeRecords
+    .map((record) => record.status === "completed" ? record.next_due_on : record.scheduled_for ?? record.next_due_on)
+    .filter((date): date is string => Boolean(date))
+    .sort();
+  const dueMiles = activeRecords.filter((record) => record.next_due_odometer_miles !== null).map((record) => Number(record.next_due_odometer_miles)).sort((a, b) => a - b);
   const date = dueDates[0];
   const mileage = dueMiles[0];
   if (date) {
@@ -115,7 +131,7 @@ export async function listFleetVehicles(input: {
   query?: string;
   status?: string;
 }): Promise<FleetVehicleListItem[]> {
-  await requireSupervisor();
+  await requireOfficeViewer();
   const supabase = await createClient();
   const today = currentDate();
   const [vehiclesResult, assignmentsResult, profilesResult, policiesResult, maintenanceResult] = await Promise.all([
@@ -151,25 +167,68 @@ export async function listFleetVehicles(input: {
     });
 }
 
+export async function listFleetFuelCorrectionCandidates(requestedPage = 1): Promise<FleetFuelCorrectionPage> {
+  await requireOfficeViewer();
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const offset = (page - 1) * FLEET_FUEL_CORRECTION_PAGE_SIZE;
+  const supabase = await createClient();
+  const shiftsResult = await supabase.from("technician_shifts")
+    .select("id,technician_id,vehicle_id,started_at,fuel_amount,no_fuel_today", { count: "exact" })
+    .gt("fuel_amount", 200)
+    .order("started_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + FLEET_FUEL_CORRECTION_PAGE_SIZE - 1);
+  if (shiftsResult.error) throw new Error("No se pudieron cargar las correcciones pendientes de gasolina.");
+
+  const shifts = (shiftsResult.data ?? []) as Array<Omit<FleetShiftAssociation, "technician_name" | "vehicle_unit_number">>;
+  const technicianIds = [...new Set(shifts.map((shift) => shift.technician_id))];
+  const vehicleIds = [...new Set(shifts.flatMap((shift) => shift.vehicle_id ? [shift.vehicle_id] : []))];
+  const [profilesResult, vehiclesResult] = await Promise.all([
+    technicianIds.length
+      ? supabase.from("profiles").select("id,full_name,email").in("id", technicianIds)
+      : Promise.resolve({ data: [], error: null }),
+    vehicleIds.length
+      ? supabase.from("fleet_vehicles").select("id,unit_number").in("id", vehicleIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (profilesResult.error || vehiclesResult.error) throw new Error("No se pudieron cargar las correcciones pendientes de gasolina.");
+
+  const names = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile.full_name || profile.email]));
+  const vehicleNames = new Map((vehiclesResult.data ?? []).map((vehicle) => [vehicle.id, vehicle.unit_number]));
+  const total = shiftsResult.count ?? 0;
+  return {
+    shifts: shifts.map((shift) => ({
+      ...shift,
+      technician_name: names.get(shift.technician_id) ?? "Técnico no disponible",
+      vehicle_unit_number: shift.vehicle_id ? (vehicleNames.get(shift.vehicle_id) ?? "Camión no disponible") : null,
+    })),
+    page,
+    total,
+    has_previous_page: page > 1,
+    has_next_page: offset + shifts.length < total,
+  };
+}
+
 export async function getFleetVehicleDetail(vehicleId: string): Promise<FleetVehicleDetail | null> {
-  await requireSupervisor();
+  await requireOfficeViewer();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(vehicleId)) return null;
   const supabase = await createClient();
-  const [vehicleResult, assignmentsResult, profilesResult, policiesResult, maintenanceResult, odometerResult, expensesResult, incidentsResult, documentsResult, ledgerResult, shiftsResult, vehicleOptionsResult] = await Promise.all([
+  const [vehicleResult, assignmentsResult, profilesResult, policiesResult, maintenanceResult, odometerResult, engineHoursResult, expensesResult, incidentsResult, documentsResult, ledgerResult, shiftsResult, vehicleOptionsResult] = await Promise.all([
     supabase.from("fleet_vehicles").select("*").eq("id", vehicleId).maybeSingle(),
     supabase.from("fleet_vehicle_assignments").select("*").eq("vehicle_id", vehicleId).order("starts_on", { ascending: false }),
     supabase.from("profiles").select("id,full_name,email,is_active,role").order("full_name"),
     supabase.from("fleet_insurance_policies").select("*").eq("vehicle_id", vehicleId).order("expires_on", { ascending: false }),
     supabase.from("fleet_maintenance_records").select("*").eq("vehicle_id", vehicleId).order("created_at", { ascending: false }),
     supabase.from("fleet_odometer_readings").select("*").eq("vehicle_id", vehicleId).order("recorded_on", { ascending: false }).order("created_at", { ascending: false }),
+    supabase.from("fleet_engine_hour_readings").select("*").eq("vehicle_id", vehicleId).order("recorded_on", { ascending: false }).order("created_at", { ascending: false }),
     supabase.from("fleet_expenses").select("*").eq("vehicle_id", vehicleId).order("occurred_on", { ascending: false }),
     supabase.from("fleet_incidents").select("*").eq("vehicle_id", vehicleId).order("occurred_at", { ascending: false }),
     supabase.from("fleet_documents").select("*").eq("vehicle_id", vehicleId).order("created_at", { ascending: false }),
     supabase.rpc("list_fleet_cost_ledger", { p_start_on: null, p_end_on: null, p_vehicle_id: vehicleId }),
-    supabase.from("technician_shifts").select("id,technician_id,vehicle_id,started_at,fuel_amount,no_fuel_today").order("started_at", { ascending: false }).limit(30),
+    supabase.from("technician_shifts").select("id,technician_id,vehicle_id,started_at,fuel_amount,no_fuel_today").eq("vehicle_id", vehicleId).order("started_at", { ascending: false }).limit(30),
     supabase.from("fleet_vehicles").select("id,unit_number").order("unit_number"),
   ]);
-  const firstError = [vehicleResult, assignmentsResult, profilesResult, policiesResult, maintenanceResult, odometerResult, expensesResult, incidentsResult, documentsResult, ledgerResult, shiftsResult, vehicleOptionsResult].find((result) => result.error)?.error;
+  const firstError = [vehicleResult, assignmentsResult, profilesResult, policiesResult, maintenanceResult, odometerResult, engineHoursResult, expensesResult, incidentsResult, documentsResult, ledgerResult, shiftsResult, vehicleOptionsResult].find((result) => result.error)?.error;
   if (firstError) throw new Error("No se pudo cargar el detalle del camión.");
   if (!vehicleResult.data) return null;
 
@@ -203,6 +262,7 @@ export async function getFleetVehicleDetail(vehicleId: string): Promise<FleetVeh
     insurancePayments: paymentsResult.data as FleetInsurancePayment[],
     maintenance: maintenanceResult.data as FleetMaintenanceRecord[],
     odometer: odometerResult.data as FleetOdometerReading[],
+    engineHours: engineHoursResult.data as FleetEngineHourReading[],
     expenses: expensesResult.data as FleetExpense[],
     incidents: (incidentsResult.data as FleetIncident[]).map((incident) => ({
       ...incident,
@@ -220,7 +280,7 @@ export async function getFleetVehicleDetail(vehicleId: string): Promise<FleetVeh
 }
 
 export async function getFleetSettings(): Promise<FleetOperationalSettings> {
-  await requireSupervisor();
+  await requireOfficeViewer();
   const result = await (await createClient()).from("fleet_settings")
     .select("weekly_odometer_day,weekly_odometer_required,alert_day_offsets,timezone")
     .eq("id", 1)

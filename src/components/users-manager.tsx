@@ -18,7 +18,10 @@ import {
   updateUserRoleAndStatus,
   updateTechnicianPriceCategory,
   updateWorkerSpecialty,
+  setTechnicianCompensation,
 } from "@/lib/users/actions";
+
+type CompensationMode = "percentage" | "hourly";
 
 type ManagedProfile = {
   id: string;
@@ -30,13 +33,120 @@ type ManagedProfile = {
   price_category_id: string | null;
   price_category_name: string | null;
   phone: string | null;
+  compensation_mode: CompensationMode | null;
+  hourly_rate_cents: number | null;
 };
 
 const roleLabels: Record<UserRole, string> = {
   admin: "Administrador",
   supervisor: "Supervisor",
   tecnico: "Técnico",
+  auditor: "Auditor",
 };
+
+const compensationModeLabels: Record<CompensationMode, string> = {
+  percentage: "Porcentaje",
+  hourly: "Por horas",
+};
+
+function TechnicianCompensationControl({
+  userId,
+  label,
+  initialMode,
+  initialRateCents,
+  disabled,
+  onSaved,
+}: {
+  userId: string;
+  label: string;
+  initialMode: CompensationMode | null;
+  initialRateCents: number | null;
+  disabled: boolean;
+  onSaved: (mode: CompensationMode, hourlyRateCents: number | null) => void;
+}) {
+  const [mode, setMode] = useState<CompensationMode>(initialMode ?? "percentage");
+  const [rateDollars, setRateDollars] = useState(
+    initialRateCents != null && initialRateCents > 0
+      ? (initialRateCents / 100).toFixed(2)
+      : "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+
+    let hourlyRateCents: number | null = null;
+    if (mode === "hourly") {
+      const dollars = Number.parseFloat(rateDollars);
+      if (!Number.isFinite(dollars) || dollars <= 0) {
+        setError("Ingresa una tarifa por hora válida.");
+        setSaving(false);
+        return;
+      }
+      hourlyRateCents = Math.round(dollars * 100);
+    }
+
+    const result = await setTechnicianCompensation({
+      technicianId: userId,
+      mode,
+      hourlyRateCents,
+    });
+    setSaving(false);
+
+    if (result.success) {
+      onSaved(mode, hourlyRateCents);
+    } else {
+      setError(result.message);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <select
+        aria-label={`Modo de pago de ${label}`}
+        value={mode}
+        disabled={disabled || saving}
+        onChange={(event) => {
+          setMode(event.target.value as CompensationMode);
+          setError("");
+        }}
+        className="rounded-xl border border-line bg-white px-2 py-1.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
+      >
+        <option value="percentage">{compensationModeLabels.percentage}</option>
+        <option value="hourly">{compensationModeLabels.hourly}</option>
+      </select>
+      {mode === "hourly" && (
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          aria-label={`Tarifa por hora de ${label}`}
+          placeholder="0.00"
+          value={rateDollars}
+          disabled={disabled || saving}
+          onChange={(event) => {
+            setRateDollars(event.target.value);
+            setError("");
+          }}
+          className="w-20 rounded-xl border border-line bg-white px-2 py-1.5 text-sm text-ink focus:border-accent-500 focus:outline-none"
+        />
+      )}
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={save}
+        disabled={disabled || saving}
+      >
+        {saving ? "Guardando..." : "Guardar"}
+      </Button>
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </div>
+  );
+}
 
 type ModalMode =
   | { type: "closed" }
@@ -227,6 +337,21 @@ export function UsersManager({
     }
   };
 
+  const handleCompensationSaved = (
+    userId: string,
+    mode: CompensationMode,
+    hourlyRateCents: number | null,
+  ) => {
+    setUsers((current) =>
+      current.map((user) =>
+        user.id === userId
+          ? { ...user, compensation_mode: mode, hourly_rate_cents: hourlyRateCents }
+          : user,
+      ),
+    );
+    setMessage("Compensación actualizada correctamente.");
+  };
+
   const handleStatusToggle = async (userId: string) => {
     if (userId === currentUserId) {
       setMessage("No puedes desactivar tu propia cuenta.");
@@ -339,6 +464,7 @@ export function UsersManager({
               <th className="px-4 py-3 text-left font-semibold">Rol</th>
               <th className="px-4 py-3 text-left font-semibold">Especialidad</th>
               <th className="px-4 py-3 text-left font-semibold">Categoría de precio</th>
+              <th className="px-4 py-3 text-left font-semibold">Pago</th>
               <th className="px-4 py-3 text-left font-semibold">Teléfono</th>
               <th className="px-4 py-3 text-left font-semibold">Estado</th>
               <th className="px-4 py-3 text-left font-semibold">Acciones</th>
@@ -414,6 +540,28 @@ export function UsersManager({
                     )}
                   </td>
                   <td className="px-4 py-3">{user.role === "tecnico" ? canManage ? <select aria-label={`Categoría de precio de ${user.full_name ?? user.email}`} value={user.price_category_id ?? ""} disabled={isLoading} onChange={(event) => void handlePriceCategoryChange(user.id, event.target.value || null)} className="rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"><option value="">Sin categoría</option>{priceCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select> : (user.price_category_name ?? "Sin categoría") : "—"}</td>
+                  <td className="px-4 py-3">
+                    {user.role === "tecnico" ? (
+                      canManage ? (
+                        <TechnicianCompensationControl
+                          userId={user.id}
+                          label={user.full_name ?? user.email}
+                          initialMode={user.compensation_mode}
+                          initialRateCents={user.hourly_rate_cents}
+                          disabled={isLoading}
+                          onSaved={(mode, rate) =>
+                            handleCompensationSaved(user.id, mode, rate)
+                          }
+                        />
+                      ) : user.compensation_mode ? (
+                        compensationModeLabels[user.compensation_mode]
+                      ) : (
+                        compensationModeLabels.percentage
+                      )
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-ink-soft">{user.phone ?? "—"}</td>
                   <td className="px-4 py-3">
                     {canManage ? <Button

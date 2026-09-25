@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FleetActionForm } from "@/components/fleet/fleet-action-form";
 import {
   reportMyFleetIncidentAction,
+  submitMyFleetEngineHoursAction,
   submitMyFleetOdometerAction,
 } from "@/lib/fleet/technician-actions";
 import type {
@@ -47,6 +48,22 @@ function OdometerForm({ vehicle }: { vehicle: TechnicianFleetVehicle }) {
   );
 }
 
+function EngineHoursForm({ vehicle }: { vehicle: TechnicianFleetVehicle }) {
+  return (
+    <FleetActionForm action={submitMyFleetEngineHoursAction} submitLabel="Registrar horas" resetOnSuccess className="grid gap-[var(--space-stack)]">
+      <input type="hidden" name="vehicle_id" value={vehicle.vehicle.id} />
+      <label className="grid gap-1 text-sm font-medium text-ink-soft">
+        Horas de motor actuales
+        <input name="reading_hours" type="number" min={vehicle.vehicle.current_engine_hours} step={1} required placeholder={String(vehicle.vehicle.current_engine_hours)} className={fieldClass} />
+      </label>
+      <label className="grid gap-1 text-sm font-medium text-ink-soft">
+        Nota opcional
+        <textarea name="notes" rows={2} maxLength={2000} className={fieldClass} />
+      </label>
+    </FleetActionForm>
+  );
+}
+
 function IncidentForm({ vehicle }: { vehicle: TechnicianFleetVehicle }) {
   return (
     <FleetActionForm action={reportMyFleetIncidentAction} submitLabel="Enviar incidencia" resetOnSuccess className="grid gap-[var(--space-stack)] sm:grid-cols-2">
@@ -71,8 +88,9 @@ function VehicleCard({ vehicle, heading }: { vehicle: TechnicianFleetVehicle; he
         <p className="mt-1 text-sm text-ink-soft">{vehicleStatusLabels[master.status]}{master.model_year ? ` · ${master.model_year}` : ""}{master.license_plate ? ` · placa ${master.license_plate}` : ""}</p>
       </CardHeader>
       <CardContent className="grid gap-4 pt-4">
-        <dl className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
           <div className={metricClass}><dt className="text-xs text-ink-muted">Millaje actual</dt><dd className="mt-0.5 font-semibold text-ink">{Number(master.current_odometer_miles).toLocaleString("en-US")} mi</dd></div>
+          <div className={metricClass}><dt className="text-xs text-ink-muted">Horas de motor</dt><dd className="mt-0.5 font-semibold text-ink">{Number(master.current_engine_hours).toLocaleString("en-US")} h</dd></div>
           <div className={metricClass}><dt className="text-xs text-ink-muted">VIN</dt><dd className="mt-0.5 break-all font-semibold text-ink">{master.vin ?? "No registrado"}</dd></div>
           <div className={metricClass}><dt className="text-xs text-ink-muted">Asignación desde</dt><dd className="mt-0.5 font-semibold text-ink">{vehicle.assignment.starts_on}</dd></div>
           <div className={metricClass}><dt className="text-xs text-ink-muted">Finaliza</dt><dd className="mt-0.5 font-semibold text-ink">{vehicle.assignment.ends_on ?? "Sin fecha"}</dd></div>
@@ -83,11 +101,16 @@ function VehicleCard({ vehicle, heading }: { vehicle: TechnicianFleetVehicle; he
           <div className="border-t border-line py-4"><OdometerForm vehicle={vehicle} /></div>
         </details>
         <details className="rounded-[var(--radius-surface)] border border-line bg-surface-muted/40 px-4 py-2">
+          <summary className="flex min-h-11 cursor-pointer items-center rounded-[var(--radius-control)] text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-[var(--focus-ring-width)] focus-visible:ring-accent-500 focus-visible:ring-offset-[var(--focus-ring-offset)]">Registrar horas de motor</summary>
+          <div className="border-t border-line py-4"><EngineHoursForm vehicle={vehicle} /></div>
+        </details>
+        <details className="rounded-[var(--radius-surface)] border border-line bg-surface-muted/40 px-4 py-2">
           <summary className="flex min-h-11 cursor-pointer items-center rounded-[var(--radius-control)] text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-[var(--focus-ring-width)] focus-visible:ring-accent-500 focus-visible:ring-offset-[var(--focus-ring-offset)]">Reportar incidencia</summary>
           <div className="border-t border-line py-4"><IncidentForm vehicle={vehicle} /></div>
         </details>
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-4">
           <section className={activitySectionClass}><h3 className="text-sm font-semibold text-ink">Lecturas recientes</h3><div className="mt-2 grid gap-2 text-sm">{vehicle.recentOdometer.length ? vehicle.recentOdometer.map((reading) => <p key={reading.id} className="rounded-[var(--radius-control)] bg-surface-muted p-2.5">{reading.recorded_on}: <strong>{Number(reading.reading_miles).toLocaleString("en-US")} mi</strong></p>) : <p className="text-ink-muted">Sin lecturas.</p>}</div></section>
+          <section className={activitySectionClass}><h3 className="text-sm font-semibold text-ink">Horas de motor recientes</h3><div className="mt-2 grid gap-2 text-sm">{vehicle.recentEngineHours.length ? vehicle.recentEngineHours.map((reading) => <p key={reading.id} className="rounded-[var(--radius-control)] bg-surface-muted p-2.5">{reading.recorded_on}: <strong>{Number(reading.reading_hours).toLocaleString("en-US")} h</strong></p>) : <p className="text-ink-muted">Sin lecturas.</p>}</div></section>
           <section className={activitySectionClass}><h3 className="text-sm font-semibold text-ink">Incidencias recientes</h3><div className="mt-2 grid gap-2 text-sm">{vehicle.recentIncidents.length ? vehicle.recentIncidents.map((incident) => <p key={incident.id} className="rounded-[var(--radius-control)] bg-surface-muted p-2.5"><strong>{incident.title}</strong><br />{incidentStatusLabels[incident.status]} · {severityLabels[incident.severity]}</p>) : <p className="text-ink-muted">Sin incidencias.</p>}</div></section>
           <section className={activitySectionClass}><h3 className="text-sm font-semibold text-ink">Documentos recientes</h3><div className="mt-2 grid gap-2 text-sm">{vehicle.recentDocuments.length ? vehicle.recentDocuments.map((document) => document.signed_url ? <a key={document.id} href={document.signed_url} target="_blank" rel="noopener noreferrer" className="rounded-[var(--radius-control)] bg-surface-muted p-2.5 font-semibold underline underline-offset-2">{documentLabels[document.document_type]} · {document.title}</a> : <p key={document.id} className="rounded-[var(--radius-control)] bg-surface-muted p-2.5">{document.title} · enlace no disponible</p>) : <p className="text-ink-muted">Sin documentos.</p>}</div></section>
         </div>

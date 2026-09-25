@@ -18,6 +18,10 @@ export type ActiveWorkShift = {
   server_now: string;
   vehicle_id: string | null;
   vehicle_unit_number: string | null;
+  work_date?: string | null;
+  settlement_due_at?: string | null;
+  compensation_mode?: "percentage" | "hourly" | null;
+  hourly_rate_cents?: number | null;
 };
 
 export type WorkShiftAccess = {
@@ -35,3 +39,41 @@ export type ShiftCompanion = {
 export type WorkShiftActionResult<T = null> =
   | { success: true; message: string; data: T }
   | { success: false; message: string; code?: "active_shift_required" | "invalid_input" | "unavailable" };
+
+export type HourlyShiftSettlement = {
+  shift_id: string;
+  finished_at: string;
+  payable_minutes: number;
+  payable_cents: number;
+  settled_at: string;
+};
+
+export type HourlyPayPeriodRecord = {
+  period_start: string;
+  period_end_exclusive: string;
+  status: "pending" | "approved";
+  total_payable_cents: number;
+};
+
+export type HourlyOpenShift = {
+  started_at: string;
+  settlement_due_at: string;
+  work_date: string;
+};
+
+export type HourlyPayrollSummary =
+  | { isHourly: false }
+  | {
+      isHourly: true;
+      hourlyRateCents: number;
+      periodStart: string;
+      periodEndExclusive: string;
+      settledPayableMinutes: number;
+      settledPayableCents: number;
+      openShift: HourlyOpenShift | null;
+      provisionalActiveEstimate: {
+        elapsedMinutes: number;
+        payableCents: number;
+      } | null;
+      history: HourlyPayPeriodRecord[];
+    };

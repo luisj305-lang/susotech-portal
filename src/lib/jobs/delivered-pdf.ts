@@ -15,6 +15,7 @@ const MAX_RASTER_PIXELS = 20_000_000;
 const MAX_OUTPUT_BYTES = 100 * 1024 * 1024;
 const ORIGINAL_JPEG_QUALITY = 90;
 const EVIDENCE_MAX_EDGE = 2400;
+const PDFIUM_RENDER_ANNOTATIONS = 0x01;
 
 export type DeliveredPdfEvidence = {
   id: string;
@@ -67,6 +68,12 @@ export type DeliveredPdfResult = {
   sourcePhotoIds: string[];
 };
 
+export type FlattenedSourcePdfResult = {
+  bytes: Uint8Array;
+  pageCount: number;
+  sourceDocumentIds: string[];
+};
+
 let pdfiumPromise: Promise<WrappedPdfiumModule> | null = null;
 let compositionTail: Promise<void> = Promise.resolve();
 
@@ -107,13 +114,10 @@ function closeDocument(
   pdfium.pdfium.wasmExports.free(opened.pointer);
 }
 
-function renderPage(pdfium: WrappedPdfiumModule, document: number, pageIndex: number) {
+function renderPage(pdfium: WrappedPdfiumModule, document: number, pageIndex: number, maxEdge = Infinity) {
   const page = pdfium.FPDF_LoadPage(document, pageIndex);
   if (!page) throw new Error(`PDFium no pudo leer la página ${pageIndex + 1}.`);
   try {
-    // Flatten annotations into the page content so they render reliably in the
-    // raster; the FPDF_ANNOT flag alone misses annotations without appearance streams.
-    pdfium.FPDFPage_Flatten(page, 0);
     const pointsWidth = pdfium.FPDF_GetPageWidthF(page);
     const pointsHeight = pdfium.FPDF_GetPageHeightF(page);
     if (!Number.isFinite(pointsWidth) || !Number.isFinite(pointsHeight) || pointsWidth <= 0 || pointsHeight <= 0) {
@@ -122,6 +126,7 @@ function renderPage(pdfium: WrappedPdfiumModule, document: number, pageIndex: nu
     const requestedScale = RASTER_DPI / 72;
     const pixelScale = Math.min(
       requestedScale,
+      maxEdge / Math.max(pointsWidth, pointsHeight),
       Math.sqrt(MAX_RASTER_PIXELS / (pointsWidth * pointsHeight)),
     );
     const width = Math.max(1, Math.round(pointsWidth * pixelScale));
@@ -130,7 +135,9 @@ function renderPage(pdfium: WrappedPdfiumModule, document: number, pageIndex: nu
     if (!bitmap) throw new Error(`PDFium no pudo rasterizar la página ${pageIndex + 1}.`);
     try {
       pdfium.FPDFBitmap_FillRect(bitmap, 0, 0, width, height, 0xffffffff);
-      pdfium.FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, 0, 0x00);
+      // The raster output is flattened. Render annotation appearances before
+      // rasterization because PDFium's in-place flattening can drop widgets.
+      pdfium.FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, 0, PDFIUM_RENDER_ANNOTATIONS);
       const stride = pdfium.FPDFBitmap_GetStride(bitmap);
       const bufferPointer = pdfium.FPDFBitmap_GetBuffer(bitmap);
       const heap = (pdfium.pdfium as unknown as { HEAPU8: Uint8Array }).HEAPU8;
@@ -219,26 +226,20 @@ function drawCaption(page: PDFPage, font: PDFFont, photo: DeliveredPdfEvidence, 
   return Math.min(6, lines.length) * 14 + 12;
 }
 
-async function composeUnlocked(
+async function appendFlattenedSourcePages(
+  pdfium: WrappedPdfiumModule,
+  output: PDFDocument,
   sourceDocuments: DeliveredPdfSource[],
-  evidence: DeliveredPdfEvidence[],
-  codes: DeliveredPdfCodePlacement[] = [],
-  textNotes: DeliveredPdfTextNote[] = [],
-  lines: DeliveredPdfLine[] = [],
-): Promise<DeliveredPdfResult> {
+  decoratePage?: (input: {
+    page: PDFPage;
+    combinedPage: number;
+    rendered: ReturnType<typeof renderPage>;
+  }) => void | Promise<void>,
+) {
   if (!sourceDocuments.length || sourceDocuments.some((source) => !source.bytes.length || source.bytes.length > MAX_ORIGINAL_BYTES)) {
     throw new Error("Cada PDF fuente debe existir y no superar 25 MB.");
   }
-  if (!evidence.length) throw new Error("Se requiere al menos una evidencia confirmada.");
-  if (evidence.length > MAX_EVIDENCE_PHOTOS) throw new Error(`El máximo es ${MAX_EVIDENCE_PHOTOS} evidencias por entrega.`);
-  if (evidence.some((photo) => !photo.bytes.length || photo.bytes.length > MAX_EVIDENCE_BYTES)) {
-    throw new Error("Una evidencia supera el límite de 10 MB.");
-  }
 
-  const pdfium = await loadPdfium();
-  const output = await PDFDocument.create();
-  const codeFont = await output.embedFont(StandardFonts.HelveticaBold);
-  const noteFont = await output.embedFont(StandardFonts.Helvetica);
   let originalPageCount = 0;
   let originalPageWidth = 0;
   let originalPageHeight = 0;
@@ -256,16 +257,73 @@ async function composeUnlocked(
           originalPageWidth = rendered.pointsWidth;
           originalPageHeight = rendered.pointsHeight;
         }
-      const jpeg = await sharp(rendered.rgba, {
-        raw: { width: rendered.width, height: rendered.height, channels: 4 },
-      }).flatten({ background: "#ffffff" }).jpeg({
-        quality: ORIGINAL_JPEG_QUALITY,
-        mozjpeg: true,
-        chromaSubsampling: "4:4:4",
-      }).toBuffer();
-      const image = await output.embedJpg(jpeg);
-      const page = output.addPage([rendered.pointsWidth, rendered.pointsHeight]);
-      page.drawImage(image, { x: 0, y: 0, width: rendered.pointsWidth, height: rendered.pointsHeight });
+        const jpeg = await sharp(rendered.rgba, {
+          raw: { width: rendered.width, height: rendered.height, channels: 4 },
+        }).flatten({ background: "#ffffff" }).jpeg({
+          quality: ORIGINAL_JPEG_QUALITY,
+          mozjpeg: true,
+          chromaSubsampling: "4:4:4",
+        }).toBuffer();
+        const image = await output.embedJpg(jpeg);
+        const page = output.addPage([rendered.pointsWidth, rendered.pointsHeight]);
+        page.drawImage(image, { x: 0, y: 0, width: rendered.pointsWidth, height: rendered.pointsHeight });
+        await decoratePage?.({ page, combinedPage, rendered });
+      }
+      originalPageCount += sourcePageCount;
+    } finally {
+      closeDocument(pdfium, source);
+    }
+  }
+
+  return { originalPageCount, originalPageWidth, originalPageHeight };
+}
+
+async function saveAndVerifyPdf(
+  pdfium: WrappedPdfiumModule,
+  output: PDFDocument,
+  expectedPageCount: number,
+  description: string,
+) {
+  const bytes = await output.save({ useObjectStreams: false });
+  if (bytes.length > MAX_OUTPUT_BYTES) throw new Error("El PDF generado supera el límite de 100 MB.");
+
+  const verification = openDocument(pdfium, bytes);
+  try {
+    const pageCount = pdfium.FPDF_GetPageCount(verification.document);
+    if (pageCount !== expectedPageCount) throw new Error(`El ${description} tiene un número de páginas inválido.`);
+    for (let index = 0; index < pageCount; index += 1) {
+      const page = pdfium.FPDF_LoadPage(verification.document, index);
+      if (!page) throw new Error(`No se pudo validar la página ${index + 1} del ${description}.`);
+      pdfium.FPDF_ClosePage(page);
+    }
+    return { bytes, pageCount };
+  } finally {
+    closeDocument(pdfium, verification);
+  }
+}
+
+async function composeUnlocked(
+  sourceDocuments: DeliveredPdfSource[],
+  evidence: DeliveredPdfEvidence[],
+  codes: DeliveredPdfCodePlacement[] = [],
+  textNotes: DeliveredPdfTextNote[] = [],
+  lines: DeliveredPdfLine[] = [],
+): Promise<DeliveredPdfResult> {
+  if (!evidence.length) throw new Error("Se requiere al menos una evidencia confirmada.");
+  if (evidence.length > MAX_EVIDENCE_PHOTOS) throw new Error(`El máximo es ${MAX_EVIDENCE_PHOTOS} evidencias por entrega.`);
+  if (evidence.some((photo) => !photo.bytes.length || photo.bytes.length > MAX_EVIDENCE_BYTES)) {
+    throw new Error("Una evidencia supera el límite de 10 MB.");
+  }
+
+  const pdfium = await loadPdfium();
+  const output = await PDFDocument.create();
+  const codeFont = await output.embedFont(StandardFonts.HelveticaBold);
+  const noteFont = await output.embedFont(StandardFonts.Helvetica);
+  const { originalPageCount, originalPageWidth, originalPageHeight } = await appendFlattenedSourcePages(
+    pdfium,
+    output,
+    sourceDocuments,
+    ({ page, combinedPage, rendered }) => {
       for (const line of lines.filter((item) => item.page === combinedPage)) {
         const hex = line.color.replace("#", "");
         const color = rgb(parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255);
@@ -378,12 +436,8 @@ async function composeUnlocked(
           });
         });
       }
-    }
-      originalPageCount += sourcePageCount;
-    } finally {
-      closeDocument(pdfium, source);
-    }
-  }
+    },
+  );
 
   if (codes.some((item) => !Number.isInteger(item.page) || item.page < 1 || item.page > originalPageCount
     || !Array.isArray(item.entries) || item.entries.length < 1
@@ -437,28 +491,19 @@ async function composeUnlocked(
     });
   }
 
-  const bytes = await output.save({ useObjectStreams: false });
-  if (bytes.length > MAX_OUTPUT_BYTES) throw new Error("El PDF entregado supera el límite de 100 MB.");
-
-  const verification = openDocument(pdfium, bytes);
-  try {
-    const pageCount = pdfium.FPDF_GetPageCount(verification.document);
-    if (pageCount !== originalPageCount + evidence.length) throw new Error("El PDF entregado tiene un número de páginas inválido.");
-    for (let index = 0; index < pageCount; index += 1) {
-      const page = pdfium.FPDF_LoadPage(verification.document, index);
-      if (!page) throw new Error(`No se pudo validar la página ${index + 1} del PDF entregado.`);
-      pdfium.FPDF_ClosePage(page);
-    }
-    return {
-      bytes,
-      pageCount,
-      originalPageCount,
-      sourceDocumentIds: sourceDocuments.map((source) => source.id),
-      sourcePhotoIds: evidence.map((photo) => photo.id).sort(),
-    };
-  } finally {
-    closeDocument(pdfium, verification);
-  }
+  const { bytes, pageCount } = await saveAndVerifyPdf(
+    pdfium,
+    output,
+    originalPageCount + evidence.length,
+    "PDF entregado",
+  );
+  return {
+    bytes,
+    pageCount,
+    originalPageCount,
+    sourceDocumentIds: sourceDocuments.map((source) => source.id),
+    sourcePhotoIds: evidence.map((photo) => photo.id).sort(),
+  };
 }
 
 export async function composeDeliveredPdf(
@@ -505,6 +550,30 @@ export async function inspectPdfDocument(bytes: Uint8Array) {
   }
 }
 
+async function flattenSourceDocumentsUnlocked(sourceDocuments: DeliveredPdfSource[]): Promise<FlattenedSourcePdfResult> {
+  const pdfium = await loadPdfium();
+  const output = await PDFDocument.create();
+  const { originalPageCount } = await appendFlattenedSourcePages(pdfium, output, sourceDocuments);
+  const { bytes, pageCount } = await saveAndVerifyPdf(pdfium, output, originalPageCount, "PDF compatible");
+  return {
+    bytes,
+    pageCount,
+    sourceDocumentIds: sourceDocuments.map((source) => source.id),
+  };
+}
+
+export async function flattenSourceDocuments(sourceDocuments: DeliveredPdfSource[]) {
+  const previous = compositionTail;
+  let release!: () => void;
+  compositionTail = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    return await flattenSourceDocumentsUnlocked(sourceDocuments);
+  } finally {
+    release();
+  }
+}
+
 export async function renderOriginalPdfPreview(originalPdf: Uint8Array, pageNumber: number) {
   const previous = compositionTail;
   let release!: () => void;
@@ -535,8 +604,8 @@ export async function renderDeliveredPdfPreview(deliveredPdf: Uint8Array, pageNu
     const source = openDocument(pdfium, deliveredPdf);
     try {
       const pageCount = pdfium.FPDF_GetPageCount(source.document);
-      if (pageCount < 1 || pageNumber < 1 || pageNumber > pageCount) throw new Error("La página solicitada no es válida.");
-      const rendered = renderPage(pdfium, source.document, pageNumber - 1);
+      if (pageCount < 1 || pageCount > MAX_SOURCE_PAGES + MAX_EVIDENCE_PHOTOS || !Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > pageCount) throw new Error("La página solicitada no es válida.");
+      const rendered = renderPage(pdfium, source.document, pageNumber - 1, 480);
       const png = await sharp(rendered.rgba, { raw: { width: rendered.width, height: rendered.height, channels: 4 } }).png().toBuffer();
       return { png, pageCount, width: rendered.width, height: rendered.height };
     } finally { closeDocument(pdfium, source); }
@@ -547,10 +616,13 @@ export async function removeDeliveredPdfPages(bytes: Uint8Array, pageNumbers: nu
   if (!bytes.length || bytes.length > MAX_OUTPUT_BYTES) throw new Error("El PDF entregado no es válido.");
   const document = await PDFDocument.load(bytes);
   const pageCount = document.getPageCount();
+  if (pageCount < 1 || pageCount > MAX_SOURCE_PAGES + MAX_EVIDENCE_PHOTOS) throw new Error("El PDF entregado no es válido.");
+  if (!Array.isArray(pageNumbers) || !pageNumbers.length || pageNumbers.length > MAX_SOURCE_PAGES + MAX_EVIDENCE_PHOTOS
+    || pageNumbers.some((page) => !Number.isInteger(page) || page < 1 || page > pageCount)) {
+    throw new Error("La selección de páginas no es válida.");
+  }
   const toRemove = [...new Set(pageNumbers)]
-    .filter((page) => Number.isInteger(page) && page >= 1 && page <= pageCount)
     .sort((left, right) => right - left);
-  if (!toRemove.length) throw new Error("No se seleccionaron páginas válidas para eliminar.");
   if (toRemove.length >= pageCount) throw new Error("No se puede eliminar el PDF entregado por completo.");
   for (const page of toRemove) document.removePage(page - 1);
   const saved = await document.save({ useObjectStreams: false });

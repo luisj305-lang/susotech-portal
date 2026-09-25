@@ -46,7 +46,7 @@ assert.match(editor, /Categoría aplicable:/);
 assert.match(editor, /hasUnratedPlacement/);
 assert.match(editor, /pb-\[28rem\]/);
 assert.match(users, /await \(await createClient\(\)\)\.rpc\("set_technician_price_category"/);
-assert.match(usersPage, /requireSupervisor/);
+assert.match(usersPage, /requireOfficeViewer/);
 assert.match(usersPage, /canManage=\{currentProfile\.role === "admin"\}/);
 assert.match(route, /price_category_id/);
 assert.match(route, /production_code_rates/);

@@ -17,12 +17,13 @@ import {
   isOperationalFieldWorker,
   READ_ONLY_HELPER_MESSAGE,
 } from "@/lib/auth/capabilities";
+import type { UserRole } from "@/lib/auth/capabilities";
 
 type Bucket = "project-files" | "job-evidence";
 type Result<T> = { success: true; message: string; data: T } | { success: false; message: string };
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-async function requireTechnicianShift(role: "admin" | "supervisor" | "tecnico") {
+async function requireTechnicianShift(role: UserRole) {
   if (role !== "tecnico") return null;
   try {
     await requireActiveShift();

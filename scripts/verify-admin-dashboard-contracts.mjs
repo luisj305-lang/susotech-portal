@@ -305,7 +305,7 @@ async function scenarioS5() {
 
   // First-eight contract is a documented slice of the loaded preview.
   const pending = src("src/components/dashboard/pending-review.tsx");
-  ok(pending.includes("jobs.slice(0, 8)"), "first-eight slice preserved");
+  ok(pending.includes(".slice(0, 8)"), "first-eight slice preserved for the combined review queue");
   ok(pending.includes("/trabajos?status=en_revision"), "view-all link preserved");
 }
 
@@ -380,7 +380,7 @@ async function scenarioS7() {
   const table = src("src/components/dashboard/worker-activity-table.tsx");
   ok(table.includes('"list_technician_assigned_jobs"'), "name opens assigned-jobs RPC");
   ok(table.includes("p_technician_id"), "assigned-jobs RPC keyed by technician id");
-  ok(table.includes("`/trabajos/${job.id}`"), "assigned jobs link to job detail");
+  ok(table.includes("`/trabajos/${entry.job.id}`"), "regular-source assigned jobs link to job detail");
   ok(table.includes("production_breakdown"), "Detalles renders production breakdown");
   ok(table.includes("fuel_daily"), "Detalles renders fuel breakdown");
 }

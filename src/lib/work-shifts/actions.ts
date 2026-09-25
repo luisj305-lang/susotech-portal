@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import type { WorkShiftActionResult } from "./types";
+import type { HourlyShiftSettlement, WorkShiftActionResult } from "./types";
 
 const FUEL_PHOTO_BUCKET = "technician-shift-fuel";
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
@@ -89,6 +89,13 @@ export async function startTechnicianShift(input: {
       code: "invalid_input",
     };
   }
+  if (!input.noFuelToday && Number(amount) > 200) {
+    return {
+      success: false,
+      message: "El monto de gasolina no puede superar $200.",
+      code: "invalid_input",
+    };
+  }
   if (photoPath && !validFuelPhotoPath(profile.id, photoPath)) {
     return { success: false, message: "La foto de gasolina no es válida.", code: "invalid_input" };
   }
@@ -126,5 +133,101 @@ export async function startTechnicianShift(input: {
     success: true,
     message: "Jornada iniciada.",
     data: { activeUntil: shift.active_until },
+  };
+}
+
+const NEW_YORK_TIME_ZONE = "America/New_York";
+
+/**
+ * Converts a New York wall-clock string (`YYYY-MM-DDTHH:mm`) into a valid ISO
+ * timestamptz. The UTC offset is resolved for the exact instant and the result
+ * is round-tripped through New York formatting so an ambiguous wall time never
+ * slips through.
+ */
+function newYorkTimestampToIso(value: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  const civilUtc = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+
+  const offsetName = new Intl.DateTimeFormat("en-US", {
+    timeZone: NEW_YORK_TIME_ZONE,
+    timeZoneName: "shortOffset",
+  }).formatToParts(new Date(civilUtc)).find((part) => part.type === "timeZoneName")?.value;
+  const offset = /^GMT([+-])(\d{1,2})(?::(\d{2}))?$/.exec(offsetName ?? "");
+  if (!offset) return null;
+
+  const offsetMinutes = (Number(offset[2]) * 60 + Number(offset[3] ?? 0)) * (offset[1] === "+" ? 1 : -1);
+  const result = new Date(civilUtc - offsetMinutes * 60_000);
+
+  const normalized = new Intl.DateTimeFormat("en-CA", {
+    timeZone: NEW_YORK_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(result);
+  const part = (type: Intl.DateTimeFormatPartTypes) => normalized.find((item) => item.type === type)?.value;
+  if (`${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}` !== value) {
+    return null;
+  }
+  return result.toISOString();
+}
+
+function closeShiftError(raw: string | undefined): { message: string; code: "invalid_input" | "unavailable" } {
+  const message = raw ?? "";
+  if (message.includes("No open hourly shift")) {
+    return { message: "No tienes una jornada por horas abierta.", code: "unavailable" };
+  }
+  if (message.includes("Finished time required")) {
+    return { message: "Selecciona una hora de finalización.", code: "invalid_input" };
+  }
+  if (message.includes("Finished time outside shift day")) {
+    return { message: "La hora de finalización debe pertenecer al día de la jornada.", code: "invalid_input" };
+  }
+  if (message.includes("Finished time before shift start")) {
+    return { message: "La hora de finalización no puede ser anterior al inicio de la jornada.", code: "invalid_input" };
+  }
+  if (message.includes("Finished time after settlement deadline")) {
+    return { message: "La hora de finalización supera el plazo de cierre de la jornada.", code: "invalid_input" };
+  }
+  if (message.includes("Shift exceeds 14 hours")) {
+    return { message: "La jornada no puede superar las 14 horas.", code: "invalid_input" };
+  }
+  if (message.includes("Active technician required")) {
+    return { message: "Solo los técnicos pueden cerrar una jornada por horas.", code: "unavailable" };
+  }
+  return { message: "No se pudo cerrar la jornada. Intenta nuevamente.", code: "unavailable" };
+}
+
+export async function closeMyHourlyShift(input: {
+  finishedAt: string;
+}): Promise<WorkShiftActionResult<HourlyShiftSettlement>> {
+  const profile = await requireProfile();
+  if (profile.role !== "tecnico") {
+    return { success: false, message: "Solo los técnicos pueden cerrar una jornada por horas.", code: "unavailable" };
+  }
+
+  const finishedAt = newYorkTimestampToIso(input.finishedAt?.trim() ?? "");
+  if (!finishedAt) {
+    return { success: false, message: "La hora de finalización no es válida.", code: "invalid_input" };
+  }
+
+  const { data, error } = await (await createClient()).rpc("close_my_hourly_shift", {
+    p_finished_at: finishedAt,
+  });
+  if (error || !data?.[0]) {
+    const mapped = closeShiftError(error?.message);
+    return { success: false, message: mapped.message, code: mapped.code };
+  }
+
+  const settlement = data[0] as HourlyShiftSettlement;
+  revalidatePath("/dashboard");
+  return {
+    success: true,
+    message: "Jornada cerrada.",
+    data: settlement,
   };
 }

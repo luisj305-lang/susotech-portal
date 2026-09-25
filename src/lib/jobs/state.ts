@@ -25,6 +25,15 @@ export function isOfficeRole(role: UserRole): boolean {
   return OFFICE_ROLES.includes(role);
 }
 
+// Read-only office roles include the auditor. Use this ONLY for read-side UI
+// gating; mutations stay on isOfficeRole (OFFICE_ROLES above) and the
+// server-side requireSupervisor/requireAdmin guards.
+export const OFFICE_VIEWER_ROLES: UserRole[] = ["admin", "supervisor", "auditor"];
+
+export function isOfficeViewerRole(role: UserRole): boolean {
+  return OFFICE_VIEWER_ROLES.includes(role);
+}
+
 export interface TransitionInput {
   currentStatus: JobStatus;
   currentIncident: IncidentType | null;

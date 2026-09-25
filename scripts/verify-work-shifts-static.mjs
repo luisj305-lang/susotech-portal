@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const primitives = read("supabase/migrations/20260813010000_technician_shift_primitives.sql");
+const fourteenHours = read("supabase/migrations/20260910010000_shift_active_window_14_hours.sql");
 const enforcement = read("supabase/migrations/20260813020000_enforce_active_technician_shifts.sql");
 const optionalShifts = read("supabase/migrations/20260814020000_make_technician_shifts_optional.sql");
 const fuelUploadFix = read("supabase/migrations/20260813021000_fix_shift_fuel_signed_upload.sql");
@@ -34,7 +35,9 @@ const omits = (source, pattern, label) => {
 
 matches(primitives, /create table if not exists public\.technician_shifts/u, "shift table exists");
 matches(primitives, /fuel_amount numeric\(12,2\) not null/u, "fuel uses fixed decimal storage");
-matches(primitives, /active_until = started_at \+ interval '10 hours'/u, "shift duration is exactly ten hours");
+matches(primitives, /active_until = started_at \+ interval '10 hours'/u, "historical primitives retain the original ten-hour window");
+matches(fourteenHours, /now\(\) \+ interval '14 hours'/u, "shift active window is now fourteen hours");
+matches(fourteenHours, /technician_shifts_duration_check[\s\S]*active_until > started_at/u, "duration constraint is relaxed to a positive window");
 matches(primitives, /exclude using gist[\s\S]*tstzrange\(started_at, active_until, '\[\)'\) with &&/u, "overlapping shifts are excluded");
 matches(primitives, /p_fuel_amount <> round\(p_fuel_amount, 2\)/u, "fuel rejects more than two decimals");
 matches(primitives, /p_no_fuel_today and \(p_fuel_amount <> 0 or clean_photo_path is not null\)/u, "no-fuel state is explicit");
