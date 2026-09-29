@@ -92,11 +92,11 @@ Baseline recorded on `main`: untracked `prueba/`; no tracked changes. Created fe
 
 ## Work-Unit Receipt
 
-- Authored-line estimate: approximately 350 additions and deletions, including the ODD record and offline coverage; the pre-existing untracked `prueba/` directory is excluded.
+- Authored-line estimate: 328 additions and deletions in the primary implementation commit (306 additions, 22 deletions), including the ODD record and offline coverage; the pre-existing untracked `prueba/` directory is excluded.
 - Rationale: exact in-memory comparison keeps PRISM lookup literal, avoids PostgREST wildcard semantics, and changes no generic search behavior. A PRISM lookup is regular-job-only and explicitly suppresses the manual-work collection.
 - Rollback boundary: remove the six files listed in **Changed Files** from this work unit; no migration, remote state, or unrelated working-tree content is involved.
-- Commit identity: pending the required work-unit commit. The final receipt will record it in this document and its Engram mirror.
+- Primary work-unit commit: `793ae6aa37548474774570a95a9175ad9e104d18` (`feat(jobs): add historical PRISM lookup`).
 
 ## Next Step
 
-Create the scoped Conventional Commit, record its identity in both mirrors, then run `gentle-ai review mode status` without starting a review.
+Commit this final receipt update, then run `gentle-ai review mode status` without starting a review.
