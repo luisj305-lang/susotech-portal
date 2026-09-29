@@ -35,18 +35,21 @@ export async function listCrewsForOffice(): Promise<CrewOfficeDto[]> {
   return (await listCrewManagementData()).crews;
 }
 
-export async function listOfficeJobs(filters: { query?: string; status?: string; category?: string; archived?: boolean; facturados?: boolean }) {
+export async function listOfficeJobs(filters: { query?: string; prism?: string; status?: string; category?: string; archived?: boolean; facturados?: boolean }) {
   const supabase = await createClient();
   let request = supabase.from("jobs").select("*").order("updated_at", { ascending: false });
-  if (filters.archived) {
-    request = request.not("archived_at", "is", null);
-  } else if (filters.facturados) {
-    request = request.is("archived_at", null).in("main_status", ["facturado", "pagado"]);
-  } else {
-    request = request.is("archived_at", null).in("main_status", ["sin_asignar", "asignado", "en_revision", "aprobado"]);
+  const prism = filters.prism?.trim().toLocaleLowerCase("es") ?? "";
+  if (!prism) {
+    if (filters.archived) {
+      request = request.not("archived_at", "is", null);
+    } else if (filters.facturados) {
+      request = request.is("archived_at", null).in("main_status", ["facturado", "pagado"]);
+    } else {
+      request = request.is("archived_at", null).in("main_status", ["sin_asignar", "asignado", "en_revision", "aprobado"]);
+    }
+    if (statuses.includes(filters.status as JobStatus)) request = request.eq("main_status", filters.status);
+    if (categories.includes(filters.category as JobCategory)) request = request.eq("category", filters.category);
   }
-  if (statuses.includes(filters.status as JobStatus)) request = request.eq("main_status", filters.status);
-  if (categories.includes(filters.category as JobCategory)) request = request.eq("category", filters.category);
   const [jobsResult, assignmentsResult, photosResult, documentsResult, draftsResult, deliveryVersionsResult, options, crewsResult] = await Promise.all([
     request,
     supabase.from("job_assignments").select("job_id, assignee_type, technician_id, crew_id, assigned_at").eq("active", true).eq("is_primary", true),
@@ -71,7 +74,10 @@ export async function listOfficeJobs(filters: { query?: string; status?: string;
   for (const document of documentsResult.data ?? []) documentIds.set(document.job_id, [...(documentIds.get(document.job_id) ?? []), document.id]);
   const query = filters.query?.trim().toLocaleLowerCase("es") ?? "";
   return ((jobsResult.data ?? []) as Job[])
-    .filter((job) => !query || [job.prism_number, job.title, job.address, job.location].some((value) => value?.toLocaleLowerCase("es").includes(query)))
+    .filter((job) =>
+      (!query || [job.prism_number, job.title, job.address, job.location].some((value) => value?.toLocaleLowerCase("es").includes(query))) &&
+      (!prism || job.prism_number?.toLocaleLowerCase("es") === prism),
+    )
     .map((job): OfficeJobPreview & { assignedAt: string | null } => {
       const assignment = assignments.get(job.id);
       const key = assignment ? `${assignment.assignee_type}:${assignment.assignee_type === "crew" ? assignment.crew_id : assignment.technician_id}` : "";

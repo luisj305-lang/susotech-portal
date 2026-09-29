@@ -10,6 +10,7 @@ import { PendingReview } from "./pending-review";
 import { formatWeekRange } from "@/lib/dashboard/format";
 import type { AdminDashboardPresentation } from "./admin-dashboard-presentation";
 import type { ManualJob } from "@/lib/manual-jobs/types";
+import { buttonClasses } from "@/components/ui/button";
 
 const roleLabels = {
   admin: "Administrador",
@@ -112,6 +113,28 @@ export function AdminDashboard({
     </nav>
   );
 
+  const prismLookup = (
+    <form
+      action="/trabajos"
+      method="get"
+      className="flex flex-wrap items-end gap-3 rounded-[var(--radius-surface)] border border-line bg-white p-4 shadow-[var(--shadow-card-compact)]"
+    >
+      <label className="grid min-w-0 flex-1 gap-1 text-sm font-medium text-ink-soft">
+        Buscar historial por número PRISM
+        <input
+          type="search"
+          name="prism"
+          required
+          placeholder="Número PRISM exacto"
+          className="min-h-[var(--control-height)] rounded-[var(--radius-control)] border border-line bg-white px-3 py-2 text-sm text-ink focus:border-accent-500 focus:outline-none"
+        />
+      </label>
+      <button type="submit" className={buttonClasses({ variant: "secondary" })}>
+        Buscar PRISM
+      </button>
+    </form>
+  );
+
   if (presentation === "admin-dashboard") {
     return (
       <AppShell
@@ -132,6 +155,7 @@ export function AdminDashboard({
             weekLabel={`Semana: ${weekLabel}`}
             weekControls={weekControls}
           />
+          {prismLookup}
           <StatCards
             rows={workerOperations}
             invoicedCents={weeklyInvoiced.invoiced_cents}
@@ -164,6 +188,7 @@ export function AdminDashboard({
           weekLabel={`Semana: ${weekLabel}`}
           weekControls={weekControls}
         />
+        {prismLookup}
         <StatCards rows={workerOperations} invoicedCents={weeklyInvoiced.invoiced_cents} />
         <div className="grid gap-5 xl:grid-cols-3">
           <div className="xl:col-span-2">

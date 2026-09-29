@@ -280,6 +280,92 @@ export function buildPendingJobsConfig(count: number): {
 }
 
 // ---------------------------------------------------------------------------
+// S5b — Historical regular-job PRISM lookup
+// ---------------------------------------------------------------------------
+
+export function buildHistoricalPrismJobsConfig(): {
+  config: { tables: Record<string, FakeRow[]> };
+  expected: { prism: string; historicalIds: string[] };
+} {
+  const prism = "PRISM-410";
+  const jobs: FakeRow[] = [
+    {
+      id: "active-prism",
+      prism_number: prism,
+      main_status: "asignado",
+      archived_at: null,
+      updated_at: "2026-09-04T12:00:00.000Z",
+      title: "Current regular job",
+      address: "100 Active Way",
+      location: null,
+      delivered_pdf_path: null,
+    },
+    {
+      id: "archived-prism",
+      prism_number: "prism-410",
+      main_status: "en_revision",
+      archived_at: "2024-01-15T00:00:00.000Z",
+      updated_at: "2024-01-15T00:00:00.000Z",
+      title: "Archived regular job",
+      address: "101 Archive Way",
+      location: null,
+      delivered_pdf_path: null,
+    },
+    {
+      id: "invoiced-prism",
+      prism_number: "PrIsM-410",
+      main_status: "facturado",
+      archived_at: null,
+      updated_at: "2023-06-20T00:00:00.000Z",
+      title: "Invoiced regular job",
+      address: "102 Invoice Way",
+      location: null,
+      delivered_pdf_path: null,
+    },
+    {
+      id: "paid-prism",
+      prism_number: prism,
+      main_status: "pagado",
+      archived_at: null,
+      updated_at: "2022-03-11T00:00:00.000Z",
+      title: "Paid regular job",
+      address: "103 Paid Way",
+      location: null,
+      delivered_pdf_path: null,
+    },
+    {
+      id: "title-only-distractor",
+      prism_number: "OTHER-410",
+      main_status: "asignado",
+      archived_at: null,
+      updated_at: "2026-09-03T00:00:00.000Z",
+      title: prism,
+      address: "104 Distractor Way",
+      location: null,
+      delivered_pdf_path: null,
+    },
+  ];
+
+  return {
+    config: {
+      tables: {
+        jobs,
+        job_photos: [],
+        job_documents: [],
+        job_pdf_drafts: [],
+        job_pdf_delivery_versions: [],
+        job_assignments: [],
+        crews,
+      },
+    },
+    expected: {
+      prism,
+      historicalIds: ["active-prism", "archived-prism", "invoiced-prism", "paid-prism"],
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // S6/S7 — Worker operations (getWorkerOperationsDashboard + invoiced total)
 // ---------------------------------------------------------------------------
 

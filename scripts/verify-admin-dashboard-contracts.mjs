@@ -46,6 +46,12 @@ const STUB_SOURCES = {
     "}",
     "",
   ].join("\n"),
+  "auth-session.mjs": [
+    "export async function requireOfficeViewer() {",
+    "  return { role: \"admin\" };",
+    "}",
+    "",
+  ].join("\n"),
 };
 
 const ALLOWLIST = new Set([
@@ -81,6 +87,9 @@ function resolve(specifier, context, nextResolve) {
   if (specifier.endsWith("crew-core")) {
     return { url: STUB + "crew-core.mjs", shortCircuit: true };
   }
+  if (specifier === "@/lib/auth/session") {
+    return { url: STUB + "auth-session.mjs", shortCircuit: true };
+  }
 
   // Blocklist: real Supabase SDK, Next.js, React, and browser/auth modules
   // must never execute in the offline contract runner.
@@ -91,8 +100,7 @@ function resolve(specifier, context, nextResolve) {
     specifier === "react" ||
     specifier === "react-dom" ||
     specifier.startsWith("react-") ||
-    specifier === "@/lib/supabase/client" ||
-    specifier === "@/lib/auth/session"
+    specifier === "@/lib/supabase/client"
   ) {
     throw new Error(
       `Offline contract loader blocked disallowed import: ${specifier}`,
@@ -310,6 +318,59 @@ async function scenarioS5() {
 }
 
 // ---------------------------------------------------------------------------
+// S5b — Historical PRISM lookup
+// ---------------------------------------------------------------------------
+
+async function scenarioS5b() {
+  scenario("S5b Historical PRISM lookup");
+
+  const { config, expected } = fixtures.buildHistoricalPrismJobsConfig();
+  setFake(makeFakeSupabase(config));
+
+  const historical = await listOfficeJobs({
+    prism: expected.prism.toLowerCase(),
+    status: "asignado",
+    archived: true,
+    facturados: true,
+  });
+  eq(historical.length, expected.historicalIds.length, "PRISM lookup returns every matching regular job");
+  eq(
+    historical.map((job) => job.id).sort().join(","),
+    [...expected.historicalIds].sort().join(","),
+    "PRISM lookup is literal, case-insensitive, and non-unique",
+  );
+  ok(historical.some((job) => job.archived_at !== null), "historical lookup includes archived jobs");
+  ok(historical.some((job) => job.main_status === "facturado"), "historical lookup includes invoiced jobs");
+  ok(historical.some((job) => job.main_status === "pagado"), "historical lookup includes paid jobs");
+  ok(historical.some((job) => String(job.updated_at).startsWith("2022-")), "historical lookup includes old jobs");
+
+  const literalMiss = await listOfficeJobs({ prism: `${expected.prism}%` });
+  eq(literalMiss.length, 0, "PRISM lookup treats wildcard characters literally");
+
+  const generic = await listOfficeJobs({ query: expected.prism });
+  eq(generic.length, 2, "generic search keeps the active status bucket");
+  ok(generic.some((job) => job.id === "active-prism"), "generic search still matches active PRISM values");
+  ok(generic.some((job) => job.id === "title-only-distractor"), "generic search still matches titles within its normal bucket");
+
+  const invoiced = await listOfficeJobs({ facturados: true });
+  eq(invoiced.length, 2, "invoiced bucket remains limited to non-archived invoiced and paid jobs");
+  const archived = await listOfficeJobs({ archived: true });
+  eq(archived.length, 1, "archived bucket remains limited to archived jobs");
+
+  const dashboard = src("src/components/dashboard/admin-dashboard.tsx");
+  ok(/<form\s+action="\/trabajos"\s+method="get"/u.test(dashboard), "dashboard PRISM form submits to the office jobs route with GET");
+  ok(dashboard.includes('name="prism"'), "dashboard PRISM form uses the dedicated prism parameter");
+  eq((dashboard.match(/\{prismLookup\}/gu) ?? []).length, 2, "both office dashboard presentations render the PRISM form");
+
+  const jobsPage = src("app/trabajos/page.tsx");
+  ok(jobsPage.includes('const prism = first("prism");'), "office jobs route parses the first PRISM parameter");
+  ok(jobsPage.includes("requireOfficeViewer()"), "office jobs route enforces office-viewer authorization");
+  ok(jobsPage.includes("prism: filters.prism"), "office jobs route passes the dedicated PRISM option to the regular-job query");
+  ok(jobsPage.includes("hasHistoricalPrismLookup || !referenceAt"), "only explicit PRISM lookup bypasses assignment-week filtering");
+  ok(jobsPage.includes("hasHistoricalPrismLookup ? Promise.resolve([]) : getOfficeManualJobs()"), "historical PRISM lookup excludes manual-job history");
+}
+
+// ---------------------------------------------------------------------------
 // S6 — Filtered totals
 // ---------------------------------------------------------------------------
 
@@ -466,6 +527,7 @@ const caseName = caseIndex !== -1 ? process.argv[caseIndex + 1] : null;
 if (caseName === "offline") {
   await scenarioS4();
   await scenarioS5();
+  await scenarioS5b();
   await scenarioS6();
   await scenarioS7();
   await scenarioS8();

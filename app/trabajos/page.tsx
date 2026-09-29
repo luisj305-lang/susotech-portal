@@ -7,7 +7,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { displayName, initials, roleLabel } from "@/lib/dashboard/profile";
-import { requireProfile } from "@/lib/auth/session";
+import { requireOfficeViewer, requireProfile } from "@/lib/auth/session";
 import { listOfficeJobs, listTechnicianQueueJobs } from "@/lib/jobs/queries";
 import { groupJobParts } from "@/lib/jobs/parts";
 import { getJobMapUrl } from "@/lib/jobs/maps";
@@ -77,28 +77,31 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
     const manualJobs = filterManualWork(manuals, { query, status, tab, referenceAt });
     return <FieldShell userName={displayName(profile)}><JobList jobs={jobs} manualJobs={manualJobs} initialQuery={query ?? ""} initialStatus={status ?? ""} tab={tab} weekOffset={weekOffset} /></FieldShell>;
   }
-  const filters = { q: first("q"), status: first("status"), archived: first("archived") === "1", facturados: first("facturados") === "1" };
+  const officeProfile = await requireOfficeViewer();
+  const prism = first("prism");
+  const hasHistoricalPrismLookup = Boolean(prism?.trim());
+  const filters = { q: first("q"), prism, status: first("status"), archived: first("archived") === "1", facturados: first("facturados") === "1" };
   const [regularJobs, manuals] = await Promise.all([
-    filters.status?.startsWith("manual:") ? Promise.resolve([]) : listOfficeJobs({ query: filters.q, status: filters.status, archived: filters.archived, facturados: filters.facturados }),
-    getOfficeManualJobs(),
+    !hasHistoricalPrismLookup && filters.status?.startsWith("manual:") ? Promise.resolve([]) : listOfficeJobs({ query: filters.q, prism: filters.prism, status: filters.status, archived: filters.archived, facturados: filters.facturados }),
+    hasHistoricalPrismLookup ? Promise.resolve([]) : getOfficeManualJobs(),
   ]);
-  const jobs = regularJobs.filter((job) => !referenceAt || isInWorkWeek(job.assignedAt, referenceAt));
-  const manualJobs = filterManualWork(manuals, { ...filters, query: filters.q, referenceAt });
+  const jobs = regularJobs.filter((job) => hasHistoricalPrismLookup || !referenceAt || isInWorkWeek(job.assignedAt, referenceAt));
+  const manualJobs = hasHistoricalPrismLookup ? [] : filterManualWork(manuals, { ...filters, query: filters.q, referenceAt });
   const entries = combineWorkItems(groupJobParts(jobs).map((group) => ({ ...group, id: group.root.id })), manualJobs);
-  const showDelete = filters.archived && (profile.role === "admin" || profile.role === "supervisor");
+  const showDelete = !hasHistoricalPrismLookup && filters.archived && (officeProfile.role === "admin" || officeProfile.role === "supervisor");
 
   return (
-    <AppShell role={profile.role as "admin" | "supervisor"} userName={displayName(profile)} roleLabel={roleLabel(profile.role)} initials={initials(profile)}>
+    <AppShell role={officeProfile.role as "admin" | "supervisor"} userName={displayName(officeProfile)} roleLabel={roleLabel(officeProfile.role)} initials={initials(officeProfile)}>
       <div className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
         <Link href={weekOffset === undefined ? "/dashboard" : `/dashboard?week=${weekOffset}`} className="text-sm font-medium text-accent-600 hover:text-accent-500">← Dashboard</Link>
         <header className="flex flex-wrap items-end justify-between gap-4 rounded-[var(--radius-surface)] bg-white p-5 shadow-[var(--shadow-card-compact)] sm:p-6">
           <div>
             <p className="text-sm font-semibold uppercase tracking-widest text-ink-muted">Operaciones</p>
-            <h1 className="text-3xl font-bold text-ink">{filters.archived ? "Trabajos archivados" : filters.facturados ? "Trabajos facturados" : "Trabajos"}</h1>
+            <h1 className="text-3xl font-bold text-ink">{hasHistoricalPrismLookup ? "Resultados PRISM" : filters.archived ? "Trabajos archivados" : filters.facturados ? "Trabajos facturados" : "Trabajos"}</h1>
             <p className="mt-1 text-ink-soft">Identifique cada orden, su asignación, documentos y evidencias sin abrirla.</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            {filters.archived && profile.role === "admin" && <RetryJobDeletionCleanupButton />}
+            {filters.archived && !hasHistoricalPrismLookup && officeProfile.role === "admin" && <RetryJobDeletionCleanupButton />}
             {!filters.archived && !filters.facturados && <Link href={`/trabajos?facturados=1${weekSuffix}`} className={buttonClasses({ variant: "secondary" })}>Ver facturados</Link>}
             {filters.archived || filters.facturados ? <Link href={weekOffset === undefined ? "/trabajos" : `/trabajos?week=${weekOffset}`} className={buttonClasses({ variant: "secondary" })}>Ver activos</Link> : <Link href={`/trabajos?archived=1${weekSuffix}`} className={buttonClasses({ variant: "secondary" })}>Ver archivados</Link>}
             <Link href="/trabajos/importar" className={buttonClasses({ variant: "primary" })}>Importar PDF</Link>
