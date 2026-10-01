@@ -50,9 +50,14 @@ assert.match(text(cards), /Manual · Pendiente/);
 assert.match(text(cards), /Manual · Aprobado/);
 assert.match(text(cards), /Manual · Rechazado/);
 assert.doesNotMatch(text(cards), /9999|Helper/, "Operational cards do not expose roster/financial data");
+const facturadoJob = { ...regular, id: "facturado", main_status: "facturado" };
+const facturadoCards = WorkJobCards({ jobs: [facturadoJob], manualJobs: [] });
+const badgeStatuses = nodes(facturadoCards).filter((node) => node.type === "StatusBadge").map((node) => node.props.status);
+assert.ok(badgeStatuses.includes("facturado"), "Facturado job keeps its real status instead of collapsing to aprobado");
 const list = JobList({ jobs: [regular], manualJobs: weekly, weekOffset: -1 });
 assert.ok(links(list).includes("/dashboard?week=-1"));
 assert.ok(links(list).some((href) => href.includes("tab=revisados") && href.includes("week=-1")));
+assert.ok(links(list).some((href) => href.includes("tab=todos")), "Technician list exposes a Todos tab");
 assert.equal(nodes(list).filter((node) => node.type === "input" && node.props.name === "week").length, 2);
 for (const presentation of ["default", "admin-dashboard"]) {
   const pending = PendingReview({ jobs: [regular], manualJobs: weekly, presentation, weekOffset: -1 });
@@ -128,7 +133,7 @@ const calls = [];
 const officeRow = { technician_id: "helper", week_start_at: "2026-09-11T04:00:00Z", week_end_exclusive_at: "2026-09-18T04:00:00Z" };
 const routeLoad = workListLoader({
   ...workListUiStubs,
-  "@/lib/auth/session": { requireProfile: async () => ({ ...profile, role }) },
+  "@/lib/auth/session": { requireProfile: async () => ({ ...profile, role }), requireOfficeViewer: async () => ({ ...profile, role }) },
   "@/lib/dashboard/profile": { displayName: () => "Helper", initials: () => "H", roleLabel: () => role },
   "@/lib/work-shifts/access": { requireActiveShiftPage: async () => {}, getWorkShiftAccess: async () => ({ active }) },
   "@/lib/jobs/queries": {
@@ -176,6 +181,9 @@ for (role of ["tecnico", "admin", "supervisor"]) {
     assert.equal(home.props.workerOperations[0], officeRow);
   }
 }
+role = "tecnico"; calls.length = 0;
+await JobsPage({ searchParams: Promise.resolve({ tab: "todos" }) });
+assert.ok(calls.some(([name, args]) => name === "regular-technician" && args.tab === "todos"), "Todos tab reaches the technician queue branch (facturado/pagado included)");
 role = "tecnico"; active = false; calls.length = 0;
 const inactiveHome = await DashboardPage({ searchParams: Promise.resolve({ week: "0" }) });
 assert.ok(!calls.some(([name]) => name === "regular-technician"), "No active-shift bypass for regular jobs");

@@ -16,10 +16,6 @@ const incidents: Record<string, string> = { need_splicing: "Requiere empalme", n
 
 const statusLabels: Record<string, string> = { asignado: "Asignado", en_revision: "En revisión", aprobado: "Aprobado" };
 
-function technicianStatus(status: Job["main_status"]): Job["main_status"] {
-  return status === "facturado" || status === "pagado" ? "aprobado" : status;
-}
-
 function tabHref(tab: string, query?: string, status?: string, weekOffset?: number) {
   const params = new URLSearchParams();
   params.set("tab", tab);
@@ -37,7 +33,7 @@ function JobCard({ job }: { job: Job }) {
         <h2 className="text-xl font-bold text-ink">{job.prism_number ? `PRISM ${job.prism_number}` : job.address || job.location || "Sin número PRISM"}</h2>
         <div className="flex items-center gap-2">
           {job.partLabel && <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink-soft">{job.partLabel}</span>}
-          <StatusBadge status={technicianStatus(job.main_status)} />
+          <StatusBadge status={job.main_status} />
         </div>
       </div>
       {workTypeLabels(job).length > 0 ? (
@@ -82,6 +78,7 @@ export function JobList({ jobs, manualJobs = [], initialQuery = "", initialStatu
       <nav aria-label="Vistas de trabajo" className="flex gap-2">
         <Link href={tabHref("activos", initialQuery, initialStatus, weekOffset)} aria-current={tab === "activos" ? "page" : undefined} className={buttonClasses({ variant: tab === "activos" ? "primary" : "secondary", size: "sm" })}>Activos</Link>
         <Link href={tabHref("revisados", initialQuery, initialStatus, weekOffset)} aria-current={tab === "revisados" ? "page" : undefined} className={buttonClasses({ variant: tab === "revisados" ? "primary" : "secondary", size: "sm" })}>Revisados</Link>
+        <Link href={tabHref("todos", initialQuery, initialStatus, weekOffset)} aria-current={tab === "todos" ? "page" : undefined} className={buttonClasses({ variant: tab === "todos" ? "primary" : "secondary", size: "sm" })}>Todos</Link>
       </nav>
       <div className="grid gap-4 rounded-2xl border border-line bg-white p-4 shadow-card">
         <form className="flex flex-wrap items-end gap-2">

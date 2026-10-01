@@ -68,7 +68,8 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
     await requireActiveShiftPage();
     const query = first("q");
     const status = first("status");
-    const tab = first("tab") === "revisados" ? "revisados" : "activos";
+    const rawTab = first("tab");
+    const tab = rawTab === "revisados" || rawTab === "todos" ? rawTab : "activos";
     const [regularJobs, manuals] = await Promise.all([
       status?.startsWith("manual:") ? Promise.resolve([]) : listTechnicianQueueJobs({ query, status, tab }),
       getMyManualJobs(),
